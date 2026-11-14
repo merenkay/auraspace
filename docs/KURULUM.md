@@ -11,9 +11,9 @@ PHP dosyası elle düzenlemen **gerekmez**: ayar dosyasını `tools/make-config.
 > 5. `…/api/index.php?r=health` adresinde `"db":true` gör.
 > 6. Giriş sayfasının altında `● Connected to the mission database` yazısını gör.
 
-**Bu rehberde kullanılan adresler.** Site şu an Hostinger'ın geçici adresinde çalışıyor:
-`https://lightseagreen-badger-727436.hostingersite.com`. Aşağıda `SİTE` gördüğün her yere sitenin o anki adresini koy
-(gerçek alan adı bağlanınca o adres olur).
+**Bu rehberde kullanılan adresler.** Sitenin adresi:
+`https://auraspace.space`. Aşağıda `SİTE` gördüğün her yere sitenin o anki adresini koy
+(alan adı değişirse yeni adresi).
 
 **Arayüz hakkında dürüst bir not.** Menü adları Hostinger'ın İngilizce yardım sayfalarından alındı (Kasım 2026).
 hPanel'i Türkçe kullanıyorsan aynı menüler Türkçe adlarla görünebilir; tam Türkçe karşılıklarını doğrulayamadık,
@@ -99,7 +99,7 @@ AURA — sunucu ayar dosyası (aura-config.php) oluşturucu
 | [3/6] Veritabanı şifresi | Belirlediğin şifre, iki kez. **Yazarken ekranda görünmez — normal.** Yapıştırabilirsin (sağ tık ya da Ctrl+V). | — |
 | [4/6] Demo hesap şifresi | Enter → araç güçlü bir şifre üretir (ör. `Kp7m-x3Qw-9bTz`). İstersen kendin yaz (en az 8 karakter). | — |
 | [5/6] E-posta | Şimdilik **Enter** (boş) geçebilirsin; e-postayı 7. bölümde eklersin. | `no-reply@alanadiniz.com` |
-| [6/6] Sitenin adresi | Enter (geçici adres hazır gelir) ya da gerçek alan adı | `https://lightseagreen-badger-727436.hostingersite.com` |
+| [6/6] Sitenin adresi | Enter (site adresi hazır gelir) | `https://auraspace.space` |
 | Devam edilsin mi? | Enter (= evet) | — |
 
 6. Sonunda araç şunları yazar: **özet** (şifreler hariç), **demo şifresi**, **kurulum adresi** ve **kontrol adresi**.
@@ -157,7 +157,7 @@ Hostinger'daki yapı genelde şöyledir:
 
 ```
 domains/
-└── lightseagreen-badger-727436.hostingersite.com/   ← aura-config.php BURAYA
+└── auraspace.space/   ← aura-config.php BURAYA
     ├── aura-config.php        ✓ senin yükleyeceğin dosya
     ├── DO_NOT_UPLOAD_HERE     (görebilirsin, aşağıya bak)
     └── public_html/           ← GitHub'dan gelen site, her yayında yenilenir
@@ -177,7 +177,7 @@ Kural aynı: **`public_html` ile yan yana**.)
 3. **Doğru yerde misin? Kontrol listesi:**
    - [ ] Listede **`public_html` adında bir klasör** görüyorsun (ve içine girmedin).
    - [ ] Bu klasörde `index.html`, `api`, `assets` **yok** (onları görüyorsan `public_html`'in içindesin → yol çubuğunda bir üst klasöre tıkla).
-   - [ ] Yol çubuğundaki klasör adı sitenin alan adıyla aynı (ör. `lightseagreen-badger-727436.hostingersite.com`).
+   - [ ] Yol çubuğundaki klasör adı sitenin alan adıyla aynı (ör. `auraspace.space`).
          Birden fazla siten varsa her birinin `domains` altında ayrı klasörü vardır; doğru olanı seç.
    - [ ] `DO_NOT_UPLOAD_HERE` adlı bir dosya görebilirsin. Hostinger bunun ne olduğunu belgelerinde açıklamıyor; bizim
          anladığımız, "site dosyalarını buraya değil `public_html`'e koy, buradakiler web'de görünmez" uyarısı olduğu.

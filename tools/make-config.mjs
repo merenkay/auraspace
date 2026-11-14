@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FILE_NAME = 'aura-config.php'
-const DEFAULT_SITE = 'https://lightseagreen-badger-727436.hostingersite.com'
+const DEFAULT_SITE = 'https://auraspace.space'
 const DEMO_USERS = 'okafor, reyes, tanaka, brandt, surgeon, capcom'
 
 /* ------------------------------------------------------------------ output */
@@ -304,7 +304,7 @@ function normalizeSite(v) {
   try {
     u = new URL(s)
   } catch {
-    return { error: 'Bu bir web adresine benzemiyor. Örnek: https://lightseagreen-badger-727436.hostingersite.com' }
+    return { error: 'Bu bir web adresine benzemiyor. Örnek: https://auraspace.space' }
   }
   if (!u.hostname.includes('.')) return { error: 'Alan adı eksik görünüyor (ör. alanadiniz.com).' }
   const out = { value: u.origin }
