@@ -109,6 +109,7 @@ const SPECIFICITY: Record<string, number> = {
   sys_metabolism: 1,
 }
 const MAX_SPECIFICITY = 4
+const THIN_NETWORK = new Set(['sys_arteries', 'sys_veins', 'sys_nerves'])
 
 /** An organ at most this far (metres) behind the first bone or vessel on the ray is "directly behind the cage". */
 export const CAGE_DEPTH = 0.06
@@ -121,7 +122,8 @@ export type RayHit = { node: string; kind: PickKind; d: number }
  * Orders everything a ray passes through, best pick first:
  * 1. Organs beat the cage in front of them (ribs, skull, vessels) when they lie within CAGE_DEPTH of it;
  *    among organs the front-most wins, unless a more specific one starts within THIN_COVER behind it.
- * 2. Otherwise the opaque surface that is actually seen wins (arm bone in front of the chest, spine from behind).
+ * 2. Otherwise the opaque surface that is actually seen wins (arm bone in front of the chest, spine from behind);
+ *    a bone at most THIN_COVER behind a vessel or nerve wins over that thin line.
  * 3. Translucent shells (muscle, skin) come last, so they only win where nothing else is under the pointer.
  * The rest of the list is what repeated clicks on the same spot step through.
  */
@@ -129,7 +131,13 @@ export function rankHits(hits: RayHit[]): RayHit[] {
   const of = (kind: PickKind) => hits.filter((h) => h.kind === kind).sort((a, b) => a.d - b.d)
   const organs = of('organ')
   const cage = of('cage')
-  const shells = of('shell')
+  // the skin is the outermost catch-all: a muscle under the pointer comes before it
+  const shells = of('shell').sort((x, y) => Number(x.node === 'sys_skin') - Number(y.node === 'sys_skin') || x.d - y.d)
+  // a vessel or nerve is a thin line: the bone right behind it (shin, forearm) is what a click on that spot means
+  if (cage.length > 1 && THIN_NETWORK.has(cage[0].node)) {
+    const bulk = cage.find((c) => !THIN_NETWORK.has(c.node) && c.d - cage[0].d <= THIN_COVER)
+    if (bulk) cage.unshift(...cage.splice(cage.indexOf(bulk), 1))
+  }
   if (!organs.length) return [...cage, ...shells]
   const first = organs[0]
   let best = first
@@ -143,11 +151,12 @@ export function rankHits(hits: RayHit[]): RayHit[] {
 
 // pointer tolerances in CSS pixels
 const CLICK_SLOP: Record<string, number> = { mouse: 5, pen: 8, touch: 12 }
-const PICK_RADIUS: Record<string, number> = { mouse: 10, pen: 12, touch: 22 }
+// EDGE: a pointer just off the body (or over a see-through shell only) snaps to what is next to it.
+// ORGAN: a pointer on a bone or a big organ snaps to a more specific organ this close (eyes, spleen, kidneys, heart).
+const EDGE_RADIUS: Record<string, number> = { mouse: 10, pen: 12, touch: 22 }
+const ORGAN_RADIUS: Record<string, number> = { mouse: 4, pen: 6, touch: 12 }
 const CYCLE_RADIUS: Record<string, number> = { mouse: 8, pen: 10, touch: 20 }
-const RING: [number, number][] = [0.5, 1].flatMap((r) =>
-  Array.from({ length: 8 }, (_, i): [number, number] => [r * Math.cos((i * Math.PI) / 4), r * Math.sin((i * Math.PI) / 4)]),
-)
+const RING: [number, number][] = Array.from({ length: 8 }, (_, i): [number, number] => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)])
 
 // ---------------------------------------------------------------------------------------------------------
 // BVH cache: built once per loaded geometry (the loader caches the model for the lifetime of the page),
@@ -344,19 +353,22 @@ function castRanked(inst: Instance, camera: THREE.Camera, w: number, h: number, 
 }
 
 /**
- * Systems under a pointer, best first. `radius` > 0 adds a ring of rays around the pointer: a more specific
- * target found there (an eye next to the pointer, anything at all next to empty space) takes the lead.
+ * Systems under a pointer, best first. With tolerances, rings of rays around the pointer are consulted too:
+ * a more specific organ within `organRadius` takes the lead, and where the centre ray finds nothing solid
+ * (empty space or only a see-through shell) the best target within `edgeRadius` does.
  */
-function pickSystems(inst: Instance, camera: THREE.Camera, w: number, h: number, x: number, y: number, radius: number, showRadiation: boolean): SystemId[] {
+function pickSystems(inst: Instance, camera: THREE.Camera, w: number, h: number, x: number, y: number, organRadius: number, edgeRadius: number, showRadiation: boolean): SystemId[] {
   const t0 = performance.now()
   for (const rec of inst.recs) rec.inverse.copy(rec.mesh.matrixWorld).invert()
   const center = castRanked(inst, camera, w, h, x, y, showRadiation)
   let lead: string | null = center[0]?.node ?? null
   let leadSpec = lead ? (SPECIFICITY[lead] ?? 0) : -1
-  if (radius > 0 && leadSpec < MAX_SPECIFICITY) {
+  const open = !center[0] || center[0].kind === 'shell'
+  for (const radius of open ? [organRadius, edgeRadius] : [organRadius]) {
+    if (radius <= 0 || leadSpec >= MAX_SPECIFICITY) continue
     for (const [dx, dy] of RING) {
       const near = castRanked(inst, camera, w, h, x + dx * radius, y + dy * radius, showRadiation)[0]
-      if (!near) continue
+      if (!near || (near.kind === 'shell' && center[0])) continue
       const spec = SPECIFICITY[near.node] ?? 0
       if (spec > leadSpec) {
         lead = near.node
@@ -590,7 +602,8 @@ function Model(props: Body3DProps) {
       return { id: c.list[index], list: c.list, index, cycling: true }
     }
     const { width, height } = sizeRef.current
-    const list = pickSystems(inst, camera, width, height, x, y, st.bvhReady ? (PICK_RADIUS[type] ?? 10) : 0, live.current.showRadiation !== false)
+    const fast = st.bvhReady
+    const list = pickSystems(inst, camera, width, height, x, y, fast ? (ORGAN_RADIUS[type] ?? 4) : 0, fast ? (EDGE_RADIUS[type] ?? 10) : 0, live.current.showRadiation !== false)
     return list.length ? { id: list[0], list, index: 0, cycling: false } : null
   }
 
@@ -735,8 +748,8 @@ function Model(props: Body3DProps) {
         return
       }
       e.preventDefault()
-      const dy = clamp(e.deltaY * (e.deltaMode === 1 ? 16 : 1), -40, 40)
-      zoomBy(Math.exp(dy * 0.012), worldYAt(local(e).y))
+      const dy = clamp(e.deltaY * (e.deltaMode === 1 ? 16 : 1), -30, 30)
+      zoomBy(Math.exp(dy * 0.01), worldYAt(local(e).y))
       st.cycle = null
       st.hoverDirty = true
       touchIdle()
@@ -954,7 +967,7 @@ function Model(props: Body3DProps) {
     for (const rec of inst.recs) {
       const m = rec.material
       const status = p.statuses[rec.system] ?? 'ok'
-      const dim = rec.shell ? 0.6 : 1
+      const dim = rec.shell ? 0.6 : PRIMARY_NODE[rec.system] === rec.name ? 1 : 0.45
       if (rec.system === p.selected) {
         m.emissive.set(status === 'ok' ? CYAN : STATUS_COLOR[status])
         m.emissiveIntensity = (0.42 + 0.3 * pulse) * dim

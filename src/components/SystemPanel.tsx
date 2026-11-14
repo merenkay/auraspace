@@ -1,10 +1,10 @@
-import { motion } from 'motion/react'
 import type { ReactNode } from 'react'
 import { impactOf, vitalFor, type Context } from '../data/contexts'
 import { recordsForSystem } from '../data/kb'
 import type { BodySystem } from '../data/systems'
-import { STATUS_COLOR, STATUS_LABEL, type Status, type Values, type VitalKey } from '../data/vitals'
+import { type Status, type Values, type VitalKey } from '../data/vitals'
 import { RecordCard } from './ScienceLibrary'
+import { List, Notice, Row, Sheet, SourceLink, StatusText, SYSTEM_ICON, VITAL_ICON, statusLabel } from './ui'
 
 type Props = {
   system: BodySystem
@@ -17,117 +17,114 @@ type Props = {
   canEdit: boolean
   onEdit: (key: VitalKey) => void
   onClose: () => void
+  /** Lets a parent hide the sheet temporarily (e.g. while the entry dialog is on top). Default true. */
+  open?: boolean
 }
 
-export default function SystemPanel({ system, status, values, available, action, context, extra, canEdit, onEdit, onClose }: Props) {
-  const color = STATUS_COLOR[status]
+export default function SystemPanel({ system, status, values, available, action, context, extra, canEdit, onEdit, onClose, open = true }: Props) {
   const impact = impactOf(system.id, context)
   const research = context === 'space' ? recordsForSystem(system.id).slice(0, 3) : []
   const vitals = system.vitals.filter((k) => available.includes(k))
+  const Icon = SYSTEM_ICON[system.id]
 
   return (
-    <motion.div className="fixed inset-0 z-40 flex items-end justify-end bg-black/50 sm:items-stretch" onClick={onClose} initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <motion.aside
-        initial={{ x: 60, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ ease: [0.22, 1, 0.36, 1], duration: 0.35 }}
-        className="max-h-[88vh] w-full overflow-y-auto rounded-t-3xl border border-line bg-panel p-5 shadow-2xl sm:max-h-none sm:w-[440px] sm:rounded-none sm:rounded-l-3xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start justify-between gap-3">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={
+        <span className="flex items-center gap-2.5">
+          <Icon className="h-5 w-5 shrink-0 text-dim" aria-hidden="true" />
+          {system.name}
+        </span>
+      }
+      description={context === 'space' ? `Hazard · ${system.hazard}` : undefined}
+    >
+      <div className="space-y-6">
+        {status === 'ok' ? (
           <div>
-            {context === 'space' && <p className="label text-cyan">Hazard · {system.hazard}</p>}
-            <h2 className="mt-1 font-display text-2xl font-bold">{system.name}</h2>
+            <StatusText status={status} />
+            <p className="mt-2 text-[15px] leading-relaxed text-soft">{action}</p>
           </div>
-          <button onClick={onClose} className="rounded-lg px-2 text-3xl leading-none text-dim hover:text-ink" aria-label="Close">
-            ×
-          </button>
-        </div>
-
-        <div className="mt-4 rounded-2xl border p-4" style={{ borderColor: color, background: `${color}14` }}>
-          <p className="text-xs font-bold tracking-widest" style={{ color }}>
-            ● {STATUS_LABEL[status]}
-          </p>
-          <p className="mt-1 text-sm leading-snug">{action}</p>
-        </div>
+        ) : (
+          <Notice tone={status} title={statusLabel(status)}>
+            <span className="text-[15px] text-ink">{action}</span>
+          </Notice>
+        )}
 
         {vitals.length > 0 && (
-          <div className="mt-4 space-y-2">
+          <List>
             {vitals.map((k) => {
               const def = vitalFor(k, context)
+              const st = def.evaluate(values)
+              const VIcon = VITAL_ICON[k]
               return (
-                <button
+                <Row
                   key={k}
-                  type="button"
-                  disabled={!canEdit}
-                  onClick={() => onEdit(k)}
-                  className="flex w-full items-center justify-between rounded-2xl border border-line bg-deep/60 px-4 py-3 text-left transition enabled:hover:border-cyan/50"
-                >
-                  <span>
-                    <span className="block text-xs uppercase tracking-wider text-dim">{def.label}</span>
-                    <span className="font-display text-3xl font-bold" style={{ color: STATUS_COLOR[def.evaluate(values)] }}>
-                      {def.display(values)}
+                  title={def.label}
+                  description={<StatusText status={st} />}
+                  leading={<VIcon className="h-5 w-5" aria-hidden="true" />}
+                  trailing={
+                    <span className="text-right">
+                      <span className={st === 'warn' ? 'text-metric-md text-warn' : st === 'crit' ? 'text-metric-md text-crit' : 'text-metric-md text-ink'}>{def.display(values)}</span>
+                      <span className="ml-1.5 text-sm text-dim">{def.unit}</span>
                     </span>
-                    <span className="ml-2 text-sm text-dim">{def.unit}</span>
-                  </span>
-                  {canEdit && <span className="text-sm font-semibold text-cyan">Update ›</span>}
-                </button>
+                  }
+                  onClick={canEdit ? () => onEdit(k) : undefined}
+                />
               )
             })}
-          </div>
+          </List>
         )}
+        {vitals.length > 0 && canEdit && <p className="-mt-3 text-sm text-dim">Select a reading to log a new value.</p>}
         {extra}
 
-        <Section title="What it does">{system.fn}</Section>
-        {impact.heading !== 'What it does' && <Section title={impact.heading}>{impact.text}</Section>}
-        <Section title="What you can do">
+        <Block title="What it does">{system.fn}</Block>
+        {impact.heading !== 'What it does' && <Block title={impact.heading}>{impact.text}</Block>}
+        <Block title="What you can do">
           <ul className="list-disc space-y-1 pl-5">
-            {system.tips.slice(context === 'space' ? 0 : 0).map((t) => (
+            {system.tips.map((t) => (
               <li key={t}>{t}</li>
             ))}
           </ul>
-        </Section>
+        </Block>
 
         {vitals.length > 0 && (
-          <Section title="Why these limits?">
-            {vitals.map((k) => {
-              const d = vitalFor(k, context)
-              return (
-                <p key={k} className="mb-1">
-                  <span className="font-semibold">{d.label}: </span>
-                  {d.ranges} <span className="text-dim">({d.source})</span>
-                </p>
-              )
-            })}
-          </Section>
+          <Block title="Why these limits?">
+            <div className="space-y-2">
+              {vitals.map((k) => {
+                const d = vitalFor(k, context)
+                return (
+                  <p key={k}>
+                    <span className="font-medium text-ink">{d.label}: </span>
+                    {d.ranges} <span className="text-dim">({d.source})</span>
+                  </p>
+                )
+              })}
+            </div>
+          </Block>
         )}
 
         {research.length > 0 && (
-          <section className="mt-5">
-            <h3 className="label">NASA research on this system</h3>
-            <div className="mt-2 space-y-2">
+          <Block title="NASA research on this system">
+            <div className="space-y-2">
               {research.map((r) => (
                 <RecordCard key={r.id} r={r} compact />
               ))}
             </div>
-          </section>
+          </Block>
         )}
 
-        {impact.source && (
-          <a href={impact.source.url} target="_blank" rel="noreferrer" className="mt-4 block text-xs text-cyan underline">
-            Source: {impact.source.org} — {impact.source.title}
-          </a>
-        )}
-        <p className="mt-3 text-[11px] leading-snug text-dim">AURA supports self-assessment. It does not diagnose and does not replace your doctor or emergency services.</p>
-      </motion.aside>
-    </motion.div>
+        {impact.source && <SourceLink href={impact.source.url} org={impact.source.org} title={impact.source.title} />}
+        <p className="border-t border-line pt-4 text-sm text-dim">AURA supports self-assessment. It does not diagnose and does not replace your doctor or emergency services.</p>
+      </div>
+    </Sheet>
   )
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+function Block({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="mt-5">
-      <h3 className="label">{title}</h3>
+    <section>
+      <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
       <div className="mt-1.5 text-sm leading-relaxed text-soft">{children}</div>
     </section>
   )

@@ -2,6 +2,7 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { SYSTEM_BY_ID, type SystemId } from '../data/systems'
 import { STATUS_COLOR, STATUS_LABEL, type Status } from '../data/vitals'
+import { StatusText } from './ui'
 
 const VB_W = 300
 const VB_H = 580
@@ -295,19 +296,12 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
       </svg>
 
       {tip && (
-        <div
-          ref={tipRef}
-          data-viewer-tip={tip.id}
-          className="pointer-events-none absolute left-1/2 z-20 w-60 max-w-[92%] -translate-x-1/2 rounded-2xl border bg-space/95 p-3 text-left shadow-2xl backdrop-blur"
-          style={{ borderColor: STATUS_COLOR[statuses[tip.id]] }}
-        >
+        <div ref={tipRef} data-viewer-tip={tip.id} className="pointer-events-none absolute left-1/2 z-20 w-60 max-w-[92%] -translate-x-1/2 rounded-2xl border border-line bg-panel2 p-3 text-left shadow-overlay">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold text-ink">{tip.name}</span>
-            <span className="text-[10px] font-bold tracking-widest" style={{ color: STATUS_COLOR[statuses[tip.id]] }}>
-              {STATUS_LABEL[statuses[tip.id]]}
-            </span>
+            <StatusText status={statuses[tip.id]} className="text-xs" />
           </div>
-          <div className="mt-1 text-base font-bold tabular-nums" style={{ color: STATUS_COLOR[statuses[tip.id]] }}>
+          <div className="mt-1 text-base font-semibold" style={{ color: statuses[tip.id] === 'ok' ? undefined : STATUS_COLOR[statuses[tip.id]] }}>
             {summaries[tip.id]}
           </div>
           <p className="mt-1 text-xs leading-snug text-soft">{tip.hint}</p>

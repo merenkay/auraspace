@@ -27,6 +27,24 @@ function send_mail(string $to, string $subject, string $text, string $html): voi
     }
 }
 
+/**
+ * Sorts a send_mail() failure for the user message:
+ *   'not_configured' — mail_from missing in aura-config.php
+ *   'recipient'      — the address itself was refused (invalid, or the receiving side said "no such user" with a 5xx at RCPT TO)
+ *   'server'         — everything else: connection, TLS, login (wrong mailbox password), sender refused, PHP mail() failure
+ */
+function mail_error_kind(Throwable $e): string
+{
+    $m = $e->getMessage();
+    if ($m === 'mail_not_configured') {
+        return 'not_configured';
+    }
+    if ($m === 'bad_recipient' || (strpos($m, 'smtp_rcpt:') === 0 && $e->getCode() >= 500)) {
+        return 'recipient';
+    }
+    return 'server';
+}
+
 function encode_header(string $s): string
 {
     return '=?UTF-8?B?' . base64_encode($s) . '?=';
@@ -65,52 +83,66 @@ function smtp_send(array $c, string $from, string $to, string $message): void
     $host = (string) $c['smtp_host'];
     $port = (int) ($c['smtp_port'] ?? 465);
     $ctx = stream_context_create(['ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'peer_name' => $host]]);
+    $errno = 0;
+    $errstr = '';
     $fp = @stream_socket_client(($port === 465 ? 'ssl://' : 'tcp://') . "$host:$port", $errno, $errstr, 15, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
-        throw new RuntimeException("smtp_connect: $errstr");
+        throw new RuntimeException("smtp_connect: $host:$port $errno $errstr");
     }
     stream_set_timeout($fp, 20);
+    // One SMTP reply: "250-..." lines continue, "250 ..." (code + space) ends it.
     $read = function () use ($fp): string {
         $data = '';
-        while (($line = fgets($fp, 1024)) !== false) {
+        while (($line = fgets($fp, 2048)) !== false) {
             $data .= $line;
-            if (strlen($line) < 4 || $line[3] === ' ') {
+            if (strlen($line) < 4 || $line[3] === ' ' || $line[3] === "\r" || $line[3] === "\n") {
                 break;
             }
         }
         return $data;
     };
-    $cmd = function (?string $line, array $ok) use ($fp, $read): string {
-        if ($line !== null) {
-            fwrite($fp, $line . "\r\n");
+    // Sends one command (null = only read the greeting) and checks the reply code. $stage names the step in errors.
+    $cmd = function (string $stage, ?string $line, array $ok) use ($fp, $read): string {
+        if ($line !== null && @fwrite($fp, $line . "\r\n") === false) {
+            throw new RuntimeException("smtp_$stage: write failed");
         }
         $res = $read();
-        if (!in_array((int) substr($res, 0, 3), $ok, true)) {
-            throw new RuntimeException('smtp: ' . trim($res));
+        $code = (int) substr($res, 0, 3);
+        if (!in_array($code, $ok, true)) {
+            throw new RuntimeException("smtp_$stage: " . ($res === '' ? 'no reply (timeout)' : trim($res)), $code);
         }
         return $res;
     };
     try {
         $ehlo = 'EHLO ' . (preg_replace('/[^a-z0-9.\-]/i', '', (string) ($_SERVER['SERVER_NAME'] ?? '')) ?: 'localhost');
-        $cmd(null, [220]);
-        $cmd($ehlo, [250]);
+        $cmd('greeting', null, [220]);
+        $cmd('ehlo', $ehlo, [250]);
         if ($port !== 465) {
-            $cmd('STARTTLS', [220]);
-            if (!stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-                throw new RuntimeException('smtp_tls');
+            $cmd('starttls', 'STARTTLS', [220]);
+            $method = STREAM_CRYPTO_METHOD_TLS_CLIENT;
+            if (defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) {
+                $method |= STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
             }
-            $cmd($ehlo, [250]);
+            if (defined('STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT')) {
+                $method |= STREAM_CRYPTO_METHOD_TLSv1_3_CLIENT;
+            }
+            if (@stream_socket_enable_crypto($fp, true, $method) !== true) {
+                throw new RuntimeException('smtp_tls: could not start TLS');
+            }
+            $cmd('ehlo', $ehlo, [250]);
         }
-        $cmd('AUTH LOGIN', [334]);
-        $cmd(base64_encode((string) $c['smtp_user']), [334]);
-        $cmd(base64_encode((string) $c['smtp_pass']), [235]);
-        $cmd("MAIL FROM:<$from>", [250]);
-        $cmd("RCPT TO:<$to>", [250, 251]);
-        $cmd('DATA', [354]);
-        // Bodies are base64, so no line can start with "." — no dot-stuffing needed for them;
-        // headers never start with "." either.
-        $cmd($message . "\r\n.", [250]);
-        $cmd('QUIT', [221]);
+        $cmd('auth', 'AUTH LOGIN', [334]);
+        $cmd('auth', base64_encode((string) $c['smtp_user']), [334]);
+        $cmd('auth', base64_encode((string) $c['smtp_pass']), [235]);
+        $cmd('mail_from', "MAIL FROM:<$from>", [250]);
+        $cmd('rcpt', "RCPT TO:<$to>", [250, 251]);
+        $cmd('data', 'DATA', [354]);
+        // Dot-stuffing: every body line is base64 or a MIME boundary/header, none starts with "."; the stuffing below
+        // is a safety net in case that ever changes. Then "<CRLF>.<CRLF>" ends the message.
+        $cmd('data', preg_replace('/^\./m', '..', $message) . "\r\n.", [250]);
+        // The message is accepted at this point; a missing/odd QUIT reply must not turn it into a failure.
+        @fwrite($fp, "QUIT\r\n");
+        $read();
     } finally {
         fclose($fp);
     }

@@ -1,7 +1,7 @@
 import { ChartLine, FlaskConical, Upload, Watch } from 'lucide-react'
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
-import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Badge, Button, ChartTooltip, EmptyState, Notice, PageHeader, Reveal, Section, Spinner, StatusText, Tabs, chart, cx } from '../components/ui'
+import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { Badge, Button, ChartTooltip, EmptyState, Notice, PageHeader, Reveal, Section, Skeleton, StatusText, Tabs, chart } from '../components/ui'
 import { VITAL_BY_KEY, type FieldId, type VitalKey } from '../data/vitals'
 import { baselineOf } from '../lib/health'
 import { isImportedDevice, isSyntheticDevice } from '../lib/samsungHealth'
@@ -10,6 +10,15 @@ import type { Measurement } from '../lib/types'
 
 // The wizard (and its parser) loads only when someone opens it.
 const SamsungImportWizard = lazy(() => import('../components/import/SamsungImportWizard'))
+
+// Population reference ranges drawn as the green band (for blood pressure: the upper number only).
+const BANDS: Partial<Record<VitalKey, [number, number]>> = {
+  bp: [90, 130], hr: [50, 100], spo2: [95, 100], temp: [36.1, 37.5], glucose: [70, 99], sleep: [7, 9], mood: [4, 5], exercise: [90, 150], vision: [4, 5], water: [2.5, 4],
+}
+
+const AXIS_LABEL = { fill: 'var(--color-dim)', fontSize: 12, fontFamily: 'var(--font-mono)' }
+/** With this many points or fewer every reading gets its own dot (DESIGN.md §9). */
+const DOT_LIMIT = 31
 
 /** Calendar date of a tracking day: today minus the days in between (days can be <= 0 for imported history). */
 function dateOfDay(day: number, today: number) {
@@ -23,6 +32,22 @@ const fmtLong = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', d
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5)
 
 type Point = { day: number; value: number; value2?: number; imported: boolean }
+
+/** Round y-axis bounds and ticks (about five) so the scale reads 4, 5, 6 instead of 4.25, 5.1, 5.95. */
+function niceAxis(values: number[]): { domain: [number, number]; ticks: number[] } {
+  const lo = Math.min(...values)
+  const hi = Math.max(...values)
+  const span = hi - lo || Math.abs(hi) * 0.1 || 1
+  const raw = span / 4
+  const mag = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw
+  const min = Math.floor(lo / step) * step
+  const max = Math.ceil(hi / step) * step
+  const ticks: number[] = []
+  for (let v = min; v <= max + step / 2; v += step) ticks.push(+v.toFixed(6))
+  return { domain: [+min.toFixed(6), +max.toFixed(6)], ticks }
+}
+
 
 /** One point per tracking day (the newest reading of that day wins), every day including day <= 0. */
 function seriesFor(rows: Measurement[], primary: FieldId, second?: FieldId): Point[] {
@@ -47,12 +72,11 @@ function seriesFor(rows: Measurement[], primary: FieldId, second?: FieldId): Poi
 
 function SourceCell({ r }: { r: Measurement }) {
   if (isImportedDevice(r.device)) {
+    const synthetic = isSyntheticDevice(r.device)
     return (
-      <span className="flex flex-wrap items-center gap-1.5">
-        <Badge tone={isSyntheticDevice(r.device) ? 'warn' : 'accent'} icon={isSyntheticDevice(r.device) ? FlaskConical : Watch}>
-          {isSyntheticDevice(r.device) ? 'Imported · SYNTHETIC' : 'Imported · device'}
-        </Badge>
-        <span className="hidden text-dim sm:inline">{isSyntheticDevice(r.device) ? 'Samsung Health sample' : r.device}</span>
+      <span className="flex flex-wrap items-center gap-2">
+        <Badge icon={synthetic ? FlaskConical : Watch}>{synthetic ? 'Imported · synthetic sample' : 'Imported · device'}</Badge>
+        <span className="hidden text-dim md:inline">{synthetic ? 'Samsung Health sample' : r.device}</span>
       </span>
     )
   }
@@ -86,7 +110,7 @@ export default function History({ crewId }: { crewId: number }) {
       </Suspense>
     ) : null
 
-  const header = <PageHeader title="History" description="Every measurement in this record, with where it came from." actions={importButton} className="mb-6" />
+  const header = <PageHeader title="History" description="Every measurement in this record, with where it came from." actions={importButton} />
 
   // The wizard always sits in the same place in the tree, so reloading data behind it never resets it.
   const shell = (body: ReactNode) => (
@@ -105,7 +129,18 @@ export default function History({ crewId }: { crewId: number }) {
       </>,
     )
   }
-  if ((data.loading && !data.rows.length) || (data.rows.length && !ev)) return shell(<Spinner />)
+  if ((data.loading && !data.rows.length) || (data.rows.length && !ev)) {
+    return shell(
+      <>
+        {header}
+        <div className="space-y-6" aria-busy="true">
+          <Skeleton className="h-11 w-full max-w-xl" />
+          <Skeleton className="h-72 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      </>,
+    )
+  }
   if (!data.rows.length || !ev || !ev.vitals.length) {
     return shell(
       <>
@@ -114,7 +149,6 @@ export default function History({ crewId }: { crewId: number }) {
           icon={ChartLine}
           title="No measurements yet"
           description={canImport ? 'Log a reading on the Overview, or bring in your Galaxy Watch history from a Samsung Health export.' : 'Nothing has been recorded for this person yet.'}
-          action={importButton}
         />
       </>,
     )
@@ -129,119 +163,161 @@ export default function History({ crewId }: { crewId: number }) {
   const dateMode = mission?.context !== 'space' || minDay <= 0
   const dayLabel = (d: number) => (dateMode ? fmtShort(dateOfDay(d, today)) : `D${d}`)
   const base = baselineOf(data.rows, def.primary)
+  const band = BANDS[def.key]
+  const yAxis = niceAxis([...series.flatMap((p) => (p.value2 != null ? [p.value, p.value2] : [p.value])), ...(base != null ? [base] : [])])
   const recent = data.rows.filter((r) => r.metric === def.primary).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12)
   const pairOf = (r: Measurement) => (second ? data.rows.find((x) => x.metric === second && x.at === r.at && x.device === r.device) : undefined)
   const importedDays = series.filter((p) => p.imported).length
+  const importedByDay = new Map(series.map((p) => [p.day, p.imported]))
   const importedRange = imported.length ? [Math.min(...imported.map((r) => r.day)), Math.max(...imported.map((r) => r.day))] : null
   const syntheticImport = imported.some((r) => isSyntheticDevice(r.device))
+  const dotsEverywhere = series.length <= DOT_LIMIT
+  const firstName = def.fields[0].label
+  const secondName = def.fields[1]?.label
+  const spanLabel = mission?.context === 'space' && !dateMode ? 'Whole mission' : 'Since your first reading'
 
   return shell(
-    <div className="space-y-8">
+    <>
       {header}
+      <div className="space-y-10">
+        {importedRange && (
+          <Notice
+            tone="info"
+            title={syntheticImport ? 'Includes a synthetic Samsung Health sample' : 'Includes data imported from Samsung Health'}
+            action={
+              canImport ? (
+                <Button size="sm" variant="quiet" onClick={openImport}>
+                  Import again
+                </Button>
+              ) : undefined
+            }
+          >
+            {imported.length} daily device value{imported.length === 1 ? '' : 's'} from {fmtShort(dateOfDay(importedRange[0], today))} to {fmtShort(dateOfDay(importedRange[1], today))}, tagged “Imported” below.
+            {syntheticImport && ' The sample values are invented and are labelled as a synthetic sample.'}
+          </Notice>
+        )}
 
-      {importedRange && (
-        <Notice
-          tone="info"
-          title={syntheticImport ? 'Includes a SYNTHETIC Samsung Health sample' : 'Includes data imported from Samsung Health'}
-          action={
-            canImport ? (
-              <Button size="sm" variant="quiet" onClick={openImport}>
-                Import again
-              </Button>
-            ) : undefined
-          }
-        >
-          {imported.length} daily device value{imported.length === 1 ? '' : 's'} from {fmtShort(dateOfDay(importedRange[0], today))} to {fmtShort(dateOfDay(importedRange[1], today))}, tagged “Imported” below.
-          {syntheticImport && ' The sample values are invented and are labelled SYNTHETIC.'}
-        </Notice>
-      )}
+        <Tabs<VitalKey> label="Measurement" value={def.key} onChange={setKey} options={available.map((d) => ({ value: d.key, label: d.label, status: ev.vitalStatus[d.key] }))} />
 
-      <Tabs<VitalKey> label="Measurement" value={def.key} onChange={setKey} options={available.map((d) => ({ value: d.key, label: d.label, status: ev.vitalStatus[d.key] }))} />
+        <Reveal>
+          <Section title={def.label} description={`${spanLabel} · ${def.unit}${importedDays ? ` · ${importedDays} imported day${importedDays === 1 ? '' : 's'}` : ''}`}>
+            {series.length > 1 ? (
+              <>
+                <div className="h-72 rounded-xl border border-line bg-deep p-3">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart key={def.key} data={series} margin={{ ...chart.margin, bottom: 18, left: 4 }}>
+                      <CartesianGrid {...chart.grid} />
+                      <XAxis
+                        dataKey="day"
+                        type="number"
+                        domain={['dataMin', 'dataMax']}
+                        allowDecimals={false}
+                        {...chart.xAxis}
+                        tickFormatter={dayLabel}
+                        label={{ value: dateMode ? 'Date' : 'Mission day', position: 'insideBottom', offset: -12, style: AXIS_LABEL }}
+                      />
+                      <YAxis
+                        domain={yAxis.domain}
+                        ticks={yAxis.ticks}
+                        {...chart.yAxis}
+                        width={52}
+                        label={{ value: def.unit, angle: -90, position: 'insideLeft', offset: 4, style: { ...AXIS_LABEL, textAnchor: 'middle' } }}
+                      />
+                      {band && <ReferenceArea y1={band[0]} y2={band[1]} {...chart.band('ok')} />}
+                      {base != null && <ReferenceLine y={base} {...chart.refLine()} />}
+                      <Tooltip
+                        {...chart.tooltip}
+                        content={
+                          <ChartTooltip
+                            unit={def.unit}
+                            formatLabel={(d) => (
+                              <>
+                                {dateMode ? fmtLong(dateOfDay(Number(d), today)) : `Mission day ${d} · ${fmtShort(dateOfDay(Number(d), today))}`}
+                                {importedByDay.get(Number(d)) ? ' · Imported from device' : ''}
+                              </>
+                            )}
+                          />
+                        }
+                      />
+                      <Line
+                        dataKey="value"
+                        name={firstName}
+                        {...chart.line}
+                        dot={(p: { cx?: number; cy?: number; index?: number; payload?: Point }) => {
+                          if (p.cx == null || p.cy == null || !p.payload) return <g key={`d${p.index}`} />
+                          // hollow ring = imported from a device; filled dot = entered or simulated (shown when there are few points)
+                          if (p.payload.imported) return <circle key={`d${p.index}`} cx={p.cx} cy={p.cy} r={3.5} fill="var(--color-deep)" stroke="var(--color-ink)" strokeWidth={1.75} />
+                          return dotsEverywhere ? <circle key={`d${p.index}`} cx={p.cx} cy={p.cy} r={2.5} fill="var(--color-ink)" /> : <g key={`d${p.index}`} />
+                        }}
+                      />
+                      {second && <Line dataKey="value2" name={secondName} {...chart.line} stroke={chart.series[1]} dot={dotsEverywhere ? { r: 2.5, fill: chart.series[1], stroke: 'none' } : false} activeDot={{ ...chart.line.activeDot, fill: chart.series[1] }} />}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <p className="mt-2 text-sm text-dim">
+                  {second ? `Ink line: ${firstName.toLowerCase()}. Grey line: ${secondName?.toLowerCase()}. ` : ''}
+                  {band && `Green band: usual reference range${second ? ' for the upper number' : ''}, ${band[0]}–${band[1]} ${def.unit}. `}
+                  {base != null && 'Dashed grey line: your baseline, the average of your first 14 days with this measurement. '}
+                  {importedDays > 0 && 'Hollow rings: days imported from a device. '}
+                  {dateMode ? 'The horizontal axis shows calendar dates.' : 'D is the mission day.'}
+                </p>
+              </>
+            ) : (
+              <EmptyState title={series.length ? 'Only one day of readings' : 'No readings for this measurement yet'} description="A line needs at least two different days. Log another reading, or import your device history." />
+            )}
+          </Section>
+        </Reveal>
 
-      <Reveal>
-        <Section
-          title={`${def.label}${second ? ' (upper / lower)' : ''}`}
-          description={`${mission?.context === 'space' && !dateMode ? 'Whole mission' : 'Since your first reading'} · ${def.unit}${importedDays ? ` · ${importedDays} imported day${importedDays === 1 ? '' : 's'} marked with a ring` : ''}`}
-        >
-          <div className="h-72">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart key={def.key} data={series} margin={chart.margin}>
-                <CartesianGrid {...chart.grid} />
-                <XAxis dataKey="day" type="number" domain={['dataMin', 'dataMax']} {...chart.xAxis} tickFormatter={dayLabel} />
-                <YAxis {...chart.yAxis} domain={['auto', 'auto']} />
-                {base != null && <ReferenceLine y={base} {...chart.refLine()} label={{ value: 'baseline', fill: 'var(--color-dim)', fontSize: 11, position: 'insideTopLeft' }} />}
-                <Tooltip
-                  {...chart.tooltip}
-                  content={
-                    <ChartTooltip
-                      unit={def.unit}
-                      formatLabel={(d) => (dateMode ? fmtLong(dateOfDay(Number(d), today)) : `Mission day ${d} · ${fmtShort(dateOfDay(Number(d), today))}`)}
-                    />
-                  }
-                />
-                <Line
-                  dataKey="value"
-                  name={second ? 'Upper' : def.label}
-                  {...chart.line}
-                  dot={(p: { cx?: number; cy?: number; index?: number; payload?: Point }) =>
-                    p.payload?.imported && p.cx != null && p.cy != null ? (
-                      <circle key={`d${p.index}`} cx={p.cx} cy={p.cy} r={3} fill="var(--color-space)" stroke="var(--color-accent)" strokeWidth={1.5} />
-                    ) : (
-                      <g key={`d${p.index}`} />
+        <Reveal delay={0.05}>
+          <Section title="Records" description="Newest first, up to 12 entries">
+            <div className="overflow-x-auto rounded-xl border border-line">
+              <table className="w-full min-w-[540px] text-sm">
+                <caption className="sr-only">Recent {def.label} records, newest first</caption>
+                <thead>
+                  <tr className="border-b border-line text-left">
+                    <th scope="col" className="label px-3 py-2.5 font-medium">
+                      When
+                    </th>
+                    <th scope="col" className="label px-3 py-2.5 font-medium">
+                      Value
+                    </th>
+                    <th scope="col" className="label px-3 py-2.5 font-medium">
+                      Source
+                    </th>
+                    <th scope="col" className="label px-3 py-2.5 font-medium">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {recent.map((r) => {
+                    const pair = pairOf(r)
+                    const st = def.fields.length === 1 ? def.evaluate({ ...ev.values, [def.primary]: r.value }) : pair ? def.evaluate({ ...ev.values, [def.primary]: r.value, [second!]: pair.value }) : null
+                    return (
+                      <tr key={r.id}>
+                        <td className="whitespace-nowrap px-3 py-3 text-soft">
+                          {dateMode ? fmtShort(dateOfDay(r.day, today)) : `Day ${r.day}`} · <span className="font-mono text-xs">{hhmm(r.at)}</span>
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 font-medium text-ink">
+                          {pair ? `${Math.round(r.value)}/${Math.round(pair.value)}` : r.value} <span className="font-normal text-dim">{def.unit}</span>
+                        </td>
+                        <td className="px-3 py-3">
+                          <SourceCell r={r} />
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3">{st ? <StatusText status={st} /> : <span className="text-dim">No data</span>}</td>
+                      </tr>
                     )
-                  }
-                />
-                {second && <Line dataKey="value2" name="Lower" {...chart.line} stroke={chart.series[1]} />}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="mt-3 text-xs text-dim">
-            {base != null && 'Dashed line: your baseline, the average of your first 14 days with this measurement. '}
-            {dateMode ? 'Dates are calendar days.' : 'D = mission day.'}
-          </p>
-        </Section>
-      </Reveal>
-
-      <Reveal delay={0.05}>
-        <Section title="Records" description="Newest first">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[540px] text-sm">
-              <thead>
-                <tr className="text-left">
-                  <th className="label px-2 py-2 font-medium">When</th>
-                  <th className="label px-2 py-2 font-medium">Value</th>
-                  <th className="label px-2 py-2 font-medium">Source</th>
-                  <th className="label px-2 py-2 font-medium">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recent.map((r) => {
-                  const pair = pairOf(r)
-                  const st = def.fields.length === 1 ? def.evaluate({ ...ev.values, [def.primary]: r.value }) : pair ? def.evaluate({ ...ev.values, [def.primary]: r.value, [second!]: pair.value }) : null
-                  return (
-                    <tr key={r.id} className={cx('border-t border-line', isImportedDevice(r.device) && 'bg-panel/40')}>
-                      <td className="whitespace-nowrap px-2 py-2.5 text-soft">
-                        {dateMode ? fmtShort(dateOfDay(r.day, today)) : `Day ${r.day}`} · {hhmm(r.at)}
-                      </td>
-                      <td className="whitespace-nowrap px-2 py-2.5 font-medium text-ink">
-                        {pair ? `${Math.round(r.value)}/${Math.round(pair.value)}` : r.value} <span className="font-normal text-dim">{def.unit}</span>
-                      </td>
-                      <td className="px-2 py-2.5">
-                        <SourceCell r={r} />
-                      </td>
-                      <td className="px-2 py-2.5">{st ? <StatusText status={st} /> : <span className="text-dim">—</span>}</td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-3 text-xs text-dim">
-            Records are append-only: a correction adds a new entry and never erases the original measurement. Rows tagged “Imported” are daily values from a Samsung Health export (device data; one value per day, see
-            the import for how each is derived). For the simulated demo crew, all other values are simulated demo data unless you entered them.
-          </p>
-        </Section>
-      </Reveal>
-    </div>,
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-2 max-w-3xl text-sm text-dim">
+              Records are append-only: a correction adds a new entry and never erases the original measurement. Rows tagged “Imported” are daily values from a Samsung Health export (device data; one value per day, see
+              the import for how each is derived). For the simulated demo crew, all other values are simulated demo data unless you entered them.
+            </p>
+          </Section>
+        </Reveal>
+      </div>
+    </>,
   )
 }

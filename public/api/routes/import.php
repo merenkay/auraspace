@@ -61,7 +61,8 @@ return (function (): array {
             $findKey = $pdo->prepare('SELECT measurement_id FROM import_keys WHERE crew_id = ? AND metric = ? AND local_date = ? AND device = ? FOR UPDATE');
             $findRow = $pdo->prepare('SELECT value FROM measurements WHERE id = ? AND crew_id = ?');
             $insRow = $pdo->prepare("INSERT INTO measurements (crew_id, metric, value, day, measured_at, source, device, entered_by) VALUES (?, ?, ?, ?, ?, 'device', ?, ?)");
-            $insKey = $pdo->prepare('INSERT INTO import_keys (crew_id, metric, local_date, device, measurement_id, imported_at) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE measurement_id = VALUES(measurement_id), imported_at = VALUES(imported_at)');
+            // (no VALUES() in the update part: it is deprecated in MySQL 8.0.20+)
+            $insKey = $pdo->prepare('INSERT INTO import_keys (crew_id, metric, local_date, device, measurement_id, imported_at) VALUES (?, ?, ?, ?, ?, UTC_TIMESTAMP()) ON DUPLICATE KEY UPDATE measurement_id = ?, imported_at = UTC_TIMESTAMP()');
 
             $pdo->beginTransaction();
             try {
@@ -132,7 +133,7 @@ return (function (): array {
 
                     $insRow->execute([$crewId, $metric, $v, $curDay - $ago, $at->format('Y-m-d H:i:s'), $device, $u['id']]);
                     $newId = (int) $pdo->lastInsertId();
-                    $insKey->execute([$crewId, $metric, $ld, $device, $newId]);
+                    $insKey->execute([$crewId, $metric, $ld, $device, $newId, $newId]);
                     $ids[] = $newId;
                     $result['added']++;
                 }

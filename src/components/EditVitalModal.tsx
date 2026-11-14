@@ -1,5 +1,7 @@
-import { useState } from 'react'
-import { STATUS_COLOR, STATUS_LABEL, type Values, type VitalDef } from '../data/vitals'
+import { Angry, Frown, Laugh, Meh, Smile, type LucideIcon } from 'lucide-react'
+import { useId, useState } from 'react'
+import { type Values, type VitalDef } from '../data/vitals'
+import { Button, Dialog, Field, Input, Notice, StatusText, cx } from './ui'
 
 type Props = {
   def: VitalDef
@@ -8,7 +10,11 @@ type Props = {
   onClose: () => void
 }
 
+// The data layer carries emoji for the 1-5 mood scale; the UI draws these faces instead (same order).
+const MOOD_FACES: LucideIcon[] = [Angry, Frown, Meh, Smile, Laugh]
+
 export default function EditVitalModal({ def, values, onSave, onClose }: Props) {
+  const formId = useId()
   const [draft, setDraft] = useState<Record<string, string>>(
     Object.fromEntries(def.fields.map((f) => [f.id, String(values[f.id])])),
   )
@@ -21,83 +27,95 @@ export default function EditVitalModal({ def, values, onSave, onClose }: Props) 
     else parsed[f.id] = n
   }
   const preview = valid ? def.evaluate({ ...values, ...parsed }) : null
+  const firstTyped = def.fields.findIndex((f) => !f.scale)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 backdrop-blur-sm sm:items-center sm:p-4" onClick={onClose}>
+    <Dialog
+      open
+      onClose={onClose}
+      title={def.label}
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button type="submit" form={formId} variant="primary" disabled={!valid}>
+            Save reading
+          </Button>
+        </>
+      }
+    >
       <form
-        className="w-full max-w-md rounded-t-3xl border border-white/10 bg-slate-900 p-5 shadow-2xl sm:rounded-3xl"
-        onClick={(e) => e.stopPropagation()}
+        id={formId}
+        className="space-y-5"
         onSubmit={(e) => {
           e.preventDefault()
           if (valid) onSave(parsed)
         }}
       >
-        <div className="flex items-start justify-between">
-          <h2 className="text-xl font-bold text-white">{def.label}</h2>
-          <button type="button" onClick={onClose} className="rounded-lg px-2 text-2xl leading-none text-slate-400 hover:text-white" aria-label="Close">
-            ×
-          </button>
-        </div>
-        <p className="mt-2 rounded-xl bg-sky-400/10 p-3 text-sm leading-snug text-sky-100">
-          <span className="font-semibold">How to measure: </span>
-          {def.howTo}
-        </p>
+        <Notice title="How to measure">{def.howTo}</Notice>
 
-        <div className="mt-4 space-y-4">
-          {def.fields.map((f, i) => (
-            <label key={f.id} className="block">
-              <span className="text-sm text-slate-300">{f.label}</span>
-              {f.scale ? (
-                <div className="mt-2 flex gap-2">
-                  {f.scale.map((s, idx) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => setDraft((d) => ({ ...d, [f.id]: String(idx + 1) }))}
-                      className={`h-14 flex-1 rounded-xl border text-2xl transition ${
-                        draft[f.id] === String(idx + 1) ? 'border-sky-400 bg-sky-400/20' : 'border-white/10 bg-white/5 hover:bg-white/10'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
+        {def.fields.map((f, i) => {
+          const raw = draft[f.id]
+          const n = Number(raw)
+          const bad = raw.trim() !== '' && (!Number.isFinite(n) || n < f.min || n > f.max)
+          if (f.scale) {
+            const labelId = `${formId}-${f.id}`
+            return (
+              <div key={f.id}>
+                <p id={labelId} className="mb-1.5 text-sm font-medium text-soft">
+                  {f.label}
+                </p>
+                <div role="radiogroup" aria-labelledby={labelId} className="flex gap-2">
+                  {f.scale.map((s, idx) => {
+                    const on = raw === String(idx + 1)
+                    const Face = f.id === 'mood' ? MOOD_FACES[idx] : undefined
+                    return (
+                      <button
+                        key={idx}
+                        type="button"
+                        role="radio"
+                        aria-checked={on}
+                        aria-label={`${idx + 1} of ${f.scale!.length}`}
+                        onClick={() => setDraft((d) => ({ ...d, [f.id]: String(idx + 1) }))}
+                        className={cx('flex h-14 flex-1 items-center justify-center rounded-lg border text-xl font-medium transition-colors', on ? 'border-ink bg-panel text-ink' : 'border-edge text-soft hover:border-soft hover:bg-panel')}
+                      >
+                        {Face ? <Face className="h-6 w-6" aria-hidden="true" /> : <span aria-hidden="true">{Number.isNaN(Number(s)) ? idx + 1 : s}</span>}
+                      </button>
+                    )
+                  })}
                 </div>
-              ) : (
-                <input
-                  autoFocus={i === 0}
-                  type="number"
-                  inputMode="decimal"
-                  min={f.min}
-                  max={f.max}
-                  step={f.step}
-                  value={draft[f.id]}
-                  onChange={(e) => setDraft((d) => ({ ...d, [f.id]: e.target.value }))}
-                  className="mt-1 w-full rounded-xl border border-white/15 bg-black/40 px-4 py-3 text-3xl font-bold tabular-nums text-white outline-none focus:border-sky-400"
-                />
-              )}
-            </label>
-          ))}
+                <p className="mt-1.5 flex justify-between text-sm text-dim" aria-hidden="true">
+                  <span>1</span>
+                  <span>{f.scale.length}</span>
+                </p>
+              </div>
+            )
+          }
+          return (
+            <Field key={f.id} label={f.label} hint={`${f.min}–${f.max}${def.unit ? ` ${def.unit}` : ''}`} error={bad ? `Enter a value between ${f.min} and ${f.max}.` : undefined}>
+              <Input
+                data-autofocus={i === firstTyped ? true : undefined}
+                type="number"
+                inputMode="decimal"
+                min={f.min}
+                max={f.max}
+                step={f.step}
+                value={raw}
+                onChange={(e) => setDraft((d) => ({ ...d, [f.id]: e.target.value }))}
+                className="h-14 text-metric-md"
+              />
+            </Field>
+          )
+        })}
+
+        <div className="min-h-6" aria-live="polite">
+          {preview ? <StatusText status={preview}>this reading</StatusText> : <p className="text-sm text-dim">Enter a value in range to see how it is rated.</p>}
         </div>
 
-        <p className="mt-4 text-xs leading-snug text-slate-400">
-          {def.ranges}
-          <br />
-          <span className="text-slate-500">Source: {def.source}</span>
-        </p>
-
-        <div className="mt-4 flex items-center justify-between gap-3">
-          <span className="text-sm font-bold tracking-widest" style={{ color: preview ? STATUS_COLOR[preview] : '#94a3b8' }}>
-            {preview ? `● ${STATUS_LABEL[preview]}` : 'Enter a value in range'}
-          </span>
-          <button
-            type="submit"
-            disabled={!valid}
-            className="rounded-xl bg-sky-500 px-6 py-3 font-semibold text-slate-950 transition hover:bg-sky-400 disabled:opacity-40"
-          >
-            Save reading
-          </button>
+        <div className="border-t border-line pt-4 text-sm text-dim">
+          <p>{def.ranges}</p>
+          <p className="mt-1">Source: {def.source}</p>
         </div>
       </form>
-    </div>
+    </Dialog>
   )
 }

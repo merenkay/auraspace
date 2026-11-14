@@ -12,6 +12,10 @@ export type SignupInput = { name: string; email: string; password: string; conte
 export interface Backend {
   mode: Mode
   mailReady: boolean
+  /** Whether e-mail sign-up is open (server: `signup` from the health route). Absent means unknown, treat as open. */
+  signupOpen?: boolean
+  /** Whether demo logins are allowed (server: false when the health route says `demo: false`). */
+  demoOpen?: boolean
   me(): Promise<User | null>
   login(username: string, password: string): Promise<User>
   demoLogin(role: Role, crewId?: number): Promise<User>
@@ -104,11 +108,13 @@ export const apiCall = call
 
 const normUser = (u: User): User => ({ ...u, context: contextOf(u.context) })
 
-function makeServer(mailReady: boolean): Backend {
+function makeServer(mailReady: boolean, signupOpen?: boolean, demoOpen = true): Backend {
   const post = <T,>(route: string, body: unknown) => call<T>(route, { method: 'POST', body })
   return {
     mode: 'server',
     mailReady,
+    signupOpen,
+    demoOpen,
     me: () => call<{ user: User | null }>('auth/me').then((d) => (d.user ? normUser(d.user) : null)),
     login: (username, password) => post<{ user: User }>('auth/login', { username, password }).then((d) => normUser(d.user)),
     demoLogin: (role, crewId) => post<{ user: User }>('auth/demo', { role, crewId }).then((d) => normUser(d.user)),
@@ -244,6 +250,20 @@ function ctxFor(st: Store, crewId: number): Context {
   return st.members.find((x) => x.crewId === crewId)?.context ?? 'space'
 }
 
+/** Same rules as can_view_crew() on the server: self users see only their own record, staff only the simulated demo crew. */
+function guardView(st: Store, crewId: number) {
+  const u = st.user
+  if (!u) throw new ApiError('Please sign in.', 401)
+  const ok = u.role === 'astronaut' || u.role === 'member' ? u.crewId === crewId : CREW.some((c) => c.id === crewId)
+  if (!ok) throw new ApiError('Not allowed', 403)
+}
+/** Writes: only a self user, only their own record. */
+function guardOwn(st: Store, crewId: number) {
+  const u = st.user
+  if (!u) throw new ApiError('Please sign in.', 401)
+  if ((u.role !== 'astronaut' && u.role !== 'member') || u.crewId !== crewId) throw new ApiError('Not allowed', 403)
+}
+
 const delay = <T,>(v: T) => new Promise<T>((r) => setTimeout(() => r(v), 150))
 
 function tasksFor(st: Store, crewId: number) {
@@ -285,6 +305,8 @@ const cleanEmail = (e: string) => {
 const demo: Backend = {
   mode: 'demo',
   mailReady: false,
+  signupOpen: true,
+  demoOpen: true,
   me: () => delay(readStore().user),
   async login(username, password) {
     const u = username.trim().toLowerCase()
@@ -325,7 +347,8 @@ const demo: Backend = {
     const st = readStore()
     const p = takeCode(st, e, 'register', code)
     if (!p.payload) throw new ApiError('Registration expired. Please sign up again.', 410)
-    const id = 1000 + st.members.length
+    // Never reuse an id: after an account is deleted, members.length would hand out a live member's id again.
+    const id = Math.max(1000, ...st.members.map((x) => x.id + 1))
     const colors = ['#53D7FF', '#B49CFF', '#35D399', '#F6BD60', '#FF8FA3']
     const m: DemoMember = { id, crewId: id, email: e, name: p.payload.name, pass: p.payload.pass, context: p.payload.context, createdAt: new Date().toISOString(), color: colors[id % colors.length] }
     const user = memberUser(m)
@@ -385,15 +408,17 @@ const demo: Backend = {
   },
   measurements: async (crewId, sinceDay = EARLIEST_DAY) => {
     const st = readStore()
+    guardView(st, crewId)
     const rows = [...base(), ...st.extra].filter((m) => m.crewId === crewId && m.day >= sinceDay)
     const visible = st.user?.role === 'ground' ? rows.filter((m) => m.metric !== 'mood') : rows
     return delay(visible.sort((a, b) => a.at.localeCompare(b.at)))
   },
   addMeasurements: async (crewId, values, source, device) => {
     const st = readStore()
+    guardOwn(st, crewId)
     const now = new Date().toISOString()
     const day = dayFor(st, crewId)
-    let id = 1_000_000 + st.extra.length
+    let id = Math.max(1_000_000, ...st.extra.map((m) => m.id + 1))
     const rows: Measurement[] = Object.entries(values).map(([metric, value]) => ({ id: id++, crewId, metric: metric as FieldId, value: value as number, day, at: now, source, device }))
     writeStore({ ...st, extra: [...st.extra, ...rows] })
     return delay(rows)
@@ -435,9 +460,14 @@ const demo: Backend = {
     onProgress?.(rows.length, rows.length)
     return delay(result)
   },
-  tasks: async (crewId) => delay(tasksFor(readStore(), crewId)),
+  tasks: async (crewId) => {
+    const st = readStore()
+    guardView(st, crewId)
+    return delay(tasksFor(st, crewId))
+  },
   toggleTask: async (crewId, taskId) => {
     const st = readStore()
+    guardOwn(st, crewId)
     const key = `${crewId}:${dayFor(st, crewId)}`
     const cur = st.done[key] ?? []
     const next = cur.includes(taskId) ? cur.filter((t) => t !== taskId) : [...cur, taskId]
@@ -447,11 +477,17 @@ const demo: Backend = {
   },
   reports: async (crewId) => {
     const st = readStore()
-    const all = st.user?.role === 'surgeon' ? st.reports.filter((r) => CREW.some((c) => c.id === r.crewId)) : st.reports
+    const u = st.user
+    // Mirrors GET reports: self users read their own, the surgeon reads the demo crew's, ground has no access to reports.
+    const all =
+      u?.role === 'surgeon' ? st.reports.filter((r) => CREW.some((c) => c.id === r.crewId))
+      : u?.role === 'astronaut' || u?.role === 'member' ? st.reports.filter((r) => r.crewId === u.crewId)
+      : []
     return delay(crewId ? all.filter((r) => r.crewId === crewId) : all)
   },
   sendReport: async (crewId, summary) => {
     const st = readStore()
+    guardOwn(st, crewId)
     const name = CREW.find((x) => x.id === crewId)?.name ?? st.members.find((m) => m.crewId === crewId)?.name ?? 'Member'
     const report: Report = { id: Date.now(), crewId, crewName: name, day: dayFor(st, crewId), createdAt: new Date().toISOString(), status: 'queued', summary, reviewNote: null, reviewedBy: null }
     writeStore({ ...st, reports: [report, ...st.reports] })
@@ -459,6 +495,7 @@ const demo: Backend = {
   },
   reviewReport: async (id, note) => {
     const st = readStore()
+    if (st.user?.role !== 'surgeon') throw new ApiError('Not allowed', 403)
     const reports = st.reports.map((r) => (r.id === id ? { ...r, status: 'reviewed' as const, reviewNote: note, reviewedBy: st.user?.name ?? 'Flight Surgeon' } : r))
     writeStore({ ...st, reports })
     return delay(reports.find((r) => r.id === id)!)
@@ -478,7 +515,7 @@ export function getBackend(): Promise<Backend> {
         const res = await fetch('/api/index.php?r=health', { signal: ctrl.signal, credentials: 'same-origin' })
         clearTimeout(t)
         const data = await res.json()
-        if (res.ok && data?.ok && data?.db) return makeServer(!!data.mail)
+        if (res.ok && data?.ok && data?.db) return makeServer(!!data.mail, typeof data.signup === 'boolean' ? data.signup : undefined, data.demo !== false)
       } catch {
         /* no API reachable */
       }

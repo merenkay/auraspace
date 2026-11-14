@@ -7,7 +7,9 @@ $route = (string) ($_GET['r'] ?? '');
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 // Writes must be JSON (blocks simple cross-site form posts; cookies are SameSite=Lax as well).
-if ($method === 'POST' && stripos($_SERVER['CONTENT_TYPE'] ?? '', 'application/json') !== 0) {
+// No CORS headers are ever sent: the API is same-origin only.
+$contentType = ltrim((string) ($_SERVER['CONTENT_TYPE'] ?? $_SERVER['HTTP_CONTENT_TYPE'] ?? ''));
+if ($method === 'POST' && stripos($contentType, 'application/json') !== 0) {
     fail('Expected application/json', 415);
 }
 
@@ -15,13 +17,30 @@ const REPORT_SELECT = 'SELECT r.*, c.name AS crew_name, ru.name AS reviewer_name
 
 try {
     if ($route === 'health') {
-        try {
-            $n = (int) db()->query('SELECT COUNT(*) FROM users')->fetchColumn();
-            $c = config();
-            json_out(['ok' => true, 'db' => $n > 0, 'signup' => !empty($c['allow_signup']), 'mail' => filter_var($c['mail_from'] ?? '', FILTER_VALIDATE_EMAIL) !== false]);
-        } catch (Throwable $e) {
-            json_out(['ok' => true, 'db' => false]);
+        // db=false comes with a non-secret 'reason' for the setup guide:
+        //   config_missing | config_invalid | config_incomplete | connect_failed | not_installed | db_error
+        $c = config();
+        $out = ['ok' => true, 'db' => false, 'signup' => !empty($c['allow_signup']), 'demo' => !empty($c['allow_demo']), 'mail' => filter_var($c['mail_from'] ?? '', FILTER_VALIDATE_EMAIL) !== false];
+        $problem = config_problem();
+        if ($problem !== '') {
+            json_out($out + ['reason' => $problem]);
         }
+        try {
+            $pdo = db();
+        } catch (Throwable $e) {
+            json_out($out + ['reason' => $e->getMessage() === 'not_configured' ? 'config_incomplete' : 'connect_failed']);
+        }
+        try {
+            $n = (int) $pdo->query('SELECT COUNT(*) FROM users')->fetchColumn();
+        } catch (Throwable $e) {
+            error_log('AURA health: ' . $e->getMessage());
+            json_out($out + ['reason' => sqlstate($e) === '42S02' ? 'not_installed' : 'db_error']);
+        }
+        if ($n === 0) {
+            json_out($out + ['reason' => 'not_installed']);
+        }
+        $out['db'] = true;
+        json_out($out);
     }
 
     switch ("$method $route") {
@@ -41,8 +60,11 @@ try {
             $st = db()->prepare('SELECT * FROM users WHERE username = ? OR email = ? LIMIT 1');
             $st->execute([$id, $id]);
             $u = $st->fetch();
-            if (!$u || !password_verify((string) ($b['password'] ?? ''), $u['password_hash'])) {
+            if (!$u || !password_verify((string) ($b['password'] ?? ''), (string) $u['password_hash'])) {
                 db()->prepare('INSERT INTO login_attempts (ip, attempted_at) VALUES (?, UTC_TIMESTAMP())')->execute([$ip]);
+                if (random_int(1, 20) === 1) {
+                    db()->exec('DELETE FROM login_attempts WHERE attempted_at < (UTC_TIMESTAMP() - INTERVAL 1 DAY)');
+                }
                 fail('Unknown user or wrong password.', 401);
             }
             sign_in((int) $u['id']);
@@ -86,7 +108,8 @@ try {
             }
             $b = body();
             $email = valid_email((string) ($b['email'] ?? ''));
-            $name = trim(preg_replace('/\s+/', ' ', (string) ($b['name'] ?? '')) ?? '');
+            // collapse whitespace and control characters; invalid UTF-8 makes preg_replace return null -> rejected below
+            $name = trim(preg_replace('/[\s\p{Cc}]+/u', ' ', (string) ($b['name'] ?? '')) ?? '');
             if (mb_strlen($name) < 2 || mb_strlen($name) > 80) {
                 fail('Please enter your name (2–80 characters).');
             }
@@ -143,7 +166,13 @@ try {
             $st->execute([$email]);
             $u = $st->fetch();
             if ($u) {
-                issue_code($email, 'reset', null, (string) $u['name']);
+                // A repeat within the 60-second cooldown answers like an unknown address would (no 429),
+                // so this route cannot be used to find out which addresses have accounts.
+                $recent = db()->prepare("SELECT 1 FROM email_codes WHERE email = ? AND purpose = 'reset' AND created_at > (UTC_TIMESTAMP() - INTERVAL 60 SECOND)");
+                $recent->execute([$email]);
+                if (!$recent->fetch()) {
+                    issue_code($email, 'reset', null, (string) $u['name']);
+                }
             }
             json_out(['ok' => true, 'expiresIn' => 900]);
         }
@@ -182,6 +211,9 @@ try {
             purge_modules($pdo, (int) $u['crewId'], (int) $u['id']);
             $pdo->prepare('DELETE FROM crew WHERE id = ?')->execute([$u['crewId']]);
             $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$u['id']]);
+            if (!empty($u['email'])) {
+                $pdo->prepare('DELETE FROM email_codes WHERE email = ?')->execute([$u['email']]);
+            }
             $pdo->commit();
             audit(null, 'account_deleted', 'user ' . $u['id']);
             start_session();
@@ -236,21 +268,30 @@ try {
             }
             $source = in_array($b['source'] ?? '', ['manual', 'device', 'live', 'sim'], true) ? $b['source'] : 'manual';
             $device = mb_substr(trim((string) ($b['device'] ?? 'Manual entry')), 0, 60) ?: 'Manual entry';
-            $day = mission_for($u)['day'];
-            $ins = db()->prepare('INSERT INTO measurements (crew_id, metric, value, day, measured_at, source, device, entered_by) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?, ?)');
-            $ids = [];
+            // validate everything first, so a bad value never leaves half of the entry saved
+            $clean = [];
             foreach ($values as $metric => $value) {
-                if (!isset(METRICS[$metric]) || !is_numeric($value)) {
-                    fail("Invalid metric: $metric");
+                $metric = (string) $metric;
+                if (!isset(METRICS[$metric]) || !(is_int($value) || is_float($value) || (is_string($value) && is_numeric($value)))) {
+                    fail('Invalid metric: ' . mb_substr($metric, 0, 20));
                 }
                 [$lo, $hi] = METRICS[$metric];
                 $v = (float) $value;
-                if ($v < $lo || $v > $hi) {
+                if (!is_finite($v) || $v < $lo || $v > $hi) {
                     fail("Value out of range for $metric");
                 }
-                $ins->execute([$crewId, $metric, $v, $day, $source, $device, $u['id']]);
-                $ids[] = (int) db()->lastInsertId();
+                $clean[$metric] = $v;
             }
+            $day = mission_for($u)['day'];
+            $pdo = db();
+            $ins = $pdo->prepare('INSERT INTO measurements (crew_id, metric, value, day, measured_at, source, device, entered_by) VALUES (?, ?, ?, ?, UTC_TIMESTAMP(), ?, ?, ?)');
+            $ids = [];
+            $pdo->beginTransaction();
+            foreach ($clean as $metric => $v) {
+                $ins->execute([$crewId, $metric, $v, $day, $source, $device, $u['id']]);
+                $ids[] = (int) $pdo->lastInsertId();
+            }
+            $pdo->commit();
             audit($u['id'], 'measurement', implode(',', array_keys($values)));
             $in = implode(',', array_fill(0, count($ids), '?'));
             $st = db()->prepare("SELECT * FROM measurements WHERE id IN ($in)");
@@ -354,13 +395,7 @@ try {
     }
 
     fail('Unknown route', 404);
-} catch (RuntimeException $e) {
-    if ($e->getMessage() === 'not_configured') {
-        fail('Database is not configured', 503);
-    }
-    error_log('AURA API: ' . $e->getMessage());
-    fail('Server error', 500);
 } catch (Throwable $e) {
-    error_log('AURA API: ' . $e->getMessage());
-    fail('Server error', 500);
+    // an open transaction is rolled back by MySQL when the connection closes at exit
+    fail_exception($e);
 }

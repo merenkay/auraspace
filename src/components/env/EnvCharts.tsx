@@ -1,7 +1,9 @@
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CABIN_LIMITS } from '../../data/missions'
 import { GAS_ALARM_RATIO, GAS_WARN_RATIO, rowRatio, type EnvRow } from '../../lib/envStation'
-import { clockTime, fmt, themeColor } from './parts'
+import { STATUS_COLOR } from '../../data/vitals'
+import { ChartTooltip, chart } from '../ui'
+import { clockTime, fmt } from './parts'
 import type { ChartPoint } from './useEnvStation'
 
 type Key = 't' | 'h' | 'g'
@@ -64,10 +66,6 @@ function specs(gasUnit: 'ratio' | 'raw'): Spec[] {
 }
 
 function MiniChart({ spec, data, from, to, seconds }: { spec: Spec; data: ChartPoint[]; from: number; to: number; seconds: boolean }) {
-  const line = themeColor('--color-cyan', '#53d7ff')
-  const grid = themeColor('--color-line', '#1e3a55')
-  const dim = themeColor('--color-dim', '#91a9bd')
-  const tone = { dim, warn: themeColor('--color-warn', '#f6bd60'), crit: themeColor('--color-crit', '#f06464') }
   const points = data.filter((p) => p[spec.key] != null)
   const last = points[points.length - 1]
   const values = points.map((p) => p[spec.key] as number)
@@ -75,73 +73,39 @@ function MiniChart({ spec, data, from, to, seconds }: { spec: Spec; data: ChartP
   const hi = values.length ? Math.max(...values) : 1
   const scale = niceScale(spec.domain[0](lo), spec.domain[1](hi))
   return (
-    <figure className="min-w-0 rounded-2xl border border-line bg-deep/40 p-3">
-      <figcaption className="flex items-baseline justify-between gap-2 text-xs">
-        <span className="font-semibold text-soft">
+    <figure className="min-w-0">
+      <figcaption className="mb-2 flex items-baseline justify-between gap-2 text-sm">
+        <span className="font-medium text-ink">
           {spec.title} <span className="font-normal text-dim">· {spec.unit}</span>
         </span>
-        <span className="text-dim">last {last ? fmt(last[spec.key], spec.digits) : '—'}</span>
+        <span className="font-mono text-xs text-dim">last {last ? fmt(last[spec.key], spec.digits) : '—'}</span>
       </figcaption>
-      {points.length === 0 ? (
-        <div className="flex h-[150px] items-center justify-center text-xs text-dim">No data in this time window</div>
-      ) : (
-        <div className="h-[150px]">
+      <div className="h-[168px] rounded-xl border border-line bg-deep p-3">
+        {points.length === 0 ? (
+          <div className="flex h-full items-center justify-center text-sm text-dim">No data in this time window</div>
+        ) : (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={data} margin={{ top: 10, right: 8, bottom: 0, left: -8 }}>
-              <CartesianGrid stroke={grid} strokeWidth={1} vertical={false} />
-              <XAxis
-                dataKey="x"
-                type="number"
-                scale="time"
-                domain={[from, to]}
-                allowDataOverflow
-                tickFormatter={(v: number) => clockTime(v, seconds)}
-                tick={{ fill: dim, fontSize: 10 }}
-                tickLine={false}
-                axisLine={{ stroke: grid }}
-                minTickGap={36}
-              />
-              <YAxis domain={scale.domain} ticks={scale.ticks} allowDataOverflow tick={{ fill: dim, fontSize: 10 }} tickLine={false} axisLine={false} width={40} />
+            <LineChart data={data} margin={{ ...chart.margin, right: 30 }}>
+              <CartesianGrid {...chart.grid} />
+              <XAxis dataKey="x" type="number" scale="time" domain={[from, to]} allowDataOverflow tickFormatter={(v: number) => clockTime(v, seconds)} {...chart.xAxis} />
+              <YAxis domain={scale.domain} ticks={scale.ticks} allowDataOverflow {...chart.yAxis} />
               {spec.refs.map((r) => (
                 <ReferenceLine
                   key={r.label}
                   y={r.y}
-                  stroke={tone[r.tone]}
-                  strokeDasharray="4 4"
-                  strokeWidth={1}
-                  label={{ value: r.label, position: 'insideTopLeft', fill: tone[r.tone], fontSize: 10 }}
+                  {...chart.refLine(r.tone === 'dim' ? undefined : r.tone)}
+                  label={{ value: r.label, position: 'insideTopLeft', fill: r.tone === 'dim' ? 'var(--color-dim)' : STATUS_COLOR[r.tone], fontSize: 12 }}
                 />
               ))}
               <Tooltip
-                cursor={{ stroke: dim, strokeWidth: 1 }}
-                isAnimationActive={false}
-                content={(props) => {
-                  const p = props.payload?.[0]
-                  if (!props.active || !p || typeof p.value !== 'number') return null
-                  return (
-                    <div className="rounded-lg border border-line bg-panel px-3 py-2 text-xs shadow-lg">
-                      <div className="text-dim">{clockTime(Number(props.label), true)}</div>
-                      <div className="font-semibold text-ink">
-                        {p.value.toFixed(spec.digits)} {spec.unit}
-                      </div>
-                    </div>
-                  )
-                }}
+                {...chart.tooltip}
+                content={<ChartTooltip unit={spec.unit} formatLabel={(l) => clockTime(Number(l), true)} formatValue={(v) => (typeof v === 'number' ? v.toFixed(spec.digits) : '—')} />}
               />
-              <Line
-                type="monotone"
-                dataKey={spec.key}
-                stroke={line}
-                strokeWidth={2}
-                dot={points.length < 3 ? { r: 3, fill: line, strokeWidth: 0 } : false}
-                activeDot={{ r: 4, fill: line, stroke: grid, strokeWidth: 2 }}
-                connectNulls={false}
-                isAnimationActive={false}
-              />
+              <Line dataKey={spec.key} {...chart.line} dot={points.length < 15 ? { r: 2.5, fill: 'var(--color-ink)', strokeWidth: 0 } : false} connectNulls={false} isAnimationActive={false} />
             </LineChart>
           </ResponsiveContainer>
-        </div>
-      )}
+        )}
+      </div>
     </figure>
   )
 }
@@ -149,10 +113,16 @@ function MiniChart({ spec, data, from, to, seconds }: { spec: Spec; data: ChartP
 /** Three small multiples on a shared time window (never one chart with two y-axes). Gaps = no data. */
 export function EnvCharts({ data, from, to, gasUnit, seconds }: { data: ChartPoint[]; from: number; to: number; gasUnit: 'ratio' | 'raw'; seconds: boolean }) {
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
-      {specs(gasUnit).map((s) => (
-        <MiniChart key={s.key} spec={s} data={data} from={from} to={to} seconds={seconds} />
-      ))}
+    <div>
+      <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
+        {specs(gasUnit).map((s) => (
+          <MiniChart key={s.key} spec={s} data={data} from={from} to={to} seconds={seconds} />
+        ))}
+      </div>
+      <p className="mt-3 text-sm text-dim">
+        Dashed grey lines: the normal band for temperature and humidity.
+        {gasUnit === 'ratio' ? ' Dashed amber and red lines: the attention and alarm levels for gas (AURA demo thresholds).' : ' The gas chart shows raw values until a clean-air baseline is set.'} A gap in a line means no data.
+      </p>
     </div>
   )
 }
@@ -162,30 +132,30 @@ export function EnvTable({ rows }: { rows: EnvRow[] }) {
   const shown = [...rows].reverse().slice(0, 30)
   if (!shown.length) return <p className="text-sm text-dim">No stored readings in this time window.</p>
   return (
-    <div className="max-h-80 overflow-auto rounded-2xl border border-line">
-      <table className="w-full min-w-[520px] text-left text-xs">
+    <div className="max-h-80 overflow-auto rounded-xl border border-line">
+      <table className="w-full min-w-[520px] text-left text-sm">
         <caption className="sr-only">Stored sensor readings, newest first</caption>
         <thead className="sticky top-0 bg-deep text-dim">
           <tr>
-            <th scope="col" className="px-3 py-2 font-semibold">Time</th>
-            <th scope="col" className="px-3 py-2 font-semibold">Temp °C</th>
-            <th scope="col" className="px-3 py-2 font-semibold">Humidity %</th>
-            <th scope="col" className="px-3 py-2 font-semibold">Gas raw (mean / peak)</th>
-            <th scope="col" className="px-3 py-2 font-semibold">Peak ÷ baseline</th>
-            <th scope="col" className="px-3 py-2 font-semibold">Samples</th>
+            <th scope="col" className="px-3 py-2 font-medium">Time</th>
+            <th scope="col" className="px-3 py-2 font-medium">Temp °C</th>
+            <th scope="col" className="px-3 py-2 font-medium">Humidity %</th>
+            <th scope="col" className="px-3 py-2 font-medium">Gas raw (mean / peak)</th>
+            <th scope="col" className="px-3 py-2 font-medium">Peak ÷ baseline</th>
+            <th scope="col" className="px-3 py-2 font-medium">Samples</th>
           </tr>
         </thead>
         <tbody>
           {shown.map((r) => (
             <tr key={r.at} className="border-t border-line text-soft">
-              <td className="px-3 py-1.5">{clockTime(Date.parse(r.at), true)}</td>
-              <td className="px-3 py-1.5">{fmt(r.t, 1)}</td>
-              <td className="px-3 py-1.5">{fmt(r.h, 0)}</td>
-              <td className="px-3 py-1.5">
+              <td className="px-3 py-2">{clockTime(Date.parse(r.at), true)}</td>
+              <td className="px-3 py-2">{fmt(r.t, 1)}</td>
+              <td className="px-3 py-2">{fmt(r.h, 0)}</td>
+              <td className="px-3 py-2">
                 {fmt(r.gas, 0)} / {fmt(r.gasMax, 0)}
               </td>
-              <td className="px-3 py-1.5">{rowRatio(r) != null ? `${fmt(rowRatio(r), 2)}×` : 'no baseline'}</td>
-              <td className="px-3 py-1.5">{r.n}</td>
+              <td className="px-3 py-2">{rowRatio(r) != null ? `${fmt(rowRatio(r), 2)}×` : 'no baseline'}</td>
+              <td className="px-3 py-2">{r.n}</td>
             </tr>
           ))}
         </tbody>

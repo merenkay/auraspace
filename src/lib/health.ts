@@ -10,11 +10,17 @@ export type Latest = { values: Values; meta: Partial<Record<FieldId, Measurement
 
 const FALLBACK: Values = { sys: 120, dia: 78, hr: 65, spo2: 98, temp: 36.7, glucose: 90, sleep: 7, mood: 4, exercise: 90, vision: 5, water: 2.5 }
 
+/** Milliseconds for an ISO timestamp (any offset or fraction format); unparseable values sort oldest. */
+const ms = (at: string) => {
+  const t = Date.parse(at)
+  return Number.isFinite(t) ? t : -Infinity
+}
+
 export function latestOf(rows: Measurement[]): Latest {
   const meta: Partial<Record<FieldId, Measurement>> = {}
   for (const r of rows) {
     const cur = meta[r.metric]
-    if (!cur || r.at >= cur.at) meta[r.metric] = r
+    if (!cur || ms(r.at) >= ms(cur.at)) meta[r.metric] = r
   }
   const values = { ...FALLBACK }
   for (const f of FIELD_IDS) if (meta[f]) values[f] = meta[f]!.value
@@ -22,9 +28,14 @@ export function latestOf(rows: Measurement[]): Latest {
 }
 
 export function seriesOf(rows: Measurement[], metric: FieldId, days = 14, today = 142): { day: number; value: number }[] {
-  const byDay = new Map<number, number>()
-  for (const r of rows) if (r.metric === metric && r.day > today - days) byDay.set(r.day, r.value)
-  return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, value]) => ({ day, value }))
+  // One point per day: the newest reading of that day wins, whatever order the rows arrive in.
+  const byDay = new Map<number, Measurement>()
+  for (const r of rows) {
+    if (r.metric !== metric || r.day <= today - days) continue
+    const cur = byDay.get(r.day)
+    if (!cur || ms(r.at) >= ms(cur.at)) byDay.set(r.day, r)
+  }
+  return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, r]) => ({ day, value: r.value }))
 }
 
 export function baselineOf(rows: Measurement[], metric: FieldId): number | null {

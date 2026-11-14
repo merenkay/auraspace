@@ -62,7 +62,7 @@ export const VITALS: VitalDef[] = [
     display: (v) => `${Math.round(v.sys)}/${Math.round(v.dia)}`,
     evaluate: (v) =>
       v.sys >= 140 || v.dia >= 90 || v.sys < 90 ? 'crit' : v.sys >= 130 || v.dia >= 80 ? 'warn' : 'ok',
-    ranges: 'Normal < 130/80 · Elevated 130–139 / 80–89 · High ≥ 140/90',
+    ranges: 'Normal < 130/80 · Elevated 130–139 / 80–89 · High ≥ 140/90 · Low: upper number < 90 is also flagged urgent',
     howTo: 'Rest 5 minutes. Cuff on the upper arm at heart level, stay still and silent, then start.',
     source: 'ACC/AHA 2017 blood pressure guideline',
   },
@@ -101,7 +101,7 @@ export const VITALS: VitalDef[] = [
     fields: [{ id: 'temp', label: 'Body temperature', min: 30, max: 43, step: 0.1 }],
     display: (v) => v.temp.toFixed(1),
     evaluate: (v) => (v.temp > 38 || v.temp < 35 ? 'crit' : v.temp > 37.5 || v.temp < 36.1 ? 'warn' : 'ok'),
-    ranges: 'Normal 36.1–37.5 · Watch 37.6–38.0 · Fever > 38.0',
+    ranges: 'Normal 36.1–37.5 · Watch 37.6–38.0 or 35.0–36.0 · Alert: fever > 38.0 or < 35.0',
     howTo: 'Measure before exercise or meals; hold the thermometer until it beeps.',
     source: 'Standard clinical temperature ranges',
   },
@@ -115,7 +115,7 @@ export const VITALS: VitalDef[] = [
     display: (v) => `${Math.round(v.glucose)}`,
     evaluate: (v) =>
       v.glucose >= 126 || v.glucose < 60 ? 'crit' : v.glucose >= 100 || v.glucose < 70 ? 'warn' : 'ok',
-    ranges: 'Fasting: Normal 70–99 · Watch 100–125 · Alert ≥ 126 or < 60',
+    ranges: 'Fasting: Normal 70–99 · Watch 100–125 or 60–69 · Alert ≥ 126 or < 60',
     howTo: 'Measure after 8 hours without food; one drop of blood on the strip.',
     source: 'American Diabetes Association fasting glucose criteria',
   },

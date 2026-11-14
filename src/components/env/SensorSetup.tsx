@@ -10,43 +10,51 @@ const WIRES: [string, string, string][] = [
   ['MQ-2 gas module', 'DO (digital out)', 'not connected'],
 ]
 
+const CODE = 'rounded bg-deep px-1.5 py-0.5 font-mono text-[13px] text-ink'
+
 /** Short hardware how-to; the full guide is arduino/README.md in the project. */
 export function SensorSetup({ device, noise, lines }: { device: DeviceInfo | null; noise: number; lines: number }) {
   return (
-    <div className="space-y-3 text-sm text-soft">
-      <p>
-        Upload <code className="rounded bg-deep px-1.5 py-0.5 text-ice">arduino/aura_env_station</code> to an Arduino Uno or Nano (full guide: <code className="text-ice">arduino/README.md</code>
-        ). Then use Chrome or Edge on a computer, press <b>Connect sensor</b> and pick the Arduino’s port.
+    <div className="space-y-4 text-sm text-soft">
+      <p className="max-w-prose">
+        Upload <code className={CODE}>arduino/aura_env_station</code> to an Arduino Uno or Nano (full guide: <code className={CODE}>arduino/README.md</code>). Then use Chrome or Edge
+        on a computer, press <b className="font-semibold text-ink">Connect sensor</b> and pick the Arduino’s port.
       </p>
       <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[360px] text-left text-xs">
+        <table className="w-full min-w-[360px] text-left text-sm">
           <caption className="sr-only">Wiring</caption>
-          <thead className="bg-deep/60 text-dim">
+          <thead className="bg-deep text-dim">
             <tr>
-              <th scope="col" className="px-3 py-2 font-semibold">Part</th>
-              <th scope="col" className="px-3 py-2 font-semibold">Pin on the part</th>
-              <th scope="col" className="px-3 py-2 font-semibold">Arduino pin</th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Part
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Pin on the part
+              </th>
+              <th scope="col" className="px-3 py-2 font-medium">
+                Arduino pin
+              </th>
             </tr>
           </thead>
           <tbody>
             {WIRES.map(([part, pin, to]) => (
               <tr key={part + pin} className="border-t border-line">
-                <td className="px-3 py-1.5">{part}</td>
-                <td className="px-3 py-1.5">{pin}</td>
-                <td className="px-3 py-1.5 font-semibold text-ink">{to}</td>
+                <td className="px-3 py-2">{part}</td>
+                <td className="px-3 py-2">{pin}</td>
+                <td className="px-3 py-2 font-mono font-medium text-ink">{to}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-dim">
-        The sketch prints one line per second at 9600 baud:{' '}
-        <code className="rounded bg-deep px-1.5 py-0.5 text-ice">{'{"t":23.4,"h":41.0,"gas":312,"warm":0}'}</code> — <b>t</b> °C, <b>h</b> % humidity, <b>gas</b> raw 0–1023
-        (not ppm), <b>warm</b> seconds of heater warm-up left. A failed read is sent as <code>null</code>. AURA also understands keys like temp, humidity or mq2 and plain
-        text such as <code>Temperature: 23.4</code>.
+      <p className="max-w-prose text-dim">
+        The sketch prints one line per second at 9600 baud: <code className={CODE}>{'{"t":23.4,"h":41.0,"gas":312,"warm":0}'}</code>, where <b className="font-medium text-soft">t</b> is °C,{' '}
+        <b className="font-medium text-soft">h</b> is % humidity, <b className="font-medium text-soft">gas</b> is the raw 0–1023 value (not ppm) and <b className="font-medium text-soft">warm</b> is
+        the seconds of heater warm-up left. A failed read is sent as <code className={CODE}>null</code>. AURA also understands keys like temp, humidity or mq2 and plain text such as{' '}
+        <code className={CODE}>Temperature: 23.4</code>.
       </p>
       {(device || lines > 0) && (
-        <p className="text-xs text-dim">
+        <p className="font-mono text-xs text-dim">
           {device && (
             <>
               Connected sketch: {device.name}

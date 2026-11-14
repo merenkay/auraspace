@@ -1,8 +1,8 @@
-import { motion } from 'motion/react'
 import { STATUS_COLOR, type Status } from '../data/vitals'
-import { Sparkline, StatusPill } from './ui'
+import { isImportedDevice, isSyntheticDevice } from '../lib/samsungHealth'
+import { Badge, Card, Metric, Sparkline, cx, useMedia } from './ui'
 
-const SOURCE_LABEL: Record<string, string> = { device: 'DEVICE', manual: 'MANUAL', live: 'LIVE', sim: 'SIMULATED' }
+const SOURCE_LABEL: Record<string, string> = { device: 'Device', manual: 'Manual', live: 'Live', sim: 'Simulated' }
 
 type Props = {
   label: string
@@ -14,41 +14,28 @@ type Props = {
   time: string
   trend: { day: number; value: number }[]
   onClick?: () => void
+  /** Kept for existing callers; entrance order is now handled by the parent <Stagger>. */
   index?: number
 }
 
-export default function VitalCard({ label, value, unit, status, source, device, time, trend, onClick, index = 0 }: Props) {
-  const color = STATUS_COLOR[status]
+/** One measurement: number, plain-words status, 14-day trend and where the value came from. The whole card opens the entry dialog when `onClick` is set. */
+export default function VitalCard({ label, value, unit, status, source, device, time, trend, onClick }: Props) {
+  const wide = useMedia('(min-width: 640px)')
+  const synthetic = isSyntheticDevice(device)
+  const imported = isImportedDevice(device)
+  const src = synthetic ? 'Synthetic sample' : imported ? 'Samsung Health' : (SOURCE_LABEL[source] ?? source)
+  // Normal data stays neutral; only a reading that needs attention takes its status colour.
+  const trendColor = status === 'ok' ? 'var(--color-soft)' : STATUS_COLOR[status]
   return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      disabled={!onClick}
-      initial={{ opacity: 0, y: 28 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: '-30px' }}
-      transition={{ duration: 0.5, delay: index * 0.07, ease: [0.22, 1, 0.36, 1] }}
-      whileHover={onClick ? { y: -4 } : undefined}
-      className="glass group relative flex w-full flex-col gap-2 overflow-hidden rounded-3xl p-4 text-left disabled:cursor-default"
-    >
-      <span className="absolute inset-x-0 top-0 h-0.5" style={{ background: color }} />
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-soft">{label}</span>
-        <span className="shrink-0 rounded-md bg-panel2 px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-ice" title={device}>
-          {SOURCE_LABEL[source] ?? source.toUpperCase()}
-        </span>
+    <Card className={cx('relative flex h-full flex-col gap-3', onClick && 'transition-colors hover:bg-panel2')} pad="sm">
+      <Metric size={wide ? 'lg' : 'md'} label={label} value={value} unit={unit} status={status} hint={time} />
+      <Sparkline data={trend} color={trendColor} />
+      <div className="mt-auto flex flex-wrap items-center gap-1.5">
+        <Badge className="max-w-full">
+          <span title={device || undefined}>{src}</span>
+        </Badge>
       </div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-display text-4xl font-bold leading-none" style={{ color }}>
-          {value}
-        </span>
-        <span className="text-sm text-dim">{unit}</span>
-      </div>
-      <Sparkline data={trend} color={color} />
-      <div className="flex items-center justify-between gap-2">
-        <StatusPill status={status} small />
-        <span className="text-[11px] text-dim">{time}</span>
-      </div>
-    </motion.button>
+      {onClick && <button type="button" onClick={onClick} aria-label={`Log a new ${label} reading`} className="absolute inset-0 rounded-2xl" />}
+    </Card>
   )
 }

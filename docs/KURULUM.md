@@ -244,8 +244,10 @@ Demo data already present — nothing else changed. Add &reset=1 to reload the d
 | `Tables ready.` + `Loaded 4 crew…` | Kurulum tamam. 6. bölüme geç. |
 | `Demo data already present — nothing else changed…` | Zaten kurulu; eksik tablolar oluşturuldu, veri silinmedi. |
 | `aura-config.php not found…` | Dosya yanlış yerde/adda → 4. bölüm. |
+| `aura-config.php was found but …` | Dosya doğru yerde ama bozuk → 9. bölüm. |
 | `Forbidden: wrong or missing token…` | Adresteki anahtar sunucudaki dosyayla aynı değil → 9. bölüm. |
-| Boş sayfa, `HTTP ERROR 500` ya da `Fatal error: …` | Çoğunlukla veritabanı bilgisi yanlış → 9. bölüm. |
+| `INSTALL FAILED during: …` | Bir kurulum adımı veritabanında hata verdi; altındaki satır sebebi söyler → 9. bölüm. |
+| Boş sayfa, `HTTP ERROR 500` ya da `Fatal error: …` | PHP hatası → 9. bölüm. |
 
 > **`&reset=1` ne yapar?** Adresin sonuna `&reset=1` eklersen **yalnızca simüle demo ekibinin** verisi silinip baştan
 > yüklenir; e-postayla kayıt olmuş gerçek üyeler **silinmez**. Gerektiği durumlar: demo şifresini değiştirdiğinde ve
@@ -264,15 +266,26 @@ https://SİTE/api/index.php?r=health
 Her şey tamamsa:
 
 ```json
-{"ok":true,"db":true,"signup":true,"mail":false}
+{"ok":true,"db":true,"signup":true,"demo":true,"mail":false}
 ```
 
 | Alan | `true` ise | `false` ise |
 |---|---|---|
 | `ok` | PHP çalışıyor ve API'ye ulaşılıyor. | (Sayfa hiç açılmıyorsa ya da 404 ise site/API yayında değil ya da adres yanlış.) |
-| `db` | Ayar dosyası bulundu, veritabanına bağlanıldı **ve** kurulum yapılmış (kullanıcılar var). | Dosya bulunamadı **ya da** veritabanı bilgisi yanlış **ya da** kurulum hiç çalıştırılmadı **ya da** dosyada yazım hatası var. Bu adres sebebi söylemez; sebebi görmek için kurulum adresini aç. Bu durumda sadece `{"ok":true,"db":false}` görünür. |
+| `db` | Ayar dosyası bulundu, veritabanına bağlanıldı **ve** kurulum yapılmış (kullanıcılar var). | Sebebi yanındaki `reason` alanı söyler (aşağıdaki tablo). Ayrıntı için kurulum adresini aç. |
 | `signup` | E-postayla yeni kayıt açık (`allow_signup`). | Kayıt kapalı. |
 | `mail` | Dosyada geçerli bir gönderen adresi (`mail_from`) var. **Dikkat:** şifrenin doğru olduğunu göstermez; gerçek test kayıt olmaktır (7. bölüm). | E-posta ayarlanmamış. |
+
+`"db":false` ise yanında bir `reason` (sebep) görünür, ör. `{"ok":true,"db":false,"signup":false,"demo":false,"mail":false,"reason":"config_missing"}`:
+
+| `reason` | Anlamı | Çözüm |
+|---|---|---|
+| `config_missing` | `aura-config.php` bulunamadı. | 4. bölüm (doğru klasör, doğru ad). |
+| `config_invalid` | Dosya bulundu ama bozuk (PHP yazım hatası ya da `return [ … ];` yok). | Kurulum adresi satır numarasını söyler. Aracı çalıştır, **Replace** ile yükle. |
+| `config_incomplete` | Dosyada `db_name` ya da `db_user` boş. | Aracı çalıştır, yükle. |
+| `connect_failed` | Veritabanına bağlanılamadı (şifre, kullanıcı, veritabanı adı ya da `db_host` yanlış). | Kurulum adresini aç: `Database connection failed: …` satırı tam sebebi söyler → 9. bölüm. |
+| `not_installed` | Bağlantı tamam ama tablolar/demo hesaplar yok. | Kurulum adresini aç (5. bölüm). |
+| `db_error` | Başka bir veritabanı hatası. | Kurulum adresini aç ve mesajı oku. |
 
 ### 6b. Giriş sayfası
 
@@ -331,7 +344,8 @@ adını kullanın. Site geçici adreste kalsa bile gönderen adres gerçek alan 
 | Kayıtta gördüğün hata | Anlamı / çözüm |
 |---|---|
 | `Email sending is not set up on the server yet.` | Sunucudaki dosyada `mail_from` boş. Yeni dosyayı yüklemeyi unuttun ya da "Keep both" seçildi. |
-| `We could not send the email. Check the address and try again.` | Yazısı yanıltıcı: genelde **sunucu tarafında SMTP hatası** (posta kutusu şifresi yanlış, 2FA açık → App password, port → 587 dene, posta kutusu yok). Emails → alan adı → **Email Logs → Access** sekmesinde başarısız SMTP girişlerini görebilirsin. |
+| `The server could not send the email right now (mail server problem). Please try again later.` | **Sunucu tarafında SMTP hatası**: posta kutusu şifresi yanlış, 2FA açık (→ App password), port (→ 587 dene), posta kutusu yok, bağlantı/TLS kurulamadı. Tam SMTP cevabı sunucunun hata günlüğüne (`AURA mail: …`) yazılır. Emails → alan adı → **Email Logs → Access** sekmesinde başarısız SMTP girişlerini görebilirsin. |
+| `We could not send the email. Check the address and try again.` | Alıcı adres reddedildi (geçersiz ya da karşı tarafta böyle bir posta kutusu yok). Adresi kontrol et. |
 | `Please wait a minute before asking for another code.` | Aynı adrese dakikada bir kod. Bekle. |
 | `Too many codes requested from this network. Try again later.` | Aynı ağdan saatte en fazla 12 kod. Bekle. |
 | `This email is already registered. Sign in or reset your password.` | Bu adresle zaten hesap var. |
@@ -351,7 +365,7 @@ Yayın: `main` dalına push → GitHub'da **Actions** sekmesinde "Build and publ
 çeker (hPanel → **Advanced → Git**'te durumu görebilir, gerekirse **Redeploy** diyebilirsin).
 
 **Neden?** Yeni özellikler kendi tablolarına ihtiyaç duyabilir; bu tablolar **sadece kurulum adresi açılınca** oluşur.
-Açmazsan o özellik `Server error` verir. `aura-config.php` yayından etkilenmez (`public_html`'in dışında).
+Açmazsan o özellik `Feature tables are not installed yet — re-run the installer (api/install.php).` hatası verir. `aura-config.php` yayından etkilenmez (`public_html`'in dışında).
 
 **Nasıl?** Aynı kurulum adresini **`&reset=1` olmadan** aç. Beklenen:
 
@@ -371,7 +385,7 @@ Demo data already present — nothing else changed. Add &reset=1 to reload the d
 
 ## 9. Sorun giderme
 
-Önce şunu bil: **health adresi sebep söylemez**, sadece `"db":false` der. Sebebi görmek için kurulum adresini aç.
+Önce health adresine bak: `"db":false` ise `reason` alanı sebebin kısa adını söyler (6a). Ayrıntılı mesaj için kurulum adresini aç.
 Kurulum sayfası boş ya da `HTTP ERROR 500` gösteriyorsa PHP hatayı gizliyordur: hPanel → **PHP**
 (ya da **Advanced → PHP Configuration**) → **Options** sekmesi → `display_errors`'ı **geçici olarak** aç, kurulum
 adresini yenile, mesajı oku, sonra `display_errors`'ı **kapat** (Hostinger de canlı sitede kapalı tutmayı öneriyor).
@@ -380,7 +394,10 @@ adresini yenile, mesajı oku, sonra `display_errors`'ı **kapat** (Hostinger de 
 
 | Ekranda gördüğün (aynen) | Sebep | Çözüm |
 |---|---|---|
-| `aura-config.php not found. Upload it next to (one level above) public_html first.` | Dosya `public_html`'in yanında değil (içinde, yanlış sitenin klasöründe, yanlış adla: `aura-config (1).php`, `aura-config.php.txt`) ya da elle düzenlenmiş dosya `return [ … ];` ile başlamıyor. | 4. bölümdeki kontrol listesi. Adın tam `aura-config.php` olduğuna bak. Aracı tekrar çalıştırıp yükle. |
+| `aura-config.php not found. Upload it next to (one level above) public_html first.` | Dosya `public_html`'in yanında değil (içinde, yanlış sitenin klasöründe, yanlış adla: `aura-config (1).php`, `aura-config.php.txt`). | 4. bölümdeki kontrol listesi. Adın tam `aura-config.php` olduğuna bak. Aracı tekrar çalıştırıp yükle. |
+| `aura-config.php was found but has a PHP error on line N. Create it again with: node tools/make-config.mjs — then upload it with Replace.` | Dosya doğru yerde ama elle düzenlerken PHP bozulmuş (eksik tırnak/virgül, şifredeki `'` kaçışsız). | Aracı çalıştır, dosyayı **Replace** ile yükle. |
+| `aura-config.php was found but does not return the settings (the file must contain: return [ ... ];). Create it again …` | Dosya doğru yerde ama içinde `return [ … ];` yok (yanlış dosya yüklenmiş ya da içerik silinmiş). | Aracı çalıştır, dosyayı **Replace** ile yükle. |
+| `INSTALL FAILED during: <adım>` + altında hata metni | Tablo oluşturma/güncelleme ya da demo verisi yükleme sırasında veritabanı hata verdi. Demo verisi yarım kalmaz (o adım geri alınır). | Alttaki metni aşağıdaki "PHP / MySQL hata metinleri" tablosunda ara (ör. `1142 … command denied`). Düzelttikten sonra adresi tekrar aç. |
 | `Forbidden: wrong or missing token (install_token must be at least 16 characters).` | Adresteki anahtar sunucudaki dosyadakiyle aynı değil: adres eksik kopyalandı, sunucuda eski dosya var ("Keep both" seçildi ya da yükleme unutuldu), anahtar 16 karakterden kısa. | Adresi araç çıktısından **tamamen** kopyala ya da VS Code'da `aura-config.php`'deki `install_token`'a bak. Dosyayı **Replace** ile yeniden yükle. |
 | `Set demo_password (at least 8 characters) in aura-config.php.` | Demo şifresi boş ya da kısa. | Aracı çalıştır, [4/6]'da en az 8 karakter. |
 | `aura-config.php still contains the placeholder CHANGE-ME for '…'. Replace it with your own value (or run: node tools/make-config.mjs).` | Örnek dosya kopyalanmış ama `CHANGE-ME` yazan bir alan (anahtar, şifre) değiştirilmemiş. Örnekteki değerler herkese açık olduğu için kurulum bunları kabul etmez. | `node tools/make-config.mjs` ile dosyayı yeniden üret ve **Replace** ile yükle. |
@@ -407,7 +424,7 @@ adresini yenile, mesajı oku, sonra `display_errors`'ı **kapat** (Hostinger de 
 
 | Belirti | Sebep | Çözüm |
 |---|---|---|
-| Health: `{"ok":true,"db":false}` | Bkz. 6a. | Kurulum adresini aç, mesaja göre bu tablodan çöz. |
+| Health: `"db":false` | `reason` alanına bak (6a). | Kurulum adresini aç, mesaja göre bu tablodan çöz. |
 | Kurulum/health adresi 404 veriyor | Site yayında değil ya da adres yanlış (http/https, eski alan adı). | Sitenin ana sayfası açılıyor mu bak; GitHub Actions + hPanel Git. |
 | Health `"db":true` ama giriş sayfasında `○ Demo mode` | Eski sayfa önbellekte. | **Ctrl+F5**. Gizli pencerede dene. |
 | Demo düğmesinde `Demo user not found` | Veritabanında demo kullanıcıları yok (kurulum tamamlanmamış). | Kurulum adresini aç. |
@@ -416,7 +433,9 @@ adresini yenile, mesajı oku, sonra `display_errors`'ı **kapat** (Hostinger de 
 | Demo kullanıcı adıyla `Unknown user or wrong password.` | Yanlış şifre, ya da demo şifresi kurulumdan **sonra** değiştirildi (şifre kurulumda veritabanına yazılır). | Kurulum adresini bir kez `&reset=1` ile aç. |
 | `Too many attempts. Try again in 15 minutes.` | Aynı ağdan 15 dakikada 10 hatalı giriş. | 15 dakika bekle (`&reset=1` de bu sayacı sıfırlar). |
 | Uygulamada `Database is not configured` | Sunucu `aura-config.php`'yi bulamadı ya da dosyada `db_name`/`db_user` boş. | 4. bölüm (doğru klasör); aracı çalıştır, yükle. |
-| Yeni bir özellikte `Server error` | Yayından sonra kurulum adresi açılmadı (tablo yok). | 8. bölüm. |
+| `Feature tables are not installed yet — re-run the installer (api/install.php).` | Yayından sonra kurulum adresi açılmadı (yeni tablo yok). | 8. bölüm. |
+| `The database is not reachable right now. Please try again in a minute.` | Site çalışırken veritabanına bağlanılamadı (şifre değişti ya da MySQL geçici olarak kapalı). | Health'e bak (`"reason":"connect_failed"`), sonra kurulum adresini aç. |
+| Uygulamada `Server error` | Beklenmeyen bir sunucu hatası; ayrıntı sunucunun hata günlüğünde (`AURA API: …`). | Koordinatöre haber ver (hangi sayfada, ne yaparken). |
 | File Manager'da dosyayı düzenledim, değişmedi | Yeni File Manager düzenlemeleri **Deploy**'a kadar bekletir. | Sağ üstte **Deploy**'a bas ya da aracı çalıştırıp **Replace** ile yükle. |
 | Gerçek alan adı bağlandıktan sonra `"db":false` | Site artık başka bir klasörden çalışıyor. | `aura-config.php`'yi yeni `domains/<alan-adı>/` klasörüne, `public_html`'in yanına yükle. |
 | Şifrede `'` ya da `\` var, bağlanmıyor | Elle yazarken kaçış yapılmadı. | Aracı kullan (otomatik kaçış yapar). |

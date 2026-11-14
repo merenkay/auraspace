@@ -38,30 +38,57 @@ const METRICS = [
     'glucose' => [20, 500], 'sleep' => [0, 16], 'mood' => [1, 5], 'exercise' => [0, 300], 'vision' => [1, 5], 'water' => [0, 8],
 ];
 
+/**
+ * Loads the settings file once. Returns ['cfg' => array, 'problem' => '' | 'config_missing' | 'config_invalid', 'detail' => string].
+ * 'detail' is safe to show (file name and line number only, never file contents).
+ */
+function config_state(): array
+{
+    static $state = null;
+    if ($state !== null) {
+        return $state;
+    }
+    $state = ['cfg' => [], 'problem' => 'config_missing', 'detail' => ''];
+    // Preferred: one level above public_html, so it is never served or overwritten by deploys.
+    $candidates = ['aura-config.php' => dirname(__DIR__, 2) . '/aura-config.php', 'api/config.local.php' => __DIR__ . '/config.local.php'];
+    foreach ($candidates as $label => $file) {
+        if (!is_file($file)) {
+            continue;
+        }
+        // Swallow stray output (a UTF-8 BOM or spaces before "<?php") so it can never corrupt JSON or block cookies.
+        $loaded = null;
+        $threw = false;
+        ob_start();
+        try {
+            $loaded = require $file;
+        } catch (Throwable $e) {
+            $threw = true;
+            error_log('AURA config: ' . $label . ' could not be loaded (' . get_class($e) . ' on line ' . $e->getLine() . ')');
+            $state = ['cfg' => [], 'problem' => 'config_invalid', 'detail' => "$label was found but has a PHP error on line " . $e->getLine()];
+        } finally {
+            ob_end_clean();
+        }
+        if ($threw) {
+            continue;
+        }
+        if (!is_array($loaded)) {
+            $state = ['cfg' => [], 'problem' => 'config_invalid', 'detail' => "$label was found but does not return the settings (the file must contain: return [ ... ];)"];
+            continue;
+        }
+        $state = ['cfg' => $loaded + [
+            'db_host' => 'localhost', 'timezone' => 'Europe/Istanbul', 'allow_demo' => true, 'allow_signup' => true,
+            'install_token' => '', 'demo_password' => '', 'app_secret' => '',
+            'smtp_host' => '', 'smtp_port' => 465, 'smtp_user' => '', 'smtp_pass' => '', 'mail_from' => '', 'mail_from_name' => 'AURA',
+            'openai_api_key' => '', 'openai_model' => '',
+        ], 'problem' => '', 'detail' => $label];
+        return $state;
+    }
+    return $state;
+}
+
 function config(): array
 {
-    static $cfg = null;
-    if ($cfg !== null) {
-        return $cfg;
-    }
-    // Preferred: one level above public_html, so it is never served or overwritten by deploys.
-    $candidates = [dirname(__DIR__, 2) . '/aura-config.php', __DIR__ . '/config.local.php'];
-    foreach ($candidates as $file) {
-        if (is_file($file)) {
-            $loaded = require $file;
-            if (is_array($loaded)) {
-                $cfg = $loaded + [
-                    'db_host' => 'localhost', 'timezone' => 'Europe/Istanbul', 'allow_demo' => true, 'allow_signup' => true,
-                    'install_token' => '', 'demo_password' => '', 'app_secret' => '',
-                    'smtp_host' => '', 'smtp_port' => 465, 'smtp_user' => '', 'smtp_pass' => '', 'mail_from' => '', 'mail_from_name' => 'AURA',
-                    'openai_api_key' => '', 'openai_model' => '',
-                ];
-                return $cfg;
-            }
-        }
-    }
-    $cfg = [];
-    return $cfg;
+    return config_state()['cfg'];
 }
 
 function db(): PDO
@@ -74,14 +101,50 @@ function db(): PDO
     if (empty($c['db_name']) || empty($c['db_user'])) {
         throw new RuntimeException('not_configured');
     }
-    $pdo = new PDO(
-        sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', $c['db_host'], $c['db_name']),
-        $c['db_user'],
-        $c['db_pass'] ?? '',
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]
-    );
-    $pdo->exec("SET time_zone = '+00:00'");
+    try {
+        $conn = new PDO(
+            sprintf('mysql:host=%s;dbname=%s;charset=utf8mb4', (string) ($c['db_host'] ?: 'localhost'), (string) $c['db_name']),
+            (string) $c['db_user'],
+            (string) ($c['db_pass'] ?? ''),
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_EMULATE_PREPARES => false]
+        );
+    } catch (PDOException $e) {
+        // The original message (e.g. "Access denied") stays in getPrevious(): install.php shows it, the API only logs it.
+        throw new RuntimeException('db_connect_failed', 0, $e);
+    }
+    $conn->exec("SET time_zone = '+00:00'");
+    $pdo = $conn;
     return $pdo;
+}
+
+/** SQLSTATE of a PDO error, e.g. '42S02' (table missing) or '42S22' (column missing). */
+function sqlstate(Throwable $e): string
+{
+    if (!$e instanceof PDOException) {
+        return '';
+    }
+    return (string) ($e->errorInfo[0] ?? $e->getCode());
+}
+
+/** Central error answer for the API: clear JSON for known setup problems, a generic message (and a log line) otherwise. */
+function fail_exception(Throwable $e): void
+{
+    $msg = $e->getMessage();
+    if ($msg === 'not_configured') {
+        fail('Database is not configured', 503);
+    }
+    if ($msg === 'db_connect_failed') {
+        $prev = $e->getPrevious();
+        error_log('AURA API: database connection failed: ' . ($prev ? $prev->getMessage() : ''));
+        fail('The database is not reachable right now. Please try again in a minute.', 503);
+    }
+    if (in_array(sqlstate($e), ['42S02', '42S22'], true)) {
+        // A deploy added a table/column but install.php has not been opened since.
+        error_log('AURA API: ' . $msg);
+        fail('Feature tables are not installed yet — re-run the installer (api/install.php).', 503);
+    }
+    error_log('AURA API: ' . get_class($e) . ': ' . $msg . ' in ' . basename($e->getFile()) . ':' . $e->getLine());
+    fail('Server error', 500);
 }
 
 function tz(): DateTimeZone
@@ -95,11 +158,21 @@ function tz(): DateTimeZone
 
 function json_out($data, int $status = 200): void
 {
+    $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
+    if ($json === false) {
+        error_log('AURA API: json_encode failed: ' . json_last_error_msg());
+        $status = 500;
+        $json = '{"error":"Server error"}';
+    }
+    // Drop anything printed by accident (PHP notices with display_errors on) so the answer stays valid JSON.
+    while (ob_get_level() > 0 && @ob_end_clean()) {
+        // stop as soon as a buffer cannot be removed (e.g. zlib output compression)
+    }
     http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     header('Cache-Control: no-store');
     header('X-Content-Type-Options: nosniff');
-    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    echo $json;
     exit;
 }
 
@@ -108,9 +181,18 @@ function fail(string $message, int $status = 400): void
     json_out(['error' => $message], $status);
 }
 
+/** Request bodies above this size are refused (largest real request: an import chunk of ~50 KB). */
+const MAX_BODY_BYTES = 1000000;
+
 function body(): array
 {
-    $raw = file_get_contents('php://input') ?: '';
+    if ((int) ($_SERVER['CONTENT_LENGTH'] ?? 0) > MAX_BODY_BYTES) {
+        fail('Request too large', 413);
+    }
+    $raw = (string) file_get_contents('php://input', false, null, 0, MAX_BODY_BYTES + 1);
+    if (strlen($raw) > MAX_BODY_BYTES) {
+        fail('Request too large', 413);
+    }
     if ($raw === '') {
         return [];
     }
@@ -126,12 +208,25 @@ function client_ip(): string
     return (string) ($_SERVER['REMOTE_ADDR'] ?? '');
 }
 
+/** '' when the settings file was loaded, otherwise 'config_missing' or 'config_invalid'. */
+function config_problem(): string
+{
+    return config_state()['problem'];
+}
+
 function start_session(): void
 {
     if (session_status() === PHP_SESSION_ACTIVE) {
         return;
     }
-    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+    $proto = strtolower(trim(explode(',', (string) ($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? ''))[0]));
+    $secure = (!empty($_SERVER['HTTPS']) && strtolower((string) $_SERVER['HTTPS']) !== 'off')
+        || $proto === 'https'
+        || strtolower((string) ($_SERVER['HTTP_X_FORWARDED_SSL'] ?? '')) === 'on'
+        || (string) ($_SERVER['SERVER_PORT'] ?? '') === '443';
+    if (function_exists('ini_set')) {
+        @ini_set('session.use_strict_mode', '1'); // never adopt a session id the server did not create
+    }
     session_name('AURASESS');
     session_set_cookie_params(['lifetime' => 0, 'path' => '/', 'secure' => $secure, 'httponly' => true, 'samesite' => 'Lax']);
     session_start();
@@ -310,9 +405,17 @@ function schema_modules(): array
 
 function purge_modules(PDO $pdo, int $crewId, int $userId): void
 {
-    foreach (schema_modules() as $m) {
+    foreach (schema_modules() as $name => $m) {
         if (isset($m['purge']) && $m['purge'] instanceof Closure) {
-            $m['purge']($pdo, $crewId, $userId);
+            try {
+                $m['purge']($pdo, $crewId, $userId);
+            } catch (PDOException $e) {
+                // The module's table does not exist yet (install.php not re-run): there is nothing to delete.
+                if (!in_array(sqlstate($e), ['42S02', '42S22'], true)) {
+                    throw $e;
+                }
+                error_log("AURA purge: module $name skipped (" . $e->getMessage() . ')');
+            }
         }
     }
 }
@@ -341,6 +444,8 @@ function issue_code(string $email, string $purpose, ?array $payload, string $nam
         fail('Please wait a minute before asking for another code.', 429);
     }
     $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+    // housekeeping: codes expired for a day are useless (they also no longer count towards the per-network limit)
+    $pdo->exec('DELETE FROM email_codes WHERE expires_at < (UTC_TIMESTAMP() - INTERVAL 1 DAY)');
     $pdo->prepare('DELETE FROM email_codes WHERE email = ? AND purpose = ?')->execute([$email, $purpose]);
     $pdo->prepare('INSERT INTO email_codes (email, purpose, code_hash, payload, expires_at, ip) VALUES (?, ?, ?, ?, UTC_TIMESTAMP() + INTERVAL 15 MINUTE, ?)')
         ->execute([$email, $purpose, code_hash($email, $purpose, $code), $payload ? json_encode($payload) : null, client_ip()]);
@@ -352,8 +457,16 @@ function issue_code(string $email, string $purpose, ?array $payload, string $nam
         send_mail($email, $subject, $text, $html);
     } catch (Throwable $e) {
         $pdo->prepare('DELETE FROM email_codes WHERE id = ?')->execute([$id]);
+        // Details (SMTP replies) go to the server error log only; the user gets a short, honest category.
         error_log('AURA mail: ' . $e->getMessage());
-        fail($e->getMessage() === 'mail_not_configured' ? 'Email sending is not set up on the server yet.' : 'We could not send the email. Check the address and try again.', 502);
+        $kind = mail_error_kind($e);
+        if ($kind === 'not_configured') {
+            fail('Email sending is not set up on the server yet.', 503);
+        }
+        if ($kind === 'recipient') {
+            fail('We could not send the email. Check the address and try again.', 422);
+        }
+        fail('The server could not send the email right now (mail server problem). Please try again later.', 502);
     }
 }
 
@@ -409,7 +522,7 @@ function create_member(string $email, string $name, string $passwordHash, string
             fail('This email is already registered. Sign in or reset your password.', 409);
         }
         $positions = ['space' => 'Space crew', 'polar' => 'Polar station', 'home' => 'Home care'];
-        $initials = strtoupper(implode('', array_map(fn ($w) => mb_substr($w, 0, 1), array_slice(preg_split('/\s+/', trim($name)) ?: ['A'], 0, 2))));
+        $initials = mb_strtoupper(implode('', array_map(fn ($w) => mb_substr($w, 0, 1), array_slice(preg_split('/\s+/u', trim($name)) ?: ['A'], 0, 2))));
         $colors = ['#53D7FF', '#B49CFF', '#35D399', '#F6BD60', '#FF8FA3', '#7DD3FC'];
         $pdo->prepare('INSERT INTO crew (name, callsign, position, color, streak_base, context) VALUES (?, ?, ?, ?, 0, ?)')
             ->execute([$name, mb_substr($initials ?: 'A', 0, 3), $positions[$context], $colors[random_int(0, count($colors) - 1)], $context]);

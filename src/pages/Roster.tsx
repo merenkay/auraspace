@@ -1,10 +1,25 @@
-import { motion } from 'motion/react'
+import { Flag } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { ScoreRing, Spinner, StatusPill } from '../components/ui'
-import { STATUS_COLOR } from '../data/vitals'
+import { Avatar, Badge, Card, PageHeader, ScoreRing, Skeleton, Stagger, StaggerItem, StatusIcon, StatusPill, cx } from '../components/ui'
 import { evaluate, type Evaluation } from '../lib/health'
 import { useSession } from '../lib/session'
+
+function CardSkeleton() {
+  return (
+    <Card className="h-full">
+      <div className="flex items-center gap-3">
+        <Skeleton className="h-10 w-10 rounded-full" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-28" />
+          <Skeleton className="h-3 w-20" />
+        </div>
+      </div>
+      <Skeleton className="mx-auto mt-5 h-[116px] w-[116px] rounded-full" />
+      <Skeleton className="mx-auto mt-4 h-7 w-24 rounded-full" />
+    </Card>
+  )
+}
 
 export default function Roster() {
   const { crew, backend, mission, user } = useSession()
@@ -21,59 +36,78 @@ export default function Roster() {
     }
   }, [backend, crew, mission, user])
 
-  if (!crew.length) return <Spinner label="Loading crew" />
+  const header = <PageHeader eyebrow={user?.role === 'surgeon' ? 'Flight surgeon console' : 'Mission control'} title="Crew status" description="Sorted by who needs attention first." />
+
+  if (!crew.length)
+    return (
+      <div>
+        {header}
+        <div role="status" aria-label="Loading crew" className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 lg:gap-6">
+          {[0, 1, 2, 3].map((i) => (
+            <CardSkeleton key={i} />
+          ))}
+        </div>
+      </div>
+    )
   const sorted = [...crew].sort((a, b) => (evals[a.id]?.score ?? 100) - (evals[b.id]?.score ?? 100))
+  const first = sorted[0] && evals[sorted[0].id]
+  const firstNeedsAttention = first != null && first.overall !== 'ok'
 
   return (
-    <div className="space-y-6">
-      <div>
-        <p className="label">{user?.role === 'surgeon' ? 'Flight surgeon console' : 'Mission control'}</p>
-        <h1 className="font-display text-3xl font-bold">Crew status</h1>
-        <p className="mt-1 text-sm text-dim">Sorted by who needs attention first.</p>
-      </div>
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
+    <div>
+      {header}
+      <Stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-4 lg:gap-6">
         {sorted.map((c, i) => {
           const ev = evals[c.id]
+          const priority = i === 0 && firstNeedsAttention
           return (
-            <motion.div key={c.id} initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }} whileHover={{ y: -6 }}>
-              <Link to={`/crew/${c.id}`} className="glass block h-full rounded-3xl p-5 transition hover:border-cyan/40">
-                <div className="flex items-center gap-3">
-                  <span className="flex h-11 w-11 items-center justify-center rounded-full font-bold text-space" style={{ background: c.color }}>
-                    {c.callsign}
-                  </span>
-                  <div>
-                    <div className="font-semibold">{c.name}</div>
-                    <div className="text-xs text-dim">{c.position}</div>
+            <StaggerItem key={c.id} className="h-full">
+              <Link to={`/crew/${c.id}`} className="block h-full rounded-2xl">
+                <Card className={cx('h-full transition-colors hover:bg-panel2', ev?.overall === 'crit' ? 'border-crit/50' : ev?.overall === 'warn' ? 'border-warn/40' : '')}>
+                  {priority && (
+                    <Badge tone={first.overall} icon={Flag} className="mb-3">
+                      Review first
+                    </Badge>
+                  )}
+                  <div className="flex items-center gap-3">
+                    <Avatar name={c.name} text={c.callsign} size={40} />
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-semibold leading-snug text-ink">{c.name}</div>
+                      <div className="text-sm text-dim">{c.position}</div>
+                    </div>
                   </div>
-                </div>
-                {ev ? (
-                  <>
-                    <div className="mt-5 flex justify-center">
-                      <ScoreRing score={ev.score} status={ev.overall} size={132} />
+                  {ev ? (
+                    <>
+                      <div className="mt-5 flex justify-center">
+                        <ScoreRing score={ev.score} status={ev.overall} size={116} />
+                      </div>
+                      <div className="mt-4 flex justify-center">
+                        <StatusPill status={ev.overall} />
+                      </div>
+                      <ul className="mt-4 space-y-2 border-t border-line pt-4">
+                        {ev.alerts.slice(0, 2).map((a) => (
+                          <li key={a.key} className="flex items-start gap-2 text-sm">
+                            <span className="mt-0.5">
+                              <StatusIcon status={a.level} size={15} />
+                            </span>
+                            <span className="min-w-0 text-soft">{a.title}</span>
+                          </li>
+                        ))}
+                        {ev.alerts.length === 0 && <li className="text-sm text-dim">No open alerts</li>}
+                      </ul>
+                    </>
+                  ) : (
+                    <div className="mt-5" role="status" aria-label="Loading status">
+                      <Skeleton className="mx-auto h-[116px] w-[116px] rounded-full" />
+                      <Skeleton className="mx-auto mt-4 h-7 w-24 rounded-full" />
                     </div>
-                    <div className="mt-4 flex justify-center">
-                      <StatusPill status={ev.overall} />
-                    </div>
-                    <div className="mt-4 space-y-1.5">
-                      {ev.alerts.slice(0, 2).map((a) => (
-                        <div key={a.key} className="flex items-center gap-2 text-sm">
-                          <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: STATUS_COLOR[a.level] }} />
-                          <span className="truncate text-soft">{a.title}</span>
-                        </div>
-                      ))}
-                      {ev.alerts.length === 0 && <div className="text-sm text-ok">No open alerts</div>}
-                    </div>
-                  </>
-                ) : (
-                  <div className="mt-6">
-                    <Spinner />
-                  </div>
-                )}
+                  )}
+                </Card>
               </Link>
-            </motion.div>
+            </StaggerItem>
           )
         })}
-      </div>
+      </Stagger>
     </div>
   )
 }

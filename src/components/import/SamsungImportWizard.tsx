@@ -1,8 +1,8 @@
 // "Import from Samsung Health" wizard: phone export steps -> choose files -> preview -> save.
 // Parsing happens in this browser (a Web Worker); only the daily values the user confirms are saved.
-import { ChevronLeft, Download, EllipsisVertical, FileArchive, FileSpreadsheet, FlaskConical, FolderOpen, Laptop, ShieldCheck, Smartphone, Upload, type LucideIcon } from 'lucide-react'
+import { ChevronDown, ChevronLeft, Download, EllipsisVertical, FileArchive, FileSpreadsheet, FlaskConical, FolderOpen, Laptop, ShieldCheck, Smartphone, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
-import { Badge, Button, Card, Checkbox, Dialog, Field, Input, Notice, SourceLink, Sparkline, Tabs, cx } from '../ui'
+import { Badge, Button, Card, Checkbox, Dialog, Field, Input, List, Meter, Notice, PageTransition, SourceLink, Sparkline, Tabs, cx } from '../ui'
 import {
   DEVICE_LABEL,
   METRIC_INFO,
@@ -51,6 +51,8 @@ function fmtPoint(metric: ImportMetric, p: DailyPoint) {
   return `${v} ${info.unit}`
 }
 
+/** Left-to-right order of the screens, used only to pick the slide direction. */
+const STEP_ORDER: Record<Step, number> = { intro: 0, choose: 1, reading: 2, preview: 3, saving: 4, done: 5 }
 const STEP_INDEX: Record<Step, number> = { intro: 1, choose: 2, reading: 2, preview: 3, saving: 4, done: 4 }
 const STEP_TITLE: Record<Step, string> = {
   intro: 'Export from your phone',
@@ -94,6 +96,11 @@ export default function SamsungImportWizard({ open, onClose, crewId, backend, on
   const [result, setResult] = useState<ImportResult | null>(null)
   const [usedSample, setUsedSample] = useState(false)
   const cancelRef = useRef<() => void>(() => {})
+  const prevStep = useRef<Step>('intro')
+  const direction: 1 | -1 = STEP_ORDER[step] >= STEP_ORDER[prevStep.current] ? 1 : -1
+  useEffect(() => {
+    prevStep.current = step
+  }, [step])
 
   // fresh wizard every time it opens
   useEffect(() => {
@@ -214,12 +221,14 @@ export default function SamsungImportWizard({ open, onClose, crewId, backend, on
   })()
 
   return (
-    <Dialog open={open} onClose={close} wide title="Import from Samsung Health" description={`Step ${STEP_INDEX[step]} of 4 · ${STEP_TITLE[step]}`} footer={footer}>
+    <Dialog open={open} onClose={close} wide title={STEP_TITLE[step]} description={`Step ${STEP_INDEX[step]} of 4 · Samsung Health import`} footer={footer}>
+    <PageTransition routeKey={step} direction={direction}>
       {step === 'intro' && <Intro />}
       {step === 'choose' && <Choose onFiles={analyze} onSample={loadSample} error={error} />}
       {(step === 'reading' || step === 'saving') && <ProgressView progress={progress} saving={step === 'saving'} />}
       {step === 'preview' && summary && sel && <Preview summary={summary} sel={sel} onSel={setSel} synthetic={synthetic} rows={rows.length} demo={backend.mode === 'demo'} error={error} />}
       {step === 'done' && result && <Done result={result} synthetic={synthetic} demo={backend.mode === 'demo'} />}
+    </PageTransition>
     </Dialog>
   )
 }
@@ -313,7 +322,7 @@ function Choose({ onFiles, onSample, error }: { onFiles: (f: InputFile[]) => voi
         }}
         onDragLeave={() => setOver(false)}
         onDrop={onDrop}
-        className={cx('flex flex-col items-center gap-3 rounded-2xl border border-dashed px-4 py-7 text-center transition-colors', over ? 'border-accent bg-panel' : 'border-edge')}
+        className={cx('flex flex-col items-center gap-3 rounded-xl border border-dashed bg-deep px-4 py-7 text-center transition-colors', over ? 'border-ink' : 'border-edge')}
       >
         <Upload className="h-6 w-6 text-dim" aria-hidden="true" />
         <p className="text-sm text-soft">
@@ -337,14 +346,14 @@ function Choose({ onFiles, onSample, error }: { onFiles: (f: InputFile[]) => voi
       </div>
 
       <Card tone="well" className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <FlaskConical className="h-5 w-5 shrink-0 text-dim" aria-hidden="true" />
         <div className="min-w-0 flex-1 text-sm text-soft">
-          <p className="font-medium text-ink">No export at hand?</p>
-          <p>Try a SYNTHETIC sample: 45 days of invented Galaxy Watch data in the real export format. Anything imported from it stays labelled SYNTHETIC.</p>
+          <p className="flex flex-wrap items-center gap-2 font-medium text-ink">
+            No export at hand? <Badge icon={FlaskConical}>Synthetic sample</Badge>
+          </p>
+          <p className="mt-1">Try 45 days of invented Galaxy Watch data in the real export format. Anything imported from it stays labelled as a synthetic sample.</p>
         </div>
         <Button
           size="sm"
-          icon={FlaskConical}
           loading={sampleBusy}
           onClick={async () => {
             setSampleBusy(true)
@@ -368,10 +377,8 @@ function ProgressView({ progress, saving }: { progress: Progress; saving: boolea
   return (
     <div className="space-y-3 py-6" role="status" aria-live="polite">
       <p className="text-soft">{saving ? 'Saving the daily values to your record…' : `${progress.label}…`}</p>
-      <div className="h-1 overflow-hidden rounded-full bg-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={saving ? 'Saving' : 'Reading the export'}>
-        <div className="h-full rounded-full bg-ink transition-[width]" style={{ width: `${pct}%` }} />
-      </div>
-      <p className="meta">{pct}%</p>
+      <Meter value={pct} min={0} max={100} label={saving ? 'Saving progress' : 'Reading progress'} />
+      <p className="meta">{pct}% done{saving ? '' : ' · the files stay on this device'}</p>
     </div>
   )
 }
@@ -415,8 +422,8 @@ function Preview({ summary, sel, onSel, synthetic, rows, demo, error }: { summar
       )}
       <div className="flex flex-wrap items-center gap-2">
         {synthetic && (
-          <Badge tone="warn" icon={FlaskConical}>
-            SYNTHETIC sample
+          <Badge icon={FlaskConical}>
+            Synthetic sample
           </Badge>
         )}
         {exportName && <Badge>{exportName}</Badge>}
@@ -473,7 +480,7 @@ function Preview({ summary, sel, onSel, synthetic, rows, demo, error }: { summar
       <section>
         <h3 className="mb-1 text-[15px] font-semibold text-ink">Measurements</h3>
         <p className="mb-2 text-sm text-dim">One value per day. Untick anything you do not want to import.</p>
-        <ul className="divide-y divide-line border-y border-line">
+        <List>
           {summary.metrics.map((m) => {
             const info = METRIC_INFO[m.metric]
             const pts = pointsIn(m, sel)
@@ -487,13 +494,16 @@ function Preview({ summary, sel, onSel, synthetic, rows, demo, error }: { summar
                     disabled={!pts.length}
                     onChange={(e) => toggle(m.metric, e.target.checked)}
                     label={
-                      <span>
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="font-medium text-ink">{info.label}</span>
-                        <span className="text-dim">
-                          {' '}
-                          · {pts.length} day{pts.length === 1 ? '' : 's'}
-                          {pts.length > 0 && ` · ${fmtDate(pts[0].date)} – ${fmtDate(lastPt.date)} · latest ${fmtPoint(m.metric, lastPt)}`}
-                        </span>
+                        <Badge>
+                          {pts.length} day{pts.length === 1 ? '' : 's'}
+                        </Badge>
+                        {pts.length > 0 && (
+                          <span className="text-dim">
+                            {fmtDate(pts[0].date)} – {fmtDate(lastPt.date)} · latest {fmtPoint(m.metric, lastPt)}
+                          </span>
+                        )}
                       </span>
                     }
                     className="py-1"
@@ -523,7 +533,7 @@ function Preview({ summary, sel, onSel, synthetic, rows, demo, error }: { summar
               </p>
             </li>
           )}
-        </ul>
+        </List>
       </section>
 
       {summary.warnings.map((w) => (
@@ -554,9 +564,10 @@ function FilesReport({ files, sidecars, open = false }: { files: FileReport[]; s
   const counts = files.reduce<Record<string, number>>((acc, f) => ((acc[f.status] = (acc[f.status] ?? 0) + 1), acc), {})
   return (
     <details className="group rounded-xl border border-line" open={open}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 px-3.5 py-2 text-sm text-soft">
+      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3.5 py-2 text-sm text-soft [&::-webkit-details-marker]:hidden">
+        <ChevronDown className="h-4 w-4 shrink-0 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
         <span className="font-medium text-ink">Files in the export ({files.length + sidecars})</span>
-        <span className="meta">
+        <span className="meta ml-auto text-right">
           {counts.used ?? 0} used · {(counts.skipped ?? 0) + (counts.reference ?? 0)} not imported · {counts.unrecognised ?? 0} not recognised{counts.error ? ` · ${counts.error} with problems` : ''}
         </span>
       </summary>
@@ -594,7 +605,7 @@ function Done({ result, synthetic, demo }: { result: ImportResult; synthetic: bo
     <div className="space-y-5">
       <Notice tone={result.added ? 'ok' : 'info'} title={result.added ? `Imported ${result.added} daily value${result.added === 1 ? '' : 's'}` : 'Nothing new to import'}>
         {result.added
-          ? `They appear in History, tagged as ${synthetic ? 'SYNTHETIC sample' : 'Galaxy Watch'} device data. The newest one now counts as your latest reading where it is newer than what you had.`
+          ? `They appear in History, tagged as ${synthetic ? 'synthetic sample' : 'Galaxy Watch'} device data. The newest one now counts as your latest reading where it is newer than what you had.`
           : 'Everything in this range had already been imported.'}
         {demo && ' Stored in this browser (offline demo).'}
       </Notice>

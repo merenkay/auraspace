@@ -1,9 +1,9 @@
-import { Droplets, Flame, FlaskConical, Plug, Square, Thermometer, Unplug, Wind } from 'lucide-react'
-import { useEffect, useState } from 'react'
+import { ChevronDown, Droplets, Flame, FlaskConical, Plug, Square, Table2, Thermometer, Unplug, Wind } from 'lucide-react'
+import { useEffect, useState, type ReactNode } from 'react'
 import type { Context } from '../../data/contexts'
 import { CABIN_LIMITS } from '../../data/missions'
 import { BUCKET_MS, GAS_ALARM_RATIO, GAS_WARN_RATIO, LIVE_WINDOW_MS, type Level } from '../../lib/envStation'
-import { Panel } from '../ui'
+import { Button, Card, EmptyState, LiveDot, Meter, Notice, Section, Stagger, StaggerItem, Tabs, cx } from '../ui'
 import { EnvCharts, EnvTable } from './EnvCharts'
 import { GasAlarmBanner, GasGuidance } from './GasAlarm'
 import { MQ2_GASES, MQ2_PREHEAT } from './gasGuidance'
@@ -14,29 +14,37 @@ import { useEnvStation } from './useEnvStation'
 
 const NASA_STD_3001_V2 = 'https://standards.nasa.gov/sites/default/files/standards/NASA/D/nasa-std-3001-vol-2-rev-d-signature.pdf'
 const RANGES = [
-  { min: 15, label: '15 min' },
-  { min: 60, label: '1 h' },
-  { min: 360, label: '6 h' },
-  { min: 1440, label: '24 h' },
+  { value: '15', label: '15 min' },
+  { value: '60', label: '1 h' },
+  { value: '360', label: '6 h' },
+  { value: '1440', label: '24 h' },
 ]
 
-const btn = 'inline-flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-40'
-const primary = `${btn} border-cyan bg-cyan text-space hover:bg-ice`
-const secondary = `${btn} border-line text-soft hover:border-ice hover:text-ink`
-const chip = (on: boolean) => `rounded-full px-3 py-1.5 text-xs font-semibold transition ${on ? 'bg-cyan text-space' : 'text-soft hover:text-ink'}`
-
 const LINK_STATE: Record<string, { level: Level; label: string }> = {
-  live: { level: 'ok', label: 'CONNECTED' },
-  connecting: { level: 'none', label: 'CONNECTING' },
-  stale: { level: 'warn', label: 'NO SIGNAL' },
-  error: { level: 'warn', label: 'PROBLEM' },
-  idle: { level: 'none', label: 'NOT CONNECTED' },
-  unsupported: { level: 'none', label: 'NOT AVAILABLE HERE' },
+  live: { level: 'ok', label: 'Connected' },
+  connecting: { level: 'none', label: 'Connecting' },
+  stale: { level: 'warn', label: 'No signal' },
+  error: { level: 'warn', label: 'Problem' },
+  idle: { level: 'none', label: 'Not connected' },
+  unsupported: { level: 'none', label: 'Not available here' },
+}
+
+/** A native disclosure styled like the rest of the page: 44 px target, a chevron that turns, a hairline above. */
+function Disclosure({ title, open, onToggle, children }: { title: string; open?: boolean; onToggle?: (open: boolean) => void; children: ReactNode }) {
+  return (
+    <details className="group border-t border-line" open={open} onToggle={onToggle ? (e) => onToggle(e.currentTarget.open) : undefined}>
+      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
+        {title}
+        <ChevronDown className="h-4 w-4 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      <div className="pb-4 pt-1">{children}</div>
+    </details>
+  )
 }
 
 /**
  * Live environment station (temperature, humidity, flammable gas) for every user context.
- * Sources of numbers are always labelled: LIVE SENSOR, SIMULATED (never saved) or STORED.
+ * Sources of numbers are always labelled: live sensor, simulated (never saved) or stored.
  */
 export default function EnvStation({ context, title }: { context: Context; title: string }) {
   const s = useEnvStation()
@@ -51,9 +59,9 @@ export default function EnvStation({ context, title }: { context: Context; title
 
   if (!s.station) {
     return (
-      <Panel title={title}>
+      <Section title={title}>
         <p className="text-sm text-dim">Sign in to use the sensor station.</p>
-      </Panel>
+      </Section>
     )
   }
 
@@ -74,35 +82,49 @@ export default function EnvStation({ context, title }: { context: Context; title
   const guidanceShown = (s.alarm != null && s.alarm.endedAt == null) || (s.simAlarm != null && s.simAlarm.endedAt == null)
   const link = LINK_STATE[serial.status]
   const nonHome = context !== 'space'
+  const connectIsPrimary = !serial.connected && !s.sim
 
-  const gasBig = s.gas.ratio != null ? s.gas.ratio.toFixed(2) : fmt(s.gas.raw, 0)
-  const gasUnit = s.gas.ratio != null ? '× baseline' : '/ 1023 raw'
+  const gasValue = s.gas.ratio ?? s.gas.raw ?? null
+  const gasLevel = s.gas.eval.level
+  const gasMeter =
+    s.gas.ratio != null && !s.noData ? (
+      <div>
+        <Meter
+          value={s.gas.ratio}
+          min={0}
+          max={GAS_ALARM_RATIO * 1.5}
+          marks={[
+            { at: GAS_WARN_RATIO, status: 'warn' },
+            { at: GAS_ALARM_RATIO, status: 'crit' },
+          ]}
+          status={gasLevel === 'crit' ? 'crit' : gasLevel === 'warn' ? 'warn' : undefined}
+          label="Flammable gas compared with the clean-air baseline"
+        />
+        <p className="mt-2 text-sm text-dim">
+          Amber tick: attention at {GAS_WARN_RATIO}×. Red tick: alarm at {GAS_ALARM_RATIO}×.
+        </p>
+      </div>
+    ) : null
 
   const baselineArea =
     mode === 'live' ? (
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          className={secondary}
-          disabled={s.baselineCandidate.value == null}
-          title={s.baselineCandidate.reason ?? 'Use the last 10 seconds as the clean-air reference'}
-          onClick={s.captureBaseline}
-        >
-          <Wind className="h-4 w-4" aria-hidden="true" /> {s.baseline ? 'Re-set clean-air baseline' : 'Set clean-air baseline'}
-        </button>
+      <span className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" icon={Wind} disabled={s.baselineCandidate.value == null} title={s.baselineCandidate.reason ?? 'Use the last 10 seconds as the clean-air reference'} onClick={s.captureBaseline}>
+          {s.baseline ? 'Re-set clean-air baseline' : 'Set clean-air baseline'}
+        </Button>
         {s.baseline && (
-          <button type="button" className="text-xs text-dim underline underline-offset-2 hover:text-ink" onClick={s.clearBaseline}>
+          <Button size="sm" variant="quiet" onClick={s.clearBaseline}>
             Clear baseline
-          </button>
+          </Button>
         )}
-        {s.baselineCandidate.reason && <span className="w-full text-xs text-dim">{s.baselineCandidate.reason}</span>}
+        {s.baselineCandidate.reason && <span className="w-full">{s.baselineCandidate.reason}</span>}
         {s.gas.warm != null && s.gas.warm > 0 && (
-          <button type="button" className="text-xs text-dim underline underline-offset-2 hover:text-ink" onClick={s.skipWarmup}>
+          <Button size="sm" variant="quiet" onClick={s.skipWarmup} className="h-auto min-h-9 whitespace-normal py-1.5 text-left">
             Sensor already powered for several minutes? Skip the warm-up
-          </button>
+          </Button>
         )}
-        <span className="w-full text-xs text-dim">Do this in fresh, clean air after the warm-up.</span>
-      </div>
+        <span className="w-full">Do this in fresh, clean air after the warm-up.</span>
+      </span>
     ) : null
 
   // The live window grows from the first sample (min. 1 minute) up to the last 5 minutes.
@@ -111,153 +133,159 @@ export default function EnvStation({ context, title }: { context: Context; title
   const storedFrom = s.now - s.range * 60_000
 
   return (
-    <Panel
-      title={title}
-      action={<SourceBadge mode={mode} pulse={liveLink && serial.status === 'live'} suffix={badgeSuffix} />}
-    >
-      <div className="space-y-4">
-        {mode === 'sim' && (
-          <div className="flex items-start gap-3 rounded-2xl border-2 border-dashed border-ink/60 bg-panel2/60 p-3 text-sm" role="status">
-            <FlaskConical className="mt-0.5 h-5 w-5 shrink-0 text-ink" aria-hidden="true" />
-            <p>
-              <b className="tracking-wider text-ink">SIMULATION MODE</b> <span className="text-soft">— these numbers are generated by AURA for a demo. They are not measured, not saved and never uploaded.</span>
-            </p>
-          </div>
-        )}
-
+    <Section title={title} description="Live temperature, humidity and flammable gas from the Arduino kit" action={<SourceBadge mode={mode} pulse={liveLink && serial.status === 'live'} suffix={badgeSuffix} />}>
+      <div className="space-y-6">
+        {/* Alarms come first and appear instantly: never inside a reveal or a stagger. */}
         {s.alarm && <GasAlarmBanner alarm={s.alarm} context={context} simRunning={mode === 'sim'} onDismiss={s.dismissAlarm} />}
         {s.simAlarm && <GasAlarmBanner alarm={s.simAlarm} context={context} onDismiss={s.dismissAlarm} />}
 
+        {mode === 'sim' && (
+          <Notice tone="info" role="status" title="Simulation mode">
+            These numbers are generated by AURA for a demo. They are not measured, not saved and never uploaded.
+          </Notice>
+        )}
+
         {/* connection + controls */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-line bg-deep/40 p-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <LevelChip level={link.level} label={link.label} />
+        <Card pad="sm" className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-2">
+            {serial.status === 'live' ? <LiveDot label="Connected" className="text-sm" /> : <LevelChip level={link.level} label={link.label} />}
             <p className="min-w-0 text-sm text-soft" aria-live="polite">
               {serial.message}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {serial.connected ? (
-              <button type="button" className={secondary} onClick={() => void serial.disconnect()}>
-                <Unplug className="h-4 w-4" aria-hidden="true" /> Disconnect
-              </button>
+              <Button icon={Unplug} onClick={() => void serial.disconnect()}>
+                Disconnect
+              </Button>
             ) : (
               <>
-                <button
-                  type="button"
-                  className={primary}
+                <Button
+                  variant={connectIsPrimary ? 'primary' : 'secondary'}
+                  icon={Plug}
                   disabled={!serial.supported || serial.status === 'connecting'}
                   title={serial.supported ? 'Connect the Arduino over USB' : 'Needs Chrome or Edge on a computer'}
                   onClick={() => void serial.connect()}
                 >
-                  <Plug className="h-4 w-4" aria-hidden="true" /> Connect sensor
-                </button>
+                  Connect sensor
+                </Button>
                 {serial.supported && serial.knownPort && (
-                  <button type="button" className="text-xs text-dim underline underline-offset-2 hover:text-ink" onClick={() => void serial.connect({ choose: true })}>
+                  <Button variant="quiet" onClick={() => void serial.connect({ choose: true })}>
                     Choose another port
-                  </button>
+                  </Button>
                 )}
               </>
             )}
             {s.sim ? (
               <>
-                <button type="button" className={secondary} onClick={s.stopSim}>
-                  <Square className="h-4 w-4" aria-hidden="true" /> Stop simulation
-                </button>
-                <button type="button" className={secondary} disabled={s.simLeaking} onClick={s.simulateLeak}>
-                  <Flame className="h-4 w-4" aria-hidden="true" /> {s.simLeaking ? 'Leak running…' : 'Simulate gas leak'}
-                </button>
+                <Button icon={Square} onClick={s.stopSim}>
+                  Stop simulation
+                </Button>
+                <Button variant="primary" icon={Flame} disabled={s.simLeaking} onClick={s.simulateLeak}>
+                  {s.simLeaking ? 'Leak running…' : 'Simulate gas leak'}
+                </Button>
               </>
             ) : (
-              <button
-                type="button"
-                className={secondary}
+              <Button
+                icon={FlaskConical}
                 disabled={serial.connected}
                 title={serial.connected ? 'Disconnect the sensor to use the simulation' : 'Show simulated readings (never saved)'}
                 onClick={s.startSim}
               >
-                <FlaskConical className="h-4 w-4" aria-hidden="true" /> Simulate
-              </button>
+                Simulate
+              </Button>
             )}
           </div>
-        </div>
+        </Card>
 
         {/* readouts */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Readout
-            name="Temperature"
-            Icon={Thermometer}
-            value={fmt(s.temp.value, 1)}
-            unit="°C"
-            ev={s.temp.eval}
-            dimmed={s.noData}
-            updated={updated}
-            rule={
-              <>
-                Normal band {CABIN_LIMITS.tempMin}–{CABIN_LIMITS.tempMax} °C (NASA cabin standard)
-              </>
-            }
-          />
-          <Readout
-            name="Humidity"
-            Icon={Droplets}
-            value={fmt(s.hum.value, 0)}
-            unit="%"
-            ev={s.hum.eval}
-            dimmed={s.noData}
-            updated={updated}
-            rule={
-              <>
-                Normal band {CABIN_LIMITS.rhMin}–{CABIN_LIMITS.rhMax} % (NASA cabin standard)
-              </>
-            }
-          />
-          <Readout
-            name="Flammable gas"
-            Icon={Flame}
-            value={gasBig}
-            unit={gasUnit}
-            ev={s.gas.eval}
-            dimmed={s.noData}
-            updated={updated}
-            extra={
-              <>
-                <span className="mr-1 rounded border border-line px-1.5 py-0.5 text-[10px] font-bold tracking-wider text-soft">UNCALIBRATED · NOT PPM</span>
-                Raw {fmt(s.gas.raw, 0)} / 1023
-                {s.gas.base != null ? ` · baseline ${s.gas.base}${mode === 'sim' ? ' (simulated)' : ''}` : ''}
-                {mode === 'live' && s.baseline ? ` · set ${clockTime(Date.parse(s.baseline.at), false)}` : ''}
-                {baselineArea}
-              </>
-            }
-            rule={
-              <>
-                Attention ≥ {GAS_WARN_RATIO}× · alarm ≥ {GAS_ALARM_RATIO}× your clean-air baseline (AURA demo thresholds)
-              </>
-            }
-          />
-        </div>
+        <Stagger className="grid gap-4 md:grid-cols-3 lg:gap-6">
+          <StaggerItem>
+            <Readout
+              name="Temperature"
+              Icon={Thermometer}
+              value={s.temp.value ?? null}
+              decimals={1}
+              unit="°C"
+              ev={s.temp.eval}
+              dimmed={s.noData}
+              updated={updated}
+              rule={
+                <>
+                  Normal band {CABIN_LIMITS.tempMin}–{CABIN_LIMITS.tempMax} °C (NASA cabin standard)
+                </>
+              }
+            />
+          </StaggerItem>
+          <StaggerItem>
+            <Readout
+              name="Humidity"
+              Icon={Droplets}
+              value={s.hum.value ?? null}
+              decimals={0}
+              unit="%"
+              ev={s.hum.eval}
+              dimmed={s.noData}
+              updated={updated}
+              rule={
+                <>
+                  Normal band {CABIN_LIMITS.rhMin}–{CABIN_LIMITS.rhMax} % (NASA cabin standard)
+                </>
+              }
+            />
+          </StaggerItem>
+          <StaggerItem>
+            <Readout
+              name="Flammable gas"
+              Icon={Flame}
+              value={gasValue}
+              decimals={s.gas.ratio != null ? 2 : 0}
+              unit={s.gas.ratio != null ? '× baseline' : '/ 1023 raw'}
+              ev={s.gas.eval}
+              dimmed={s.noData}
+              updated={updated}
+              meter={gasMeter}
+              extra={
+                <>
+                  <span className="mb-1 inline-flex h-6 items-center rounded-md border border-line px-1.5 font-mono text-xs text-soft">Uncalibrated, not ppm</span>
+                  <span className="block">
+                    Raw {fmt(s.gas.raw, 0)} / 1023
+                    {s.gas.base != null ? ` · baseline ${s.gas.base}${mode === 'sim' ? ' (simulated)' : ''}` : ''}
+                    {mode === 'live' && s.baseline ? ` · set ${clockTime(Date.parse(s.baseline.at), false)}` : ''}
+                  </span>
+                  {baselineArea}
+                </>
+              }
+              rule={
+                <>
+                  Attention ≥ {GAS_WARN_RATIO}× · alarm ≥ {GAS_ALARM_RATIO}× your clean-air baseline (AURA demo thresholds)
+                </>
+              }
+            />
+          </StaggerItem>
+        </Stagger>
 
         {/* charts */}
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex rounded-full border border-line p-1" role="tablist" aria-label="Chart data">
-              <button type="button" role="tab" aria-selected={tab === 'live'} className={chip(tab === 'live')} onClick={() => setTab('live')}>
-                Live · last 5 min
-              </button>
-              <button type="button" role="tab" aria-selected={tab === 'stored'} className={chip(tab === 'stored')} onClick={() => setTab('stored')}>
-                Stored history
-              </button>
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <Tabs
+                label="Chart data"
+                value={tab}
+                onChange={setTab}
+                options={[
+                  { value: 'live', label: 'Live · last 5 min' },
+                  { value: 'stored', label: 'Stored history' },
+                ]}
+              />
+              {tab === 'live' && liveLink && serial.status === 'live' && <LiveDot label="Streaming" />}
             </div>
             {tab === 'stored' && (
-              <div className="flex flex-wrap items-center gap-1">
-                {RANGES.map((r) => (
-                  <button key={r.min} type="button" aria-pressed={s.range === r.min} className={chip(s.range === r.min)} onClick={() => s.setRange(r.min)}>
-                    {r.label}
-                  </button>
-                ))}
-                <button type="button" aria-pressed={table} className={chip(table)} onClick={() => setTable((v) => !v)}>
+              <div className="flex flex-wrap items-center gap-2">
+                <Tabs label="Time range" value={String(s.range)} onChange={(v) => s.setRange(Number(v))} options={RANGES} />
+                <Button size="sm" icon={Table2} aria-pressed={table} className={cx(table && 'border-edge bg-panel2')} onClick={() => setTable((v) => !v)}>
                   Table
-                </button>
+                </Button>
               </div>
             )}
           </div>
@@ -266,24 +294,22 @@ export default function EnvStation({ context, title }: { context: Context; title
             s.liveSeries.length ? (
               <EnvCharts data={s.liveSeries} from={liveFrom} to={s.now} gasUnit={s.liveGasUnit} seconds />
             ) : (
-              <div className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-dim">
-                No live values. Connect the sensor, or press <b>Simulate</b> for a demo without hardware.
-              </div>
+              <EmptyState icon={Plug} title="No live values" description="Connect the sensor, or press Simulate for a demo without hardware." />
             )
           ) : (
-            <div className={`space-y-3 transition-opacity ${s.history.loading ? 'opacity-60' : ''}`}>
+            <div className={cx('space-y-4 transition-opacity', s.history.loading && 'opacity-60')}>
               <EnvCharts data={s.storedSeries} from={storedFrom} to={s.now} gasUnit={s.storedGasUnit} seconds={s.range <= 15} />
               {table && <EnvTable rows={s.history.rows} />}
             </div>
           )}
-          <p className="text-xs text-dim">
+          <p className="text-sm text-dim">
             {tab === 'live' ? (
               <>
-                {mode === 'sim' ? 'SIMULATED values, one per second.' : 'LIVE SENSOR values, one per second.'} Gaps mean no data. The gas line pauses while the heater warms up.
+                {mode === 'sim' ? 'Simulated values, one per second.' : 'Live sensor values, one per second.'} Gaps mean no data. The gas line pauses while the heater warms up.
               </>
             ) : (
               <>
-                STORED · {s.history.from === 'server' ? 'from the AURA server' : 'saved in this browser'} · each point is a {BUCKET_MS / 1000}-second average (longer ranges are
+                Stored · {s.history.from === 'server' ? 'from the AURA server' : 'saved in this browser'} · each point is a {BUCKET_MS / 1000}-second average (longer ranges are
                 averaged further; gas shows the peak). {s.history.rows.length} point(s).
                 {s.history.error && <span className="text-warn"> Server not reachable — showing readings saved in this browser.</span>}
               </>
@@ -292,25 +318,21 @@ export default function EnvStation({ context, title }: { context: Context; title
         </div>
 
         {/* guidance + setup */}
-        {!guidanceShown && (
-          <details className="rounded-2xl border border-line bg-deep/40 p-4" open={guideOpen} onToggle={(e) => setGuideOpen(e.currentTarget.open)}>
-            <summary className="cursor-pointer text-sm font-semibold text-ink">What to do if the gas alarm goes off</summary>
-            <div className="mt-3">
+        <div className="border-b border-line">
+          {!guidanceShown && (
+            <Disclosure title="What to do if the gas alarm goes off" open={guideOpen} onToggle={setGuideOpen}>
               <GasGuidance context={context} />
-            </div>
-          </details>
-        )}
-        <details className="rounded-2xl border border-line bg-deep/40 p-4">
-          <summary className="cursor-pointer text-sm font-semibold text-ink">Set up the Arduino sensor</summary>
-          <div className="mt-3">
+            </Disclosure>
+          )}
+          <Disclosure title="Set up the Arduino sensor">
             <SensorSetup device={s.device} noise={s.noise} lines={serial.lineCount} />
-          </div>
-        </details>
+          </Disclosure>
+        </div>
 
         {/* honesty + storage notes */}
-        <div className="space-y-1.5 text-xs text-dim">
+        <div className="max-w-3xl space-y-2 text-sm text-dim">
           <p>
-            <b className="text-soft">{s.station.label}.</b> {s.station.who}{' '}
+            <b className="font-medium text-soft">{s.station.label}.</b> {s.station.who}{' '}
             {s.serverMode ? (
               <>
                 Live readings are saved to the AURA server as one averaged row every {BUCKET_MS / 1000} s
@@ -334,6 +356,6 @@ export default function EnvStation({ context, title }: { context: Context; title
           </p>
         </div>
       </div>
-    </Panel>
+    </Section>
   )
 }

@@ -47,7 +47,7 @@ export const CONTEXTS: Record<Context, ContextDef> = {
     impactHeading: 'At a remote station',
     activityTab: 'Activity',
     hiddenVitals: ['vision'],
-    hiddenSystems: ['radiation'],
+    hiddenSystems: ['radiation', 'eyes'],
   },
   home: {
     id: 'home',

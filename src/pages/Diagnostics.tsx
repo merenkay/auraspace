@@ -1,19 +1,62 @@
-import { AnimatePresence, motion } from 'motion/react'
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router'
-import { Area, AreaChart, CartesianGrid, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import BodyViewer from '../components/BodyViewer'
 import EditVitalModal from '../components/EditVitalModal'
-import { Panel, Spinner, StatusPill } from '../components/ui'
+import { Button, Card, ChartTooltip, EmptyState, List, Meter, Metric, Notice, PageHeader, PageTransition, Row, Section, SourceLink, Skeleton, StatusIcon, StatusPill, Tabs, SYSTEM_ICON, chart, cx } from '../components/ui'
 import { impactOf, vitalFor } from '../data/contexts'
 import { recordsForSystem } from '../data/kb'
 import { SYSTEMS, SYSTEM_BY_ID, type SystemId } from '../data/systems'
-import { STATUS_COLOR, VITAL_BY_KEY, type VitalKey } from '../data/vitals'
-import { baselineOf, seriesOf, timeAgo } from '../lib/health'
+import { STATUS_COLOR, VITAL_BY_KEY, type FieldId, type Status, type VitalKey } from '../data/vitals'
+import { baselineOf, timeAgo } from '../lib/health'
+import { isImportedDevice } from '../lib/samsungHealth'
 import { useCrewData, useSession } from '../lib/session'
+import type { Measurement } from '../lib/types'
 
+// Population reference ranges drawn as the green band on the trend chart.
 const BANDS: Partial<Record<VitalKey, [number, number]>> = {
   bp: [90, 130], hr: [50, 100], spo2: [95, 100], temp: [36.1, 37.5], glucose: [70, 99], sleep: [7, 9], mood: [4, 5], exercise: [90, 150], vision: [4, 5], water: [2.5, 4],
+}
+
+const TREND_DAYS = 30
+const AXIS_LABEL = { fill: 'var(--color-dim)', fontSize: 12, fontFamily: 'var(--font-mono)' }
+
+/** Calendar date of a tracking day: today minus the days in between (days can be <= 0 for imported history). */
+function dateOfDay(day: number, today: number) {
+  const d = new Date()
+  d.setHours(12, 0, 0, 0)
+  d.setDate(d.getDate() - (today - day))
+  return d
+}
+const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
+const fmtLong = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+
+type Point = { day: number; value: number; imported: boolean }
+
+/** Round y-axis bounds and ticks (about five) so the scale reads 4, 5, 6 instead of 4.25, 5.1, 5.95. */
+function niceAxis(values: number[]): { domain: [number, number]; ticks: number[] } {
+  const lo = Math.min(...values)
+  const hi = Math.max(...values)
+  const span = hi - lo || Math.abs(hi) * 0.1 || 1
+  const raw = span / 4
+  const mag = 10 ** Math.floor(Math.log10(raw))
+  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw
+  const min = Math.floor(lo / step) * step
+  const max = Math.ceil(hi / step) * step
+  const ticks: number[] = []
+  for (let v = min; v <= max + step / 2; v += step) ticks.push(+v.toFixed(6))
+  return { domain: [+min.toFixed(6), +max.toFixed(6)], ticks }
+}
+
+
+/** One point per tracking day over the last `days` days: the newest reading of that day wins. */
+function trendOf(rows: Measurement[], metric: FieldId, today: number, days: number): Point[] {
+  const byDay = new Map<number, Measurement>()
+  for (const r of rows) {
+    if (r.metric !== metric || r.day <= today - days) continue
+    const cur = byDay.get(r.day)
+    if (!cur || r.at >= cur.at) byDay.set(r.day, r)
+  }
+  return [...byDay.entries()].sort((a, b) => a[0] - b[0]).map(([day, r]) => ({ day, value: r.value, imported: isImportedDevice(r.device) }))
 }
 
 export default function Diagnostics({ crewId }: { crewId: number }) {
@@ -30,150 +73,216 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
   const research = useMemo(() => (ctx === 'space' ? recordsForSystem(sel).filter((r) => r.findings.length)[0] : undefined), [sel, ctx])
   const impact = impactOf(sel, ctx)
 
-  if (!ev) return data.error ? <p className="text-crit">{data.error}</p> : <Spinner />
+  if (!ev) {
+    return data.error ? (
+      <>
+        <PageHeader title="Diagnostics" />
+        <Notice tone="crit" role="alert" title="Could not load the diagnostics">
+          {data.error}
+        </Notice>
+      </>
+    ) : (
+      <>
+        <PageHeader title="Diagnostics" description="Pick a body system to see its readings, its 30-day trend and the research behind it." />
+        <div className="grid gap-6 xl:grid-cols-12">
+          <Skeleton className="hidden h-96 xl:col-span-3 xl:block" />
+          <Skeleton className="h-[420px] sm:h-[520px] xl:col-span-5 xl:h-[640px]" />
+          <Skeleton className="h-96 xl:col-span-4" />
+        </div>
+      </>
+    )
+  }
+
+  // A system with no reading at all is "No data", never "Normal" (the rules layer defaults it to ok for the 3D model).
+  const hasData = (id: SystemId) => (id === 'radiation' ? ev.showRad : SYSTEM_BY_ID[id].vitals.some((k) => ev.vitalStatus[k]))
+  const statusOf = (id: SystemId): Status | null => (hasData(id) ? ev.systemStatus[id] : null)
   const summaries = Object.fromEntries(
     SYSTEMS.map((s) => [s.id, s.vitals.filter((k) => ev.vitalStatus[k]).map((k) => `${ev.defByKey[k]!.display(ev.values)} ${ev.defByKey[k]!.unit}`).join(' · ') || (s.id === 'radiation' ? `${ev.rad.dose.toFixed(0)} mSv` : 'No reading yet')]),
   ) as Record<SystemId, string>
 
   const def = active ? (ev.defByKey[active] ?? VITAL_BY_KEY[active]) : null
-  const trend = def ? seriesOf(data.rows, def.primary, 30, mission?.day ?? 142) : []
+  const today = mission?.day ?? 142
+  const trend = def ? trendOf(data.rows, def.primary, today, TREND_DAYS) : []
   const base = def ? baselineOf(data.rows, def.primary) : null
   const band = active ? BANDS[active] : undefined
+  const yAxis = niceAxis([...trend.map((p) => p.value), ...(base != null ? [base] : [])])
+  const dateMode = ctx !== 'space' || trend.some((p) => p.day <= 0)
+  const dayLabel = (d: number) => (dateMode ? fmtShort(dateOfDay(d, today)) : `D${d}`)
+  const importedDays = trend.filter((p) => p.imported).length
+  const importedByDay = new Map(trend.map((p) => [p.day, p.imported]))
+  const metricName = def && def.fields.length > 1 ? def.fields[0].label : def?.label
+  const pointStatus = (v: number): Status | null => (def && def.fields.length === 1 ? def.evaluate({ ...ev.values, [def.primary]: v }) : null)
+  const outOfRange = trend.some((p) => pointStatus(p.value) && pointStatus(p.value) !== 'ok')
+  const sysStatus = statusOf(sel)
 
   return (
-    <div className="grid gap-5 xl:grid-cols-[220px_minmax(0,1fr)_440px]">
-      <Panel title="Body systems" className="h-fit">
-        <div className="flex flex-row flex-wrap gap-1.5 xl:flex-col">
-          {ev.systems.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              aria-pressed={sel === s.id}
-              onClick={() => setSel(s.id)}
-              className={`flex min-h-11 items-center gap-2.5 rounded-xl px-3 text-left text-sm transition ${sel === s.id ? 'bg-panel2 text-ink ring-1 ring-cyan/50' : 'text-soft hover:bg-panel2/60'}`}
-            >
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLOR[ev.systemStatus[s.id]] }} />
-              {s.name}
-            </button>
-          ))}
-        </div>
-      </Panel>
+    <div>
+      <PageHeader title="Diagnostics" description="Pick a body system to see its readings, its 30-day trend and the research behind it." />
 
-      <Panel className="relative h-[620px] overflow-hidden p-2 xl:h-[720px]">
-        <BodyViewer statuses={ev.systemStatus} summaries={summaries} selected={sel} onSelect={setSel} heartRate={ev.values.hr} showRadiation={ev.showRad} />
-      </Panel>
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-6 xl:grid-cols-12">
+        <nav aria-label="Body systems" className="min-w-0 xl:col-span-3">
+          <Tabs<SystemId>
+            label="Body systems"
+            className="xl:hidden"
+            value={sel}
+            onChange={setSel}
+            options={ev.systems.map((s) => ({ value: s.id, label: s.name, icon: SYSTEM_ICON[s.id], status: statusOf(s.id) ?? undefined }))}
+          />
+          <List className="hidden xl:block">
+            {ev.systems.map((s) => {
+              const Icon = SYSTEM_ICON[s.id]
+              return <Row key={s.id} title={s.name} description={summaries[s.id]} selected={sel === s.id} onClick={() => setSel(s.id)} leading={<Icon className="h-5 w-5" aria-hidden="true" />} trailing={<StatusIcon status={statusOf(s.id)} />} />
+            })}
+          </List>
+        </nav>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={sel}
-          initial={{ opacity: 0, x: 30 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -20 }}
-          transition={{ duration: 0.3 }}
-          className="flex flex-col gap-5"
-        >
-          <Panel>
-            <p className="label">{ctx === 'space' ? `Hazard · ${sys.hazard}` : impact.heading}</p>
-            <div className="mt-1 flex items-center justify-between gap-3">
-              <h1 className="font-display text-2xl font-bold">{sys.name}</h1>
-              <StatusPill status={ev.systemStatus[sel]} />
-            </div>
-            <p className="mt-3 text-sm leading-relaxed text-soft">{impact.text}</p>
+        <Card pad="none" className="relative h-[420px] overflow-hidden sm:h-[520px] xl:col-span-5 xl:h-[640px]">
+          <BodyViewer statuses={ev.systemStatus} summaries={summaries} selected={sel} onSelect={setSel} heartRate={ev.values.hr} showRadiation={ev.showRad} />
+        </Card>
 
-            {vitals.length > 0 && (
-              <div className="mt-4 grid grid-cols-2 gap-2.5">
-                {vitals.map((k) => {
-                  const d = ev.defByKey[k]!
-                  const m = ev.meta[d.primary]
-                  return (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setMetric(k)}
-                      className={`rounded-2xl border p-3 text-left transition ${active === k ? 'border-cyan/60 bg-panel2' : 'border-line bg-deep/60 hover:border-cyan/40'}`}
-                    >
-                      <div className="text-xs text-dim">{d.label}</div>
-                      <div className="font-display text-2xl font-bold" style={{ color: STATUS_COLOR[ev.vitalStatus[k]!] }}>
-                        {d.display(ev.values)} <span className="text-xs font-normal text-dim">{d.unit}</span>
-                      </div>
-                      <div className="text-[11px] text-dim">
-                        {m?.device} · {timeAgo(m?.at)}
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-            {sel === 'radiation' && (
-              <div className="mt-4">
-                <div className="font-display text-4xl font-bold" style={{ color: STATUS_COLOR[ev.rad.status] }}>
-                  {ev.rad.dose.toFixed(0)} <span className="text-base text-dim">mSv</span>
+        <div className="min-w-0 xl:col-span-4">
+          <PageTransition routeKey={sel}>
+            <div className="space-y-8">
+              <section aria-labelledby="diag-system">
+                <p className="text-sm text-dim">{ctx === 'space' ? `Hazard · ${sys.hazard}` : impact.heading}</p>
+                <div className="mt-1 flex items-center justify-between gap-3">
+                  <h2 id="diag-system" className="text-title text-ink">
+                    {sys.name}
+                  </h2>
+                  <StatusPill status={sysStatus} />
                 </div>
-                <p className="mt-1 text-sm text-dim">{ev.rad.mission.doseNote}</p>
-              </div>
-            )}
-          </Panel>
+                <p className="mt-3 text-sm leading-relaxed text-soft">{impact.text}</p>
 
-          {def && trend.length > 1 && (
-            <Panel title={`${def.label} · last 30 days`}>
-              <div className="h-48">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={trend} margin={{ top: 6, right: 8, bottom: 0, left: -18 }}>
-                    <defs>
-                      <linearGradient id="diagFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#53D7FF" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#53D7FF" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid stroke="#1E3A55" strokeDasharray="3 6" vertical={false} />
-                    <XAxis dataKey="day" tick={{ fill: '#91A9BD', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(d) => `D${d}`} />
-                    <YAxis tick={{ fill: '#91A9BD', fontSize: 11 }} tickLine={false} axisLine={false} domain={['auto', 'auto']} />
-                    {band && <ReferenceArea y1={band[0]} y2={band[1]} fill="#35D399" fillOpacity={0.08} ifOverflow="hidden" />}
-                    {base != null && <ReferenceLine y={base} stroke="#91A9BD" strokeDasharray="5 5" />}
-                    <Tooltip contentStyle={{ background: '#07111F', border: '1px solid #1E3A55', borderRadius: 12 }} labelFormatter={(d) => `Mission day ${d}`} />
-                    <Area type="monotone" dataKey="value" name={def.label} stroke="#53D7FF" strokeWidth={2.5} fill="url(#diagFill)" animationDuration={900} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-2 flex flex-wrap gap-4 text-[11px] text-dim">
-                <span>Green band: population reference</span>
-                <span>Dashed: your pre-flight baseline</span>
-              </div>
-            </Panel>
-          )}
+                {vitals.length > 0 && (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    {vitals.map((k) => {
+                      const d = ev.defByKey[k]!
+                      const m = ev.meta[d.primary]
+                      const on = active === k
+                      return (
+                        <button
+                          key={k}
+                          type="button"
+                          aria-pressed={on}
+                          onClick={() => setMetric(k)}
+                          className={cx('rounded-2xl border p-4 text-left transition-colors', on ? 'border-ink bg-panel2' : 'border-line bg-panel hover:bg-panel2')}
+                        >
+                          <Metric size="md" label={d.label} value={d.display(ev.values)} unit={d.unit} status={ev.vitalStatus[k]} hint={timeAgo(m?.at)} />
+                          <p className="meta mt-1.5 break-words">{m?.device}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+                {vitals.length === 0 && sel !== 'radiation' && <EmptyState className="mt-5" title="No readings yet" description="Log a measurement or connect a device to see this system." />}
+                {sel === 'radiation' && (
+                  <Card className="mt-5">
+                    <Metric label="Mission dose so far" value={ev.rad.dose} decimals={0} unit="mSv" size="lg" status={ev.rad.status} />
+                    <div className="mt-4">
+                      <Meter value={ev.rad.pct} min={0} max={100} marks={[{ at: 50, status: 'warn' }, { at: 80, status: 'crit' }]} status={ev.rad.status === 'ok' ? undefined : ev.rad.status} label="Share of the career dose limit" />
+                    </div>
+                    <p className="mt-3 text-sm text-dim">{ev.rad.pct.toFixed(0)}% of the career limit. Marks at 50% (attention) and 80% (urgent) are AURA demo thresholds.</p>
+                    <p className="mt-1 text-sm text-dim">{ev.rad.mission.doseNote}</p>
+                  </Card>
+                )}
+              </section>
 
-          {!research && impact.source && ctx !== 'space' && (
-            <Panel title="What the research says">
-              <p className="text-sm leading-relaxed">{impact.text}</p>
-              <a href={impact.source.url} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-cyan underline">
-                {impact.source.org} — {impact.source.title}
-              </a>
-            </Panel>
-          )}
-          {research && (
-            <Panel title="What NASA research says">
-              <p className="text-sm leading-relaxed">{research.findings[0].text}</p>
-              <blockquote className="mt-2 border-l-2 border-cyan/50 pl-3 text-xs italic text-dim">“{research.findings[0].quote}”</blockquote>
-              <a href={research.url} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-cyan underline">
-                {research.organization} — {research.title}
-              </a>
-            </Panel>
-          )}
+              {def && (
+                <Section title={`${def.label} · last ${TREND_DAYS} days`} description={`${metricName} in ${def.unit}${importedDays ? ` · ${importedDays} imported day${importedDays === 1 ? '' : 's'}` : ''}`}>
+                  {trend.length > 1 ? (
+                    <>
+                      <div className="h-64 rounded-xl border border-line bg-deep p-3">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart key={def.key} data={trend} margin={{ ...chart.margin, bottom: 18, left: 4 }}>
+                            <CartesianGrid {...chart.grid} />
+                            <XAxis dataKey="day" type="number" domain={['dataMin', 'dataMax']} allowDecimals={false} {...chart.xAxis} tickFormatter={dayLabel} label={{ ...{ value: dateMode ? 'Date' : 'Mission day', position: 'insideBottom', offset: -12 }, style: AXIS_LABEL }} />
+                            <YAxis domain={yAxis.domain} ticks={yAxis.ticks} {...chart.yAxis} width={52} label={{ value: def.unit, angle: -90, position: 'insideLeft', offset: 4, style: { ...AXIS_LABEL, textAnchor: 'middle' } }} />
+                            {band && <ReferenceArea y1={band[0]} y2={band[1]} {...chart.band('ok')} />}
+                            {base != null && <ReferenceLine y={base} {...chart.refLine()} />}
+                            <Tooltip
+                              {...chart.tooltip}
+                              content={
+                                <ChartTooltip
+                                  unit={def.unit}
+                                  formatLabel={(d) => (
+                                    <>
+                                      {dateMode ? fmtLong(dateOfDay(Number(d), today)) : `Mission day ${d} · ${fmtShort(dateOfDay(Number(d), today))}`}
+                                      {importedByDay.get(Number(d)) ? ' · Imported from device' : ''}
+                                    </>
+                                  )}
+                                />
+                              }
+                            />
+                            <Line
+                              dataKey="value"
+                              name={metricName}
+                              {...chart.line}
+                              dot={(p: { cx?: number; cy?: number; index?: number; payload?: Point }) => {
+                                if (p.cx == null || p.cy == null || !p.payload) return <g key={`d${p.index}`} />
+                                const st = pointStatus(p.payload.value)
+                                const fill = st && st !== 'ok' ? STATUS_COLOR[st] : 'var(--color-ink)'
+                                // hollow ring = imported from a device; filled dot = entered or simulated
+                                return p.payload.imported ? (
+                                  <circle key={`d${p.index}`} cx={p.cx} cy={p.cy} r={4} fill="var(--color-deep)" stroke={fill} strokeWidth={1.75} />
+                                ) : (
+                                  <circle key={`d${p.index}`} cx={p.cx} cy={p.cy} r={st && st !== 'ok' ? 3.5 : 2.5} fill={fill} />
+                                )
+                              }}
+                            />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <p className="mt-2 text-sm text-dim">
+                        {band && `Green band: usual reference range, ${band[0]}–${band[1]} ${def.unit}. `}
+                        {base != null && 'Dashed grey line: your baseline, the average of your first 14 days with this measurement. '}
+                        {outOfRange && 'Amber or red dots: readings outside the normal range. '}
+                        {importedDays > 0 && 'Hollow rings: days imported from a device. '}
+                        {dateMode ? 'The horizontal axis shows calendar dates.' : 'D is the mission day.'}
+                      </p>
+                    </>
+                  ) : (
+                    <EmptyState
+                      title={trend.length ? 'Only one day of readings' : `No readings in the last ${TREND_DAYS} days`}
+                      description={trend.length ? 'A trend needs at least two different days. Log another reading tomorrow.' : 'Log a measurement and the trend appears here.'}
+                    />
+                  )}
+                </Section>
+              )}
 
-          <div className="flex gap-2.5">
-            {user?.role === 'astronaut' && vitals.length > 0 && (
-              <button type="button" onClick={() => setEditing(active)} className="flex-1 rounded-2xl bg-cyan py-3 font-semibold text-space transition hover:bg-ice">
-                Log a measurement
-              </button>
-            )}
-            {user?.role !== 'ground' && (
-              <Link to={`/crew/${crewId}/aura`} className="flex-1 rounded-2xl border border-cyan/60 py-3 text-center font-semibold text-ice transition hover:bg-cyan/10">
-                Examine with AURA
-              </Link>
-            )}
-          </div>
-        </motion.div>
-      </AnimatePresence>
+              {!research && impact.source && ctx !== 'space' && (
+                <Section title="What the research says">
+                  <p className="text-sm leading-relaxed text-soft">{impact.text}</p>
+                  <div className="mt-3">
+                    <SourceLink href={impact.source.url} org={impact.source.org} title={impact.source.title} />
+                  </div>
+                </Section>
+              )}
+              {research && (
+                <Section title="What NASA research says">
+                  <p className="text-sm leading-relaxed text-soft">{research.findings[0].text}</p>
+                  <blockquote className="mt-3 border-l-2 border-edge pl-3 text-sm italic leading-snug text-dim">“{research.findings[0].quote}”</blockquote>
+                  <div className="mt-3">
+                    <SourceLink href={research.url} org={research.organization} title={research.title} />
+                  </div>
+                </Section>
+              )}
+
+              <div className="flex flex-wrap gap-3">
+                {user?.role === 'astronaut' && vitals.length > 0 && (
+                  <Button variant="primary" className="flex-1" onClick={() => setEditing(active)}>
+                    Log a measurement
+                  </Button>
+                )}
+                {user?.role !== 'ground' && (
+                  <Button to={`/crew/${crewId}/aura`} className="flex-1">
+                    Examine with AURA
+                  </Button>
+                )}
+              </div>
+            </div>
+          </PageTransition>
+        </div>
+      </div>
 
       {editing && (
         <EditVitalModal
