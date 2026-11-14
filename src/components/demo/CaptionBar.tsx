@@ -53,9 +53,9 @@ const CaptionBar = forwardRef<HTMLDivElement, CaptionBarProps>(function CaptionB
       className="group pointer-events-auto fixed inset-x-2 bottom-[max(0.5rem,env(safe-area-inset-bottom))] mx-auto max-w-3xl rounded-2xl border border-line bg-panel2 shadow-overlay sm:inset-x-4 sm:bottom-4"
     >
       {/* where we are */}
-      <div className="flex items-center gap-x-3 gap-y-1 px-4 pt-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1.5 px-4 pt-3">
         <Badge className="border-edge text-soft">Demo · simulated data</Badge>
-        <p className="min-w-0 flex-1 truncate font-mono text-xs text-dim">
+        <p className="order-last min-w-0 basis-full truncate font-mono text-xs text-dim sm:order-none sm:flex-1 sm:basis-0">
           {chapter ? (
             <>
               {snap.chapter + 1}/{chapters.length} · {chapter.title}

@@ -62,11 +62,12 @@ export function createDriver(env: () => DriverEnv): Driver {
     }
   }
 
-  async function become(id: PersonaId, ctx: RunContext) {
+  /** Returns true when a different person had to be signed in. */
+  async function become(id: PersonaId, ctx: RunContext): Promise<boolean> {
     const want = userOf(id)
     persona = id
     const cur = env().user
-    if (cur && cur.id === want.id && cur.role === want.role) return
+    if (cur && cur.id === want.id && cur.role === want.role) return false
     guard()
     if (PERSONAS[id].kind === 'crew') {
       await env().demoLogin('astronaut', want.crewId ?? undefined)
@@ -78,25 +79,50 @@ export function createDriver(env: () => DriverEnv): Driver {
       await env().signedIn(want)
     }
     await until(ctx, 3000, () => env().user?.id === want.id)
+    return true
   }
 
   const waitFor = (target: Target, timeout: number, ctx: RunContext) => until(ctx, timeout, () => resolveTarget(target))
 
-  /** Scroll the element clear of the caption bar and wait until it has stopped moving. */
+  /**
+   * Scroll the element clear of the caption bar and wait until it has stopped moving. Other code may move the
+   * page at the same moment (an opening panel, a page that scrolls to its own result), so the position is
+   * checked again once things are still, and corrected without animation if needed.
+   */
   async function settle(target: Target, ctx: RunContext) {
-    const el = resolveTarget(target)
-    if (!el) return
-    bringIntoView(el, env().bottomInset, !env().reducedMotion)
-    let last = ''
-    let same = 0
-    for (let i = 0; i < 14 && same < 2; i++) {
-      await ctx.delay(POLL_MS)
-      const now = resolveTarget(target)
-      if (!now) return
-      const b = boxOf(now)
-      const sig = `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.w)},${Math.round(b.h)}`
-      same = sig === last ? same + 1 : 0
-      last = sig
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const el = resolveTarget(target)
+      if (!el) return
+      if (!bringIntoView(el, env().bottomInset, attempt === 0 && !env().reducedMotion)) return
+      let last = ''
+      let same = 0
+      for (let i = 0; i < 20 && same < 2; i++) {
+        await ctx.delay(60)
+        const now = resolveTarget(target)
+        if (!now) return
+        const b = boxOf(now)
+        const sig = `${Math.round(b.x)},${Math.round(b.y)},${Math.round(b.w)},${Math.round(b.h)}`
+        same = sig === last ? same + 1 : 0
+        last = sig
+      }
+    }
+  }
+
+  /**
+   * Go to a page and make sure the app stays there. Right after a different person is signed in, the page
+   * being left redirects to that person's own record; that redirect can land after ours and undo it.
+   */
+  async function go(path: string, confirm: boolean, ctx: RunContext) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if (window.location.pathname !== path) env().navigate(path)
+      if (!confirm) return
+      let held = true
+      for (let i = 0; i < 7 && held; i++) {
+        await ctx.delay(50)
+        held = window.location.pathname === path
+      }
+      if (held) return
+      await ctx.delay(120)
     }
   }
 
@@ -110,17 +136,17 @@ export function createDriver(env: () => DriverEnv): Driver {
   return {
     async scene(scene: Scene, opts, ctx) {
       guard()
-      await become(scene.persona, ctx)
+      const switched = await become(scene.persona, ctx)
       const path = pathOf(scene.route, scene.persona)
       if (window.location.pathname === path && opts.fresh) {
         // Mount the page again from scratch: step out to another page of the same record and come back.
         const base = `/crew/${PERSONAS[scene.persona].crewId}`
         const away = path === base ? '/environment' : base
-        env().navigate(away)
+        await go(away, switched, ctx)
         await until(ctx, 3000, () => window.location.pathname === away)
-        await ctx.delay(60)
+        await ctx.delay(150)
       }
-      if (window.location.pathname !== path) env().navigate(path)
+      await go(path, switched, ctx)
       await until(ctx, PAGE_TIMEOUT_MS, () => pageReady(path))
     },
 
@@ -146,7 +172,11 @@ export function createDriver(env: () => DriverEnv): Driver {
         case 'set': {
           const el = await waitFor(action.target, action.timeout ?? ACTION_TIMEOUT_MS, ctx)
           if (!el) return 'missing'
-          if (toggleState(el) !== action.on) await click(el, ctx)
+          if (toggleState(el) !== action.on) {
+            await click(el, ctx)
+            // let an opening panel finish growing before anything is measured or scrolled
+            await ctx.delay(env().reducedMotion ? 60 : 320)
+          }
           return 'ok'
         }
         case 'type': {

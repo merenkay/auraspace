@@ -1,8 +1,9 @@
 // Builds the care plan for one condition: who to contact (context- and Earth-delay-aware), what to do now,
 // what not to do, medicines (checked against the profile), what to monitor, when to escalate, and sources.
 import type { Context } from '../../data/contexts'
-import { sourceOf, type Cited, type Condition, type EvidenceKind, type Urgency } from '../../data/conditions'
+import { SOURCES, sourceOf, type Cited, type Condition, type EvidenceKind, type Urgency } from '../../data/conditions'
 import type { HealthProfile } from '../../data/conditions/profile'
+import { CABIN_SOURCES } from '../../data/cabinLink/sources'
 import { formatDelay } from '../../data/missions'
 import type { Assessment } from './engine'
 import { asRedFlag, localise } from './localise'
@@ -94,7 +95,8 @@ export function carePlan(c: Condition, a: Assessment, ctx: Context, profile: Hea
   }
   const byId = new Map<string, PlanSource>()
   const add = (id: string, quote: string) => {
-    const s = sourceOf(id)
+    // environment explanations (src/data/cabinLink/envDx.ts) cite the cabin-link sources
+    const s = SOURCES[id] ? sourceOf(id) : (CABIN_SOURCES[id] ?? sourceOf(id))
     const cur = byId.get(id) ?? { id, org: s.org, title: s.title, url: s.url, quotes: [] }
     if (cur.quotes.length < 3 && !cur.quotes.includes(quote)) cur.quotes.push(quote)
     byId.set(id, cur)

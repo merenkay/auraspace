@@ -17,6 +17,16 @@ export const CABIN_SOURCES: Record<string, SourceInfo> = {
   'nhs-heat': { org: 'NHS', title: 'Heat exhaustion and heatstroke', url: 'https://www.nhs.uk/conditions/heat-exhaustion-heatstroke/' },
   'nhs-hypothermia': { org: 'NHS', title: 'Hypothermia', url: 'https://www.nhs.uk/conditions/hypothermia/' },
   'nhs-dry-eyes': { org: 'NHS', title: 'Dry eyes', url: 'https://www.nhs.uk/conditions/dry-eyes/' },
+  // environment-aware consultation (src/data/cabinLink/envDx.ts), fetched 14 Nov 2026
+  'nhs-sweating': { org: 'NHS', title: 'Excessive sweating (hyperhidrosis)', url: 'https://www.nhs.uk/conditions/excessive-sweating-hyperhidrosis/' },
+  'nhs-dehydration': { org: 'NHS', title: 'Dehydration', url: 'https://www.nhs.uk/conditions/dehydration/' },
+  'osha-heat': { org: 'OSHA (US Dept. of Labor)', title: 'Heat — Heat Hazard Recognition', url: 'https://www.osha.gov/heat-exposure/hazards' },
+  'medline-chills': { org: 'MedlinePlus (US National Library of Medicine)', title: 'Chills', url: 'https://medlineplus.gov/ency/article/003091.htm' },
+  'nhs-breath': { org: 'NHS', title: 'Shortness of breath', url: 'https://www.nhs.uk/symptoms/shortness-of-breath/' },
+  'noaa-hi-equation': { org: 'NOAA / National Weather Service (WPC)', title: 'The Heat Index Equation', url: 'https://www.wpc.ncep.noaa.gov/html/heatindex_equation.shtml' },
+  'nws-heat-index': { org: 'National Weather Service', title: 'What is the heat index?', url: 'https://www.weather.gov/ama/heatindex' },
+  'nws-heat-tools': { org: 'National Weather Service', title: 'Heat Forecast Tools', url: 'https://www.weather.gov/safety/heat-index' },
+  'adafruit-dht': { org: 'Adafruit', title: 'DHT11, DHT22 and AM2302 sensors — overview', url: 'https://learn.adafruit.com/dht/overview' },
 }
 
 /** What the sensor can and cannot tell. */

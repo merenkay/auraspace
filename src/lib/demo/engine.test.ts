@@ -74,7 +74,7 @@ afterEach(() => {
 })
 
 describe('flatten', () => {
-  it('gives every step its chapter scene, order and nominal start; optional steps take no nominal time', () => {
+  it('gives every step its chapter scene, order and nominal start', () => {
     const f = flatten({
       chapters: [
         { id: 'x', title: 'X', subtitle: '', scene: scene('/x'), steps: [step('x1'), step('x2', { optional: true, target: '#o' }), step('x3', { scene: scene('/other') })] },
@@ -84,14 +84,14 @@ describe('flatten', () => {
     expect(f.steps.map((s) => [s.id, s.chapter, s.first, s.startMs, s.scene.route])).toEqual([
       ['x1', 0, true, 0, '/x'],
       ['x2', 0, false, 1000, '/x'],
-      ['x3', 0, false, 1000, '/other'],
-      ['y1', 1, true, 2000, '/y'],
+      ['x3', 0, false, 2000, '/other'],
+      ['y1', 1, true, 3000, '/y'],
     ])
     expect(f.chapters.map((c) => [c.id, c.firstStep, c.startMs, c.endMs])).toEqual([
-      ['x', 0, 0, 2000],
-      ['y', 3, 2000, 2500],
+      ['x', 0, 0, 3000],
+      ['y', 3, 3000, 3500],
     ])
-    expect(f.totalMs).toBe(2500)
+    expect(f.totalMs).toBe(3500)
   })
 })
 
@@ -171,6 +171,7 @@ describe('TourEngine: waits, timeouts and missing targets', () => {
     await vi.advanceTimersByTimeAsync(100)
     expect(ids(e)).toBe('c3')
     expect(e.getSnapshot().skipped).toEqual(['c2'])
+    expect(e.getSnapshot().positionMs).toBe(2000) // the timeline jumps over the skipped step
     expect(log).not.toContain('narrate caption c2')
     await vi.advanceTimersByTimeAsync(5000)
     expect(e.getSnapshot().status).toBe('finished')

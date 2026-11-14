@@ -1,9 +1,11 @@
 // Loads the signed-in user's sensor-station history (same station scoping as the Environment page) and
 // derives the cabin-air context. Refreshes every 30 s. Simulated readings are never stored, so they never
 // reach the consultation.
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { Context } from '../../data/contexts'
 import { deriveCabinContext, LOOKBACK_MS, type CabinContext } from '../../lib/cabinLink/context'
+import { cabinWithLive, setStoredCabin } from '../../lib/cabinLink/current'
+import { useEnvLive } from '../env/useEnvLive'
 import type { Answers } from '../../lib/doctor/engine'
 import { FINDING_BY_ID } from '../../lib/doctor/findings'
 import { loadHistory, loadLatest, stationFor, type EnvRow } from '../../lib/envStation'
@@ -16,20 +18,21 @@ export type CabinData = { cabin: CabinContext | null; rows: EnvRow[]; skewMs: nu
 export function useCabinContext(ctx: Context, minutes = LOOKBACK_MS / 60_000): CabinData {
   const { user } = useSession()
   const station = stationFor(user)?.id ?? null
-  const [state, setState] = useState<Omit<CabinData, 'reload' | 'station'>>({ cabin: null, rows: [], skewMs: 0, loading: true })
+  const [state, setState] = useState<Omit<CabinData, 'reload' | 'station'> & { latest: EnvRow | null }>({ cabin: null, rows: [], latest: null, skewMs: 0, loading: true })
 
   const load = useCallback(async () => {
     if (!station) {
-      setState({ cabin: deriveCabinContext({ rows: [], now: Date.now(), context: ctx }), rows: [], skewMs: 0, loading: false })
+      setState({ cabin: deriveCabinContext({ rows: [], now: Date.now(), context: ctx }), rows: [], latest: null, skewMs: 0, loading: false })
       return
     }
     try {
       const [h, l] = await Promise.all([loadHistory(station, Math.max(minutes, LOOKBACK_MS / 60_000)), loadLatest(station)])
       const now = Date.now()
-      setState({ cabin: deriveCabinContext({ rows: h.rows, latest: l.row, now, context: ctx, skewMs: l.skewMs }), rows: h.rows, skewMs: l.skewMs, loading: false })
+      setStoredCabin({ station, rows: h.rows, latest: l.row, skewMs: l.skewMs })
+      setState({ cabin: deriveCabinContext({ rows: h.rows, latest: l.row, now, context: ctx, skewMs: l.skewMs }), rows: h.rows, latest: l.row, skewMs: l.skewMs, loading: false })
     } catch {
       // unknown is reported as "no recent readings", never as normal air
-      setState({ cabin: deriveCabinContext({ rows: [], now: Date.now(), context: ctx }), rows: [], skewMs: 0, loading: false })
+      setState({ cabin: deriveCabinContext({ rows: [], now: Date.now(), context: ctx }), rows: [], latest: null, skewMs: 0, loading: false })
     }
   }, [station, ctx, minutes])
 
@@ -39,7 +42,15 @@ export function useCabinContext(ctx: Context, minutes = LOOKBACK_MS / 60_000): C
     return () => window.clearInterval(t)
   }, [load])
 
-  return { ...state, station, reload: () => void load() }
+  // Live sensor readings (app-level store) are fresh by definition: fold them in every 10-s bucket.
+  const live = useEnvLive()
+  const liveKey = live.connected && live.stationId === station && live.latest ? Math.floor(live.latest.at / 10_000) : 0
+  const cabin = useMemo(
+    () => (state.loading && !liveKey ? state.cabin : cabinWithLive({ rows: state.rows, latest: state.latest, skewMs: state.skewMs, station, context: ctx })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state, liveKey, station, ctx],
+  )
+  return { cabin, rows: state.rows, skewMs: state.skewMs, loading: state.loading, station, reload: () => void load() }
 }
 
 /* ------------------------------------------------ hand-off to the consultation */

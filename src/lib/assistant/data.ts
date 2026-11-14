@@ -4,7 +4,11 @@ import { STATUS_LABEL, VITAL_BY_KEY, type VitalKey } from '../../data/vitals'
 import type { Backend } from '../api'
 import { canReadClinic, latestAssessment, loadProfile } from '../clinic'
 import { buildCoach, canReadCoach, isoDate, loadCoach, todaySummary } from '../coach'
+import { deriveCabinContext } from '../cabinLink/context'
+import { currentCabin } from '../cabinLink/current'
+import { environmentBrief } from '../cabinLink/envDx'
 import { evalGas, loadLatest, rowRatio, stationFor } from '../envStation'
+import { envLive } from '../serial/envLive'
 import { seriesOf, type Evaluation } from '../health'
 import type { Measurement, Mission, User } from '../types'
 import type { EnvSnapshot } from './reply'
@@ -13,13 +17,21 @@ import type { EnvSnapshot } from './reply'
 export async function loadEnvSnapshot(user: User | null): Promise<EnvSnapshot | null> {
   const st = stationFor(user)
   if (!st) return null
+  const ctx = user?.context ?? 'space'
+  // A connected sensor (app-level live store) is the freshest source.
+  const live = envLive.getSnapshot()
+  if (live.stationId === st.id && live.latest?.fresh) {
+    const l = live.latest
+    return { label: st.label, t: l.t, h: l.h, gas: l.gasLevel, ageMin: Math.max(0, (Date.now() - l.at) / 60_000), simulated: false, live: true, brief: environmentBrief(currentCabin(ctx, st.id), ctx) }
+  }
   try {
     const { row, skewMs } = await loadLatest(st.id)
     if (!row) return { label: st.label, t: null, h: null, gas: 'none', ageMin: 0, simulated: false }
     const ageMin = Math.max(0, (Date.now() - skewMs - Date.parse(row.at)) / 60_000)
     const ratio = rowRatio(row)
     const gas = evalGas({ raw: row.gasMax ?? row.gas, ratio: ratio ?? null, base: row.base, warm: 0 }).level
-    return { label: st.label, t: row.t, h: row.h, gas, ageMin, simulated: /sim/i.test(row.device ?? '') }
+    const brief = environmentBrief(deriveCabinContext({ rows: [row], latest: row, now: Date.now(), context: ctx, skewMs }), ctx)
+    return { label: st.label, t: row.t, h: row.h, gas, ageMin, simulated: /sim/i.test(row.device ?? ''), brief }
   } catch {
     return null
   }

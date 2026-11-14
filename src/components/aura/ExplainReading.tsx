@@ -5,13 +5,14 @@ import { answer, topicFor, type AuraAnswer } from '../../lib/aura'
 import type { Evaluation } from '../../lib/health'
 import type { Measurement } from '../../lib/types'
 import { Button, Disclosure, Field, Input, Notice, Section, SourceLink } from '../ui'
+import ReadingEnvNote from '../cabinlink/ReadingEnvNote'
 
 const TONE = { ok: 'ok', warn: 'warn', crit: 'crit' } as const
 
 export default function ExplainReading({ ev, rows, today }: { ev: Evaluation; rows: Measurement[]; today: number }) {
   const [text, setText] = useState('')
   const [hint, setHint] = useState<string | null>(null)
-  const [turns, setTurns] = useState<{ id: number; a: AuraAnswer }[]>([])
+  const [turns, setTurns] = useState<{ id: number; a: AuraAnswer; key?: VitalKey }[]>([])
   const suggestions = useMemo(() => {
     const fromAlerts = ev.alerts.map((a) => a.key).filter((k): k is VitalKey => k in VITAL_BY_KEY)
     return [...new Set([...fromAlerts, 'bp', 'sleep', 'water'] as VitalKey[])].filter((k) => ev.defByKey[k]).slice(0, 4)
@@ -19,7 +20,7 @@ export default function ExplainReading({ ev, rows, today }: { ev: Evaluation; ro
 
   const ask = (key: VitalKey, q: string) => {
     setHint(null)
-    setTurns((t) => [{ id: Date.now(), a: answer(key, q, ev, rows, today) }, ...t].slice(0, 4))
+    setTurns((t) => [{ id: Date.now(), a: answer(key, q, ev, rows, today), key }, ...t].slice(0, 4))
   }
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -63,6 +64,7 @@ export default function ExplainReading({ ev, rows, today }: { ev: Evaluation; ro
             <Notice tone={TONE[t.a.escalation.level]} title="Professional review">
               {t.a.escalation.text}
             </Notice>
+            {t.key && <ReadingEnvNote vital={t.key} ev={ev} />}
             {t.a.refs.length > 0 && (
               <Disclosure size="row" id="aura.explain-sources" title={`Sources (${t.a.refs.length})`}>
                 <div className="flex flex-col gap-y-1">

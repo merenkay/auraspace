@@ -77,18 +77,24 @@ export function boxOf(el: Element): Box {
 /**
  * Brings an element into the part of the window that the tour's caption bar does not cover.
  * `bottomInset` is the height of that bar. Tall elements are aligned to the top (below the sticky header).
+ * Returns false when the element was already in view and nothing was scrolled.
  */
-export function bringIntoView(el: HTMLElement, bottomInset: number, smooth: boolean) {
+export function bringIntoView(el: HTMLElement, bottomInset: number, smooth: boolean): boolean {
   const top = 72
   const room = window.innerHeight - bottomInset - top - 16
   const r = el.getBoundingClientRect()
-  if (r.top >= top && r.bottom <= window.innerHeight - bottomInset - 16) return
-  const behavior: ScrollBehavior = smooth ? 'smooth' : 'auto'
+  const fits = r.height <= room
+  if (fits ? r.top >= top - 8 && r.bottom <= window.innerHeight - bottomInset - 8 : Math.abs(r.top - top) <= 24) return false
+  const behavior: ScrollBehavior = smooth ? 'smooth' : 'instant'
   // Inside a sheet or dialog the window does not scroll: let the browser pick the right scroll container.
   if (el.closest('[data-overlay]')) {
-    el.scrollIntoView({ block: r.height > room ? 'start' : 'center', behavior })
-    return
+    el.scrollIntoView({ block: fits ? 'center' : 'start', behavior })
+    return true
   }
-  const delta = r.height > room ? r.top - top : r.top + r.height / 2 - (top + room / 2)
-  window.scrollBy({ top: delta, behavior })
+  const delta = fits ? r.top + r.height / 2 - (top + room / 2) : r.top - top
+  const max = document.documentElement.scrollHeight - window.innerHeight
+  const to = Math.min(Math.max(0, window.scrollY + delta), Math.max(0, max))
+  if (Math.abs(to - window.scrollY) < 2) return false
+  window.scrollTo({ top: to, behavior })
+  return true
 }

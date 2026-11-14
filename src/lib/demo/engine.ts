@@ -35,7 +35,7 @@ export type EngineOptions = {
   onError?: (error: unknown, where: string) => void
 }
 
-/** Flattens chapters into one list of steps with their nominal start times. Optional steps take no nominal time. */
+/** Flattens chapters into one list of steps with their nominal start times. A skipped optional step simply moves the position on. */
 export function flatten(script: Script): { steps: FlatStep[]; chapters: ChapterInfo[]; totalMs: number } {
   const steps: FlatStep[] = []
   const chapters: ChapterInfo[] = []
@@ -45,7 +45,7 @@ export function flatten(script: Script): { steps: FlatStep[]; chapters: ChapterI
     const firstStep = steps.length
     ch.steps.forEach((s, si) => {
       steps.push({ ...s, scene: s.scene ?? ch.scene, chapter: ci, first: si === 0, startMs: at })
-      if (!s.optional) at += s.duration
+      at += s.duration
     })
     chapters.push({ id: ch.id, title: ch.title, index: ci, firstStep, startMs, endMs: at })
   })
@@ -231,7 +231,7 @@ export class TourEngine {
     if (this.snap.phase === 'showing') {
       this.held += real * this.snap.speed
       const step = this.steps[this.snap.index]
-      patch.positionMs = step.startMs + (step.optional ? 0 : Math.min(step.duration, this.held))
+      patch.positionMs = step.startMs + Math.min(step.duration, this.held)
     }
     this.set(patch)
   }

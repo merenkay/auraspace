@@ -2,6 +2,7 @@ import { ArrowRight, RadioTower, Stethoscope, type LucideIcon } from 'lucide-rea
 import { lazy, Suspense, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AuthLayout } from '../components/AuthLayout'
+import DemoEntry from '../components/demo/DemoEntry'
 import { Avatar, Button, Disclosure, Field, Input, List, Notice, PasswordInput, Row, SourceLink, Stagger, StaggerItem, CONTEXT_ICON, useMedia } from '../components/ui'
 import { contextFacts, type Context } from '../data/contexts'
 import { ENV_VALUES } from '../data/kb'
@@ -125,6 +126,7 @@ function SignIn() {
         </Premises>
       }
     >
+      <DemoEntry placement="login" />
       <form onSubmit={submit} className="space-y-4" aria-labelledby="signin-h">
         <h2 id="signin-h" className="border-b border-line pb-3 text-heading text-ink">
           Sign in

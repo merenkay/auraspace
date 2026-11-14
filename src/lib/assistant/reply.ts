@@ -15,6 +15,10 @@ export type EnvSnapshot = {
   gas: 'ok' | 'warn' | 'crit' | 'none'
   ageMin: number
   simulated: boolean
+  /** Environment-aware brief for "is it the air?" (src/lib/cabinLink/envDx.ts environmentBrief), when available. */
+  brief?: string | null
+  /** The reading is live from the connected sensor. */
+  live?: boolean
 }
 
 export type ChatCtx = {
@@ -125,7 +129,7 @@ function feelingReply(f: Feeling, c: ChatCtx, m: Memory): ChatReply {
   }
 }
 
-function envReply(c: ChatCtx, weather: boolean): ChatReply {
+function envReply(c: ChatCtx, weather: boolean, air = false): ChatReply {
   const lead = weather
     ? c.context === 'space'
       ? 'There’s no weather in here, just the cabin. '
@@ -141,8 +145,23 @@ function envReply(c: ChatCtx, weather: boolean): ChatReply {
   const age = e.ageMin < 1 ? 'just now' : e.ageMin < 90 ? `${Math.round(e.ageMin)} minute${Math.round(e.ageMin) === 1 ? '' : 's'} ago` : 'a while ago, so it may be out of date'
   const tempOk = e.t === null || (e.t >= CABIN_LIMITS.tempMin && e.t <= CABIN_LIMITS.tempMax)
   const humOk = e.h === null || (e.h >= CABIN_LIMITS.rhMin && e.h <= CABIN_LIMITS.rhMax)
-  const verdict = tempOk && humOk ? 'That’s within the comfort range the app uses.' : `${!tempOk ? `Temperature is outside ${CABIN_LIMITS.tempMin} to ${CABIN_LIMITS.tempMax} degrees. ` : ''}${!humOk ? `Humidity is outside ${CABIN_LIMITS.rhMin} to ${CABIN_LIMITS.rhMax} percent.` : ''}`.trim()
+  const old = e.ageMin > 15 // older than the consultation's "fresh" limit: never called normal
+  const verdict = old
+    ? 'It may not reflect the air now.'
+    : tempOk && humOk
+      ? 'That’s within the comfort range the app uses.'
+      : `${!tempOk ? `Temperature is outside ${CABIN_LIMITS.tempMin} to ${CABIN_LIMITS.tempMax} degrees. ` : ''}${!humOk ? `Humidity is outside ${CABIN_LIMITS.rhMin} to ${CABIN_LIMITS.rhMax} percent.` : ''}`.trim()
   const gas = e.gas === 'crit' ? ' The gas sensor is in alarm: check the Environment page now.' : e.gas === 'warn' ? ' The gas reading needs attention.' : ''
+  if (air && e.brief && !e.simulated) {
+    // "is it the air?": gas alarm first, then what these readings make expected (environment-aware brief)
+    return {
+      say: `${gas.trim() ? `${gas.trim()} ` : ''}${e.brief}`,
+      topic: 'env',
+      offer: { kind: 'consult' },
+      more: 'Sweating and thirst in heat, shivering in cold and dry eyes in very dry air are explained from NHS, MedlinePlus and OSHA pages; the heat index is NOAA’s formula. The sensor is only accurate to about 2 degrees and 5 percent.',
+      why: 'I compare the newest fresh reading with the NASA cabin band and sourced heat, cold and dry-air effects. It never lowers an alarm.',
+    }
+  }
   return {
     say: `${lead}${e.simulated ? 'The simulated ' : 'Your '}${e.label.toLowerCase().replace(/^your /, '')} read ${parts.join(' and ')}, ${age}. ${verdict}${gas}`,
     topic: 'env',
@@ -238,7 +257,7 @@ export function chatReply(intent: ChatIntent, c: ChatCtx, m: Memory, lastReply =
     case 'weather':
       return envReply(c, true)
     case 'cabin':
-      return envReply(c, false)
+      return envReply(c, false, intent.air)
     case 'unitInfo':
       if (intent.unit === 'mmhg') return { say: 'mmHg means millimetres of mercury. It’s the unit blood pressure is given in. One mmHg is about 0.133 kilopascals.', topic: 'units' }
       if (intent.unit === 'spo2') return { say: 'SpO2 is the oxygen saturation a pulse oximeter shows: the share of your blood’s haemoglobin carrying oxygen, as a percentage.', topic: 'units' }

@@ -35,7 +35,7 @@ const ALERTS: Target = '[aria-label="Alerts"]'
 const VIEWER: Target = or('[data-viewer="3d"]', '[data-demo="body"]', { css: 'a', text: 'BodyParts3D', closest: '.overflow-hidden' })
 
 /** Each chapter opens with a title card; the page behind it changes while the card is up. */
-function chapter(number: number, id: string, title: string, subtitle: string, scene: Scene, steps: Step[], cardMs = 2800): Chapter {
+function chapter(number: number, id: string, title: string, subtitle: string, scene: Scene, steps: Step[], cardMs = 2400): Chapter {
   const card: Step = { id: `${id}.title`, caption: subtitle, duration: cardMs, card: { kind: 'chapter', number, title, subtitle } }
   return { id, title, subtitle, scene, steps: [card, ...steps] }
 }
@@ -55,7 +55,7 @@ export const SCRIPT: Script = {
           id: 'problem.delay',
           card: { kind: 'delay' },
           caption: 'On the way to Mars, a radio signal needs between 3 and 22 minutes to reach Earth. The answer needs just as long to come back.',
-          duration: 8500,
+          duration: 8000,
           cue: 'open',
         },
         {
@@ -70,20 +70,20 @@ export const SCRIPT: Script = {
           timeout: 2500,
           target: { css: 'dl', text: 'Earth delay' },
           callout: { title: 'Mission facts', text: 'Every piece of advice in the app takes this delay into account.' },
-          caption: 'The simulated crew is on day 142 of a Mars transit. Earth is 14 minutes away, each way.',
-          duration: 5500,
+          caption: 'The simulated crew is on day 142 of a Mars transit, 14 minutes from Earth.',
+          duration: 4500,
         },
       ],
     },
 
     /* ------------------------------------------------------------------ 2 */
-    chapter(2, 'daily', 'The daily picture', 'How am I today, and does anything need me?', okafor(OVERVIEW), [
+    chapter(2, 'daily', 'The daily picture', 'How am I today? Does anything need me?', okafor(OVERVIEW), [
       {
         id: 'daily.score',
         target: or('[data-demo="score"]', { css: 'p', text: 'Health score', exact: true, closest: '.rounded-2xl' }),
         callout: { title: 'Health score', text: '100 minus fixed points for each reading out of range. Every point can be explained.' },
         caption: 'Commander Okafor starts her day. Her health score is plain arithmetic on her latest readings, not a guess.',
-        duration: 6000,
+        duration: 5500,
         cue: 'select',
       },
       {
@@ -97,16 +97,16 @@ export const SCRIPT: Script = {
         id: 'daily.early',
         optional: true,
         target: OPTIONAL_TARGETS.earlyWarning,
-        callout: { title: 'Early warning', text: 'Compares each reading with her own baseline.' },
-        caption: 'An early-warning check compares each reading with her own baseline, so a slow decline is noticed early.',
-        duration: 5500,
+        callout: { title: 'Early warning', text: 'Looks at the direction of the readings, not only at the limits.' },
+        caption: 'Early warning follows the trend behind the numbers: a slow rise is flagged before a limit is crossed.',
+        duration: 5300,
       },
       {
         id: 'daily.body',
         target: VIEWER,
         callout: { title: '3D body', text: 'A real anatomy model. A system takes a colour only when it needs attention.' },
         caption: 'The same status, organ system by organ system, on a 3D model she can turn and open.',
-        duration: 5500,
+        duration: 5000,
       },
       {
         id: 'daily.heart',
@@ -114,33 +114,33 @@ export const SCRIPT: Script = {
         target: or({ css: '[role="dialog"] div', text: 'reply from Earth', closest: '.rounded-xl' }, '[role="dialog"]'),
         callout: { title: 'Delay-aware advice', text: 'Mars transit: a reply from Earth takes at least 28 minutes.' },
         caption: 'She selects the heart. AURA tells her what to do first, and that she should not wait for Earth to answer.',
-        duration: 7000,
+        duration: 6500,
         cue: 'select',
       },
     ]),
 
     /* ------------------------------------------------------------------ 3 */
-    chapter(3, 'trend', 'Caught early', 'A slow rise, noticed weeks before it is dangerous.', okafor('/crew/:id/diagnostics'), [
+    chapter(3, 'trend', 'Caught early', 'A slow rise, noticed before it is dangerous.', okafor('/crew/:id/diagnostics'), [
       {
         id: 'trend.xray',
         before: [{ type: 'select-system', system: 'heart' }],
         target: VIEWER,
         callout: { title: 'X-ray view', text: 'Fades the other layers so the selected system stays visible.' },
         during: [
-          { type: 'wait', ms: 2200 },
+          { type: 'wait', ms: 1900 },
           { type: 'set', target: button('X-ray'), on: false },
-          { type: 'wait', ms: 1700 },
+          { type: 'wait', ms: 1400 },
           { type: 'set', target: button('X-ray'), on: true },
         ],
         caption: 'Diagnostics isolates one system. With X-ray on, the heart and vessels stay visible through the body.',
-        duration: 7500,
+        duration: 6500,
       },
       {
         id: 'trend.chart',
         target: or('[data-demo="trend"]', { css: '.recharts-wrapper', closest: '.rounded-xl' }, '.recharts-wrapper'),
         callout: { title: 'Blood pressure, 30 days', text: 'Dashed line: her own baseline. Coloured dots: readings above the normal range.' },
         caption: 'Thirty days of readings from her blood-pressure cuff. For three weeks the upper value has climbed away from her baseline.',
-        duration: 7000,
+        duration: 6500,
       },
       {
         id: 'trend.reading',
@@ -152,7 +152,7 @@ export const SCRIPT: Script = {
           { type: 'sfx', name: 'confirm' },
         ],
         caption: 'This morning’s measurement arrives: 139 over 88. Still attention, not yet urgent, and she already knows what to do.',
-        duration: 6500,
+        duration: 6000,
       },
     ]),
 
@@ -178,22 +178,23 @@ export const SCRIPT: Script = {
         {
           id: 'emergency.question',
           rewind: false,
-          target: or('[role="log"]'),
+          // the newest message: the follow-up question with the engine's reason for asking it
+          target: or({ css: '[role="log"] > div', text: 'Safety check' }, '[role="log"]'),
           callout: { title: 'Safety check', text: 'The engine asks the one question that can complete a red-flag rule.' },
           during: [
-            { type: 'wait', ms: 3000 },
+            { type: 'wait', ms: 2800 },
             { type: 'click', target: { css: '[role="group"][aria-label="Answer"] button', text: 'Yes', exact: true } },
             { type: 'waitFor', target: '#main [role="alert"]', timeout: 4000 },
           ],
           caption: 'One focused follow-up: does the pain spread to the arm or jaw? He answers yes.',
-          duration: 5000,
+          duration: 4600,
         },
         {
           id: 'emergency.alert',
           rewind: false,
           target: '#main [role="alert"]',
           caption: 'Emergency. A fixed rule raised this alert the moment both signs were present.',
-          duration: 4500,
+          duration: 4000,
           cue: 'alarm',
         },
         {
@@ -208,7 +209,7 @@ export const SCRIPT: Script = {
           target: or({ css: 'article', text: 'Aspirin' }),
           callout: { title: 'Checked against his profile', text: 'His record lists an aspirin allergy.' },
           caption: 'Before suggesting a medicine, AURA reads his health profile. He is allergic to aspirin, so that step is withheld.',
-          duration: 6000,
+          duration: 5800,
         },
         {
           id: 'emergency.air',
@@ -219,39 +220,40 @@ export const SCRIPT: Script = {
           duration: 5000,
         },
       ],
-      2400,
     ),
 
     /* ------------------------------------------------------------------ 5 */
-    chapter(5, 'air', 'The cabin is part of the patient', 'A sensor station watches the air the crew breathes.', reyes('/environment'), [
+    chapter(5, 'air', 'The cabin is part of the patient', 'A sensor station watches the cabin air.', reyes('/environment'), [
       {
         id: 'air.station',
         rewind: false,
         before: [startSimulation],
         target: or('[data-demo="env-readouts"]', { css: '[role="group"]', text: 'Flammable gas', closest: '.grid' }),
         callout: { title: 'Simulated for this tour', text: 'On stage the same panel reads a live Arduino kit over USB.' },
-        caption: 'Temperature, humidity and flammable gas, once a second. For this tour the values are simulated, and the page says so.',
-        duration: 6000,
+        caption: 'Temperature, humidity and flammable gas, once a second. Simulated for this tour, and labelled as such.',
+        duration: 5000,
       },
       {
         id: 'air.leak',
         rewind: false,
         target: or('[data-demo="env-gas"]', { css: '[role="group"]', text: 'Flammable gas' }),
         callout: { title: 'Gas, relative to clean air', text: 'Attention at 1.5 times the baseline, alarm at 2 times (demo thresholds).' },
+        // The simulated leak crosses the alarm level about five seconds after it starts; this step ends just before.
         during: [
-          { type: 'wait', ms: 800 },
+          { type: 'wait', ms: 700 },
           { type: 'click', target: button('Simulate gas leak') },
-          { type: 'waitFor', target: { css: '[role="alert"]', text: 'gas alarm' }, timeout: 16000 },
+          { type: 'wait', ms: 3400 },
         ],
-        caption: 'A leak begins. The reading climbs past the attention mark and then past twice its clean-air baseline.',
-        duration: 8500,
+        caption: 'A leak begins. The reading climbs past the attention mark, towards twice its clean-air baseline.',
+        duration: 6000,
       },
       {
         id: 'air.alarm',
         rewind: false,
+        before: [{ type: 'waitFor', target: { css: '[role="alert"]', text: 'gas alarm' }, timeout: 14000 }],
         target: { css: '[role="alert"]', text: 'gas alarm' },
         caption: 'The alarm appears at once and stays until the air is clear. Each step to take carries its source.',
-        duration: 7000,
+        duration: 6500,
         cue: 'alarm',
       },
       {
@@ -260,7 +262,7 @@ export const SCRIPT: Script = {
         target: OPTIONAL_TARGETS.spaceWeather,
         callout: { title: 'Space weather', text: 'NASA and NOAA alerts. The tour shows the copy saved on the device.' },
         caption: 'Outside the hull: solar activity from NASA and NOAA, shown beside the crew’s radiation dose.',
-        duration: 5500,
+        duration: 5000,
       },
     ]),
 
@@ -271,14 +273,14 @@ export const SCRIPT: Script = {
         target: or('[data-demo="coach-focus"]', { css: 'div', text: 'Suggested focus', closest: '.rounded-xl' }, { css: 'h1', text: 'Your programme', closest: 'header' }),
         callout: { title: 'Built from her data', text: 'Mission day, readings, health profile and the latest assessment.' },
         caption: 'Day 142 without gravity. The coach proposes a programme against muscle and bone loss, and adds her blood pressure.',
-        duration: 6500,
+        duration: 6000,
       },
       {
         id: 'coach.safety',
         target: or('[data-demo="coach-safety"]', { css: 'h3', text: 'Changed for your safety', closest: 'div' }, { css: 'section', text: 'Before you train' }),
         callout: { title: 'Restrictions come first', text: 'AURA never raises a load on its own.' },
         caption: 'Safety comes before training. Because her blood pressure is raised, effort is capped at 6 out of 10.',
-        duration: 6500,
+        duration: 6000,
       },
       {
         id: 'coach.session',
@@ -289,26 +291,26 @@ export const SCRIPT: Script = {
     ]),
 
     /* ------------------------------------------------------------------ 7 */
-    chapter(7, 'earth', 'The same gap exists on Earth', 'Far from a hospital does not only mean space.', { persona: 'polar', route: OVERVIEW }, [
+    chapter(7, 'earth', 'The same gap exists on Earth', 'Far from a hospital is not only space.', { persona: 'polar', route: OVERVIEW }, [
       {
         id: 'earth.polar-fact',
         card: { kind: 'context', context: 'polar' },
         caption: 'At Concordia station in Antarctica, crews are cut off for almost nine months a year.',
-        duration: 5000,
+        duration: 4500,
       },
       {
         id: 'earth.polar',
         target: ALERTS,
         callout: { title: 'Polar station profile', text: 'Same rules. The care contact is now the station doctor.' },
         caption: 'The same system for a winter-over crew member. Short sleep and low mood are flagged before they become a crisis.',
-        duration: 6500,
+        duration: 6000,
       },
       {
         id: 'earth.home-fact',
         scene: { persona: 'home', route: OVERVIEW },
         card: { kind: 'context', context: 'home' },
         caption: 'At home, an estimated 44 percent of adults with high blood pressure do not know it.',
-        duration: 5000,
+        duration: 4800,
       },
       {
         id: 'earth.home',
@@ -316,7 +318,7 @@ export const SCRIPT: Script = {
         target: ALERTS,
         callout: { title: 'Home care profile', text: 'Plain words, and a report she can hand to her doctor.' },
         caption: 'For Nermin, 72, living at home: raised blood pressure and too little water, each with one clear next step.',
-        duration: 6500,
+        duration: 6000,
       },
     ]),
 
@@ -331,23 +333,13 @@ export const SCRIPT: Script = {
         duration: 6500,
       },
       {
-        id: 'trust.no-ai',
-        scene: okafor('/crew/:id/aura'),
-        target: or({ css: 'h1', text: 'AURA consultation', closest: 'header' }),
-        callout: { title: 'Works offline · no AI', text: 'The same input always gives the same answer.' },
-        caption: 'No AI model decides anything medical. Alerts and plans come from deterministic rules that run offline, on the device.',
-        duration: 6000,
-      },
-      {
         id: 'trust.principles',
-        scene: okafor('/crew/:id/aura'),
         card: { kind: 'principles' },
-        caption: 'Deterministic rules. A sourced knowledge base. Offline first. And each person’s data stays with that person.',
-        duration: 6500,
+        caption: 'No AI model decides anything medical: fixed rules, published sources, offline first, and data that stays with the person.',
+        duration: 7000,
       },
       {
         id: 'trust.closing',
-        scene: okafor('/crew/:id/aura'),
         card: { kind: 'closing' },
         caption: 'AURA: your health, wherever help is far away.',
         duration: 4000,

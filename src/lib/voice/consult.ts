@@ -3,14 +3,19 @@
 import { CONDITION_BY_ID } from '../../data/conditions'
 import type { HealthProfile } from '../../data/conditions/profile'
 import type { Context } from '../../data/contexts'
-import { assess, carePlan, firstStep, parseFindings, FINDING_BY_ID, URGENCY_TEXT, type Answer, type Answers, type Assessment, type CarePlan, type Readings } from '../doctor'
+import { environmentLine, assessWithEnvironment } from '../cabinLink/envDx'
+import { currentCabin } from '../cabinLink/current'
+import type { CabinContext } from '../cabinLink/context'
+import { carePlan, firstStep, parseFindings, FINDING_BY_ID, URGENCY_TEXT, type Answer, type Answers, type Assessment, type CarePlan, type Readings } from '../doctor'
 
 export const MAX_QUESTIONS = 7
 
-export type ConsultState = { answers: Answers; asked: string[]; pending: string | null; done: boolean }
+/** `said` = the person's own words so far (checked for severity words such as severe, sudden, at rest). */
+export type ConsultState = { answers: Answers; asked: string[]; pending: string | null; done: boolean; said?: string[] }
 export const newConsult = (): ConsultState => ({ answers: {}, asked: [], pending: null, done: false })
 
-export type ConsultCtx = { context: Context; readings: Readings; profile: HealthProfile | null; delaySec: number }
+/** `cabin`: the environment context; omitted = the current one (live sensor + cached stored readings). */
+export type ConsultCtx = { context: Context; readings: Readings; profile: HealthProfile | null; delaySec: number; cabin?: CabinContext | null }
 export type ConsultStep = { state: ConsultState; say: string; emergency: boolean; assessment: Assessment | null; plan: CarePlan | null }
 
 /** Spoken emergency text: where to turn first, then the plan's "do this now" steps word for word. */
@@ -40,6 +45,9 @@ function summary(a: Assessment, c: ConsultCtx): { plan: CarePlan | null; text: s
   const lines = [`Thank you. ${URGENCY_TEXT[a.urgency].title}.`]
   if (top) lines.push(`Your answers are most consistent with ${top.condition.name.toLowerCase()}, a ${top.strength} match. This is not a diagnosis.`)
   else lines.push('I could not find a clear match. This is not a diagnosis.')
+  // the environment note, briefly (never for emergencies: environmentLine returns null then)
+  const env = 'environment' in a ? environmentLine(a as Parameters<typeof environmentLine>[0]) : null
+  if (env) lines.push(env)
   lines.push(plan?.first ?? firstStep(a.urgency, c.context, c.delaySec))
   lines.push('Open the AURA tab for the full assessment, the steps and the sources.')
   return { plan, text: lines.join(' ') }
@@ -48,6 +56,7 @@ function summary(a: Assessment, c: ConsultCtx): { plan: CarePlan | null; text: s
 /** One turn of the consultation. Give either free text (symptoms) or a yes / no / unsure answer to the pending question. */
 export function consultStep(state: ConsultState, c: ConsultCtx, input: { text?: string; answer?: Answer }): ConsultStep {
   let answers = state.answers
+  let said = state.said ?? []
   const noted: string[] = []
   if (input.answer) {
     if (!state.pending) return { state, say: 'There is no question waiting. Tell me a symptom, for example chest pain or dizzy.', emergency: false, assessment: null, plan: null }
@@ -57,6 +66,7 @@ export function consultStep(state: ConsultState, c: ConsultCtx, input: { text?: 
     const ids = Object.keys(found)
     if (!ids.length) return { state, say: 'I could not match that to symptoms I know. Try short phrases such as chest pain or dizzy.', emergency: false, assessment: null, plan: null }
     answers = { ...answers, ...found }
+    said = [...said, input.text]
     const yes = ids.filter((id) => found[id] === 'yes').map((id) => FINDING_BY_ID[id].label.toLowerCase())
     const no = ids.filter((id) => found[id] === 'no').map((id) => FINDING_BY_ID[id].label.toLowerCase())
     noted.push(`I noted${yes.length ? `: ${yes.join('; ')}` : ''}${no.length ? `${yes.length ? '. ' : ' '}Not present: ${no.join('; ')}` : ''}.`)
@@ -64,9 +74,11 @@ export function consultStep(state: ConsultState, c: ConsultCtx, input: { text?: 
     return { state: { ...state, pending: null }, say: 'Tell me what is bothering you, in your own words.', emergency: false, assessment: null, plan: null }
   }
 
-  const a = assess({ answers, context: c.context, readings: c.readings, profile: c.profile })
+  // Same environment-aware assessment as the AURA tab: red flags on the raw answers, the room weighed in.
+  const cabin = c.cabin !== undefined ? c.cabin : currentCabin(c.context)
+  const a = assessWithEnvironment({ answers, context: c.context, readings: c.readings, profile: c.profile }, cabin, { text: said.join('. ') })
   const yes = Object.values(answers).some((v) => v === 'yes')
-  const base = { answers, asked: state.asked, pending: null as string | null, done: false }
+  const base = { answers, asked: state.asked, pending: null as string | null, done: false, said }
 
   if (a.urgency === 'emergency') {
     const e = emergencyPlan(a, c)

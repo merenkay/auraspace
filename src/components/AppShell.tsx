@@ -3,6 +3,8 @@ import { motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
 import OfflineBadge from './OfflineBadge'
+import DemoEntry from './demo/DemoEntry'
+import LiveSensorBadge from './env/LiveSensorBadge'
 import HandControl from './gesture/HandControl'
 import AuraVoice from './voice/AuraVoice'
 import { CONTEXTS, type Context } from '../data/contexts'
@@ -162,7 +164,9 @@ export default function AppShell() {
             </nav>
 
             <div className="ml-auto flex shrink-0 items-center gap-2 lg:gap-3">
+              <DemoEntry placement="header" />
               <OfflineBadge />
+              <LiveSensorBadge />
               {/* Hands-free controls: each renders its own header button and portals its overlay. */}
               <AuraVoice crewId={voiceCrewId} />
               <HandControl />
@@ -247,6 +251,7 @@ export default function AppShell() {
 
         <footer className="mx-auto w-full max-w-[1500px] px-4 pb-28 sm:px-6 md:pb-8">
           <p className="border-t border-line pt-4 text-xs leading-relaxed text-dim">Decision support, not a diagnosis. Crew data in this demo is simulated. Not affiliated with NASA.</p>
+          <DemoEntry placement="footer" />
         </footer>
 
         {/* ---- Phone: bottom navigation ---- */}

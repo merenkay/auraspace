@@ -25,6 +25,7 @@ const LINK_STATE: Record<string, { level: Level; label: string }> = {
   connecting: { level: 'none', label: 'Connecting' },
   stale: { level: 'warn', label: 'No signal' },
   error: { level: 'warn', label: 'Problem' },
+  reconnecting: { level: 'warn', label: 'Reconnecting' },
   idle: { level: 'none', label: 'Not connected' },
   unsupported: { level: 'none', label: 'Not available here' },
 }
@@ -67,7 +68,9 @@ export default function EnvStation({ context, title }: { context: Context; title
         ? 'NO SIGNAL'
         : serial.status === 'connecting'
           ? 'CONNECTING'
-          : undefined
+          : serial.status === 'reconnecting'
+            ? 'RECONNECTING'
+            : undefined
       : mode === 'sim'
         ? 'NOT REAL DATA'
         : mode === 'stored'
@@ -151,7 +154,7 @@ export default function EnvStation({ context, title }: { context: Context; title
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {serial.connected ? (
+            {serial.connected || serial.status === 'reconnecting' ? (
               <Button icon={Unplug} onClick={() => void serial.disconnect()}>
                 Disconnect
               </Button>

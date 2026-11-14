@@ -8,8 +8,8 @@ import { DUR, EASE } from '../ui'
 
 /** The lit box, with the note that belongs to it (kept together so they always change in the same frame). */
 type Rect = { key: string; x: number; y: number; w: number; h: number; callout: Callout | null }
-type Side = 'right' | 'left' | 'bottom' | 'top' | 'inside'
-type Place = { side: Side; left: number; top: number; width: number; line: { left: number; top: number; width: number; height: number } | null; dot: { left: number; top: number } | null }
+type Side = 'right' | 'left' | 'bottom' | 'top'
+type Place = { side: Side; left: number; top: number; width: number; line: { left: number; top: number; width: number; height: number }; dot: { left: number; top: number } }
 
 const EDGE = 8
 const GAP = 28
@@ -59,7 +59,8 @@ function useTargetRect(highlight: Highlight | null, bottomInset: number): Rect |
   return key ? rect : null
 }
 
-function place(r: Rect, noteH: number, bottomInset: number): Place {
+/** Where the note goes: beside the target on wide screens, below or above it otherwise. Null when there is no room that would not cover the target. */
+function place(r: Rect, noteH: number, bottomInset: number): Place | null {
   const vw = window.innerWidth
   const vh = window.innerHeight - bottomInset
   const phone = vw < 640
@@ -68,7 +69,9 @@ function place(r: Rect, noteH: number, bottomInset: number): Place {
   const fitsLeft = r.x - GAP - width >= 16
   const fitsBottom = r.y + r.h + GAP + noteH <= vh - 8
   const fitsTop = r.y - GAP - noteH >= 8
-  const side: Side = !phone && fitsRight ? 'right' : !phone && fitsLeft ? 'left' : fitsBottom ? 'bottom' : fitsTop ? 'top' : fitsRight ? 'right' : fitsLeft ? 'left' : 'inside'
+  const side: Side | null = !phone && fitsRight ? 'right' : !phone && fitsLeft ? 'left' : fitsBottom ? 'bottom' : fitsTop ? 'top' : fitsRight ? 'right' : fitsLeft ? 'left' : null
+  // The target fills the screen: the caption carries the message, the note would only hide what is being shown.
+  if (!side) return null
   if (side === 'right' || side === 'left') {
     const top = clamp(r.y + 12, 8, vh - noteH - 8)
     const y = clamp(top + 26, r.y + 10, r.y + r.h - 10)
@@ -76,15 +79,11 @@ function place(r: Rect, noteH: number, bottomInset: number): Place {
     const lineLeft = side === 'right' ? r.x + r.w : r.x - GAP
     return { side, left, top, width, line: { left: lineLeft, top: y, width: GAP, height: 1 }, dot: { left: side === 'right' ? r.x + r.w : r.x, top: y } }
   }
-  if (side === 'bottom' || side === 'top') {
-    const left = clamp(r.x + r.w / 2 - width / 2, 16, vw - width - 16)
-    const x = clamp(r.x + r.w / 2, left + 20, left + width - 20)
-    const top = side === 'bottom' ? r.y + r.h + GAP : r.y - GAP - noteH
-    const lineTop = side === 'bottom' ? r.y + r.h : r.y - GAP
-    return { side, left, top, width, line: { left: x, top: lineTop, width: 1, height: GAP }, dot: { left: x, top: side === 'bottom' ? r.y + r.h : r.y } }
-  }
-  // The target fills the screen: the note sits inside the lit area, at its lower edge.
-  return { side, left: clamp(r.x + 12, 16, vw - width - 16), top: clamp(r.y + r.h - noteH - 12, 8, vh - noteH - 8), width, line: null, dot: null }
+  const left = clamp(r.x + r.w / 2 - width / 2, 16, vw - width - 16)
+  const x = clamp(r.x + r.w / 2, left + 20, left + width - 20)
+  const top = side === 'bottom' ? r.y + r.h + GAP : r.y - GAP - noteH
+  const lineTop = side === 'bottom' ? r.y + r.h : r.y - GAP
+  return { side, left, top, width, line: { left: x, top: lineTop, width: 1, height: GAP }, dot: { left: x, top: side === 'bottom' ? r.y + r.h : r.y } }
 }
 
 export default function Spotlight({ highlight, bottomInset, reduced }: { highlight: Highlight | null; bottomInset: number; reduced: boolean }) {
@@ -125,7 +124,7 @@ export default function Spotlight({ highlight, bottomInset, reduced }: { highlig
           transition={{ default: move, opacity: fade }}
         />
       )}
-      {rect && p?.line && (
+      {rect && p && (
         <motion.div
           key="line"
           aria-hidden="true"
@@ -136,7 +135,7 @@ export default function Spotlight({ highlight, bottomInset, reduced }: { highlig
           transition={{ default: move, opacity: fade }}
         />
       )}
-      {rect && p?.dot && (
+      {rect && p && (
         <motion.div
           key="dot"
           aria-hidden="true"

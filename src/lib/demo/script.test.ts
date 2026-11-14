@@ -25,15 +25,19 @@ const space = { context: 'space' as const, profileId: MISSION.profileId, day: MI
 describe('tour script: shape', () => {
   it('has eight chapters and runs for about three minutes', () => {
     expect(SCRIPT.chapters).toHaveLength(8)
-    expect(flat.totalMs).toBeGreaterThanOrEqual(170_000)
+    // with every optional step shown; without them it is about 20 seconds shorter
+    const optional = flat.steps.filter((s) => s.optional).reduce((ms, s) => ms + s.duration, 0)
     expect(flat.totalMs).toBeLessThanOrEqual(195_000)
+    expect(flat.totalMs - optional).toBeGreaterThanOrEqual(165_000)
+    expect(optional).toBeLessThanOrEqual(20_000)
   })
 
-  it('keeps every chapter short (15–30 s; the emergency is the longest)', () => {
+  it('keeps every chapter short (15–30 s without its optional step; the emergency is the longest)', () => {
     for (const c of flat.chapters) {
-      const seconds = (c.endMs - c.startMs) / 1000
-      expect(seconds, c.id).toBeGreaterThanOrEqual(15)
-      expect(seconds, c.id).toBeLessThanOrEqual(30)
+      const own = flat.steps.filter((s) => s.chapter === c.index && !s.optional).reduce((ms, s) => ms + s.duration, 0) / 1000
+      expect(own, c.id).toBeGreaterThanOrEqual(15)
+      expect(own, c.id).toBeLessThanOrEqual(30)
+      expect((c.endMs - c.startMs) / 1000 - own, c.id).toBeLessThanOrEqual(5.5)
     }
     const longest = [...flat.chapters].sort((a, b) => b.endMs - b.startMs - (a.endMs - a.startMs))[0]
     expect(longest.id).toBe('emergency')
@@ -147,6 +151,8 @@ describe('tour script: what the narration claims is what the rules produce', () 
 
   it('chapter 5: the callout states the station’s real thresholds', () => {
     expect([GAS_WARN_RATIO, GAS_ALARM_RATIO]).toEqual([1.5, 2])
+    const alarm = stepOf('air.alarm')
+    expect(alarm.before).toEqual([{ type: 'waitFor', target: alarm.target, timeout: 14000 }])
     expect(stepOf('air.leak').callout!.text).toContain('1.5 times')
     expect(stepOf('air.leak').callout!.text).toContain('2 times')
   })

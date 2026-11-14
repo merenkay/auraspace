@@ -184,7 +184,7 @@ function PrinciplesCard({ reduced }: { reduced: boolean }) {
       <Points
         reduced={reduced}
         items={[
-          { icon: ListChecks, title: 'Deterministic rules', text: 'Every alert, score and plan comes from fixed thresholds. Nothing medical is generated.' },
+          { icon: ListChecks, title: 'Deterministic rules, no AI', text: 'Every alert, score and plan comes from fixed thresholds. No AI model decides anything medical.' },
           { icon: Library, title: 'A sourced knowledge base', text: 'Each statement links to the page it comes from, with the sentence that supports it.' },
           { icon: WifiOff, title: 'Offline first', text: 'It keeps working with no signal: in transit, at a polar station, in a home without internet.' },
           { icon: FileLock2, title: 'Data stays with the person', text: 'People see only their own record. Mission control never sees mood. A home report is never sent automatically.' },

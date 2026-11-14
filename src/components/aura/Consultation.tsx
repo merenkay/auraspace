@@ -15,7 +15,7 @@ import { cancelSpeech, speak, ttsSupported } from '../../lib/voice/speech'
 import { Button, DUR, EASE, IconButton, Logo, Meter, Notice, Textarea, cx } from '../ui'
 import AssessmentView from './AssessmentView'
 import Disclosure from './Disclosure'
-import { assessWithCabin, CabinAirNotice, useCabinContext, useCabinPrefill } from '../cabinlink'
+import { assessWithEnvironment, CabinAirNotice, environmentLine, EnvironmentNotes, useCabinContext, useCabinPrefill } from '../cabinlink'
 
 type Turn = { id: number; who: 'aura' | 'me'; text: string; sub?: string }
 
@@ -71,7 +71,9 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   const spokenTurns = useRef(1)
 
   const cabin = useCabinContext(ctx).cabin // cabin-air readings: supporting evidence only, never lowers urgency
-  const a = useMemo(() => assessWithCabin({ answers, context: ctx, readings, profile }, cabin), [answers, ctx, readings, profile, cabin])
+  // environment-aware (src/lib/cabinLink/envDx.ts): red flags on the raw answers; the person's own words are checked for severity words
+  const said = turns.filter((t) => t.who === 'me').map((t) => t.text).join('. ')
+  const a = useMemo(() => assessWithEnvironment({ answers, context: ctx, readings, profile }, cabin, { text: said }), [answers, ctx, readings, profile, cabin, said])
 
   useEffect(() => {
     const behavior = reduce ? 'auto' : 'smooth'
@@ -81,7 +83,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
 
   /** After every answer: stop at once on an emergency, otherwise ask the most useful next question. */
   const advance = (next: Answers, askedNow: string[], notes: Turn[]) => {
-    const res = assessWithCabin({ answers: next, context: ctx, readings, profile }, cabin)
+    const res = assessWithEnvironment({ answers: next, context: ctx, readings, profile }, cabin, { text: [said, ...notes.filter((t) => t.who === 'me').map((t) => t.text)].join('. ') })
     const add: Turn[] = [...notes]
     const yes = Object.values(next).some((v) => v === 'yes')
     if (res.urgency === 'emergency') {
@@ -191,7 +193,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
     if (a.urgency === 'emergency') {
       sfx('alarm')
       speak(emergencyPlan(a, { context: ctx, readings, profile, delaySec }).text, { priority: 'urgent' })
-    } else speak(`${URGENCY_TEXT[a.urgency].title}.${a.candidates[0] ? ` Most consistent with ${a.candidates[0].condition.name.toLowerCase()}.` : ''} The full assessment is on screen.`)
+    } else speak(`${URGENCY_TEXT[a.urgency].title}.${a.candidates[0] ? ` Most consistent with ${a.candidates[0].condition.name.toLowerCase()}.` : ''} ${environmentLine(a) ?? ''} The full assessment is on screen.`)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [done])
 
@@ -323,7 +325,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
         <div ref={resultRef} className="scroll-mt-24">
           <AssessmentView
             a={a}
-            cabin={<CabinAirNotice cabin={cabin} answers={answers} ctx={ctx} />}
+            cabin={<div className="space-y-3 empty:hidden"><CabinAirNotice cabin={cabin} answers={answers} ctx={ctx} /><EnvironmentNotes a={a} /></div>}
             ctx={ctx}
             profile={profile}
             delaySec={delaySec}

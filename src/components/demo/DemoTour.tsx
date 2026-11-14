@@ -89,6 +89,22 @@ export default function DemoTour() {
     }
   }, [])
 
+  // Keep the page clear of the bar too: it can always be scrolled far enough, and anything the app scrolls
+  // into view itself (a new message, a result) stops above the bar instead of underneath it.
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const before = { pad: html.style.scrollPaddingBottom, body: body.style.paddingBottom }
+    html.style.scrollPaddingBottom = `${inset + 12}px`
+    html.style.setProperty('--demo-inset', `${inset}px`)
+    body.style.paddingBottom = `${inset}px`
+    return () => {
+      html.style.scrollPaddingBottom = before.pad
+      html.style.removeProperty('--demo-inset')
+      body.style.paddingBottom = before.body
+    }
+  }, [inset])
+
   const changeSound = useCallback((on: boolean) => {
     setSound(on)
     setSfxEnabled(on) // inside the sandbox this is remembered in memory only
@@ -154,6 +170,8 @@ export default function DemoTour() {
   const cardUp = snap.card !== null
   return (
     <MotionRoot>
+      {/* On phones some pages pin a bar to the bottom edge (the message box, "Log this session"): lift those above the caption bar. */}
+      <style>{'@media (max-width: 767px) { #main .sticky[class*="bottom-"] { bottom: calc(var(--demo-inset, 0px) + 4px) !important; } }'}</style>
       <div {...{ [UI_ATTR]: '' }} data-demo-step={snap.stepId ?? ''} data-demo-status={snap.status} data-demo-phase={snap.phase} className="pointer-events-none fixed inset-0 z-[80]">
         {/* Until the first step is on screen the app behind stays covered. */}
         {snap.stepId === null || (snap.phase === 'preparing' && snap.caption === '') ? <div className="fixed inset-0 bg-space" /> : null}

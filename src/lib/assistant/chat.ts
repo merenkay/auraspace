@@ -23,7 +23,7 @@ export type ChatIntent =
   | { type: 'date' }
   | { type: 'missionDay' }
   | { type: 'weather' }
-  | { type: 'cabin' }
+  | { type: 'cabin'; air?: boolean }
   | { type: 'delay' }
   | { type: 'radiation' }
   | { type: 'today' }
@@ -173,6 +173,8 @@ export function parseChat(text: string): ChatIntent | null {
   if (/\b(?:delay|signal (?:time|lag)|lag to earth|talk to earth|reach earth|earth delay|houston|mission control|gecikme|dunyaya ne kadar)\b/.test(f) && !/\bstart|open\b/.test(f)) return { type: 'delay' }
   if (/\b(?:radiation dose|how much radiation|radiation (?:so far|level|today)|my dose|dose so far|radyasyon doz|ne kadar radyasyon)\b/.test(f)) return { type: 'radiation' }
   if (/\b(?:what(?:'?s| is) (?:on )?(?:my |the )?(?:plan|schedule|agenda)|my tasks|today'?s tasks|what do i have today|what'?s next|my (?:session|workout|training) today|today'?s (?:session|workout|training|plan)|remind me|any reminders|bugun ne var|gorevlerim|bugunku plan|bugunku antrenman|hatirlat)\b/.test(f)) return { type: 'today' }
+  // "is it the air?" / "how is the cabin?": the environment-aware brief (what the readings make expected)
+  if (/\b(?:is it|could it be|is this|because of|due to) (?:the )?(?:air|heat|humidity|room|cabin|temperature|dry air|cold)\b|\bhow(?:'s| is) the (?:cabin|air|room)\b|\b(?:havadan|sicaktan|nemden|ortamdan|soguktan) mi\b/.test(f)) return { type: 'cabin', air: true }
   if (/\b(?:weather|is it (?:cold|hot|warm|raining|sunny)|how (?:cold|hot|warm) is it|rain(?:ing)? (?:today|outside)|hava (?:nasil|durumu)|disarisi nasil|yagmur)\b/.test(f)) return { type: 'weather' }
   if (/\b(?:cabin|room|air|station|ortam|kabin|oda|hava kalitesi) (?:temperature|temp|humidity|air|quality|sicakligi|nemi)\b|\b(?:humidity|nem|air quality|gas level|gaz)\b/.test(f)) return { type: 'cabin' }
 

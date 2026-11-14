@@ -196,7 +196,7 @@ export class SerialConnection {
 
   private scheduleRetry() {
     this.clearRetry()
-    if (!this.want) return
+    if (!this.want || this.state.phase === 'open' || this.state.phase === 'connecting') return
     const delays = this.o.retryDelaysMs ?? [1000, 2000, 4000, 8000, 15000, 30000]
     const attempt = this.state.attempt
     const delay = delays[Math.min(attempt, delays.length - 1)]
@@ -282,6 +282,8 @@ export class SerialConnection {
       port = null
     }
     if (!this.want) return false
+    // the person may have clicked Connect while getPorts() was pending
+    if (this.state.phase === 'open' || this.state.phase === 'connecting') return true
     if (port) {
       this.knownPortObj = port
       await this.open(port, true)
@@ -301,7 +303,7 @@ export class SerialConnection {
     } catch (e) {
       if (gen !== this.gen) return
       if (auto && this.want) {
-        this.set({ error: openErrorMessage(e) })
+        this.set({ phase: 'reconnecting', error: openErrorMessage(e) })
         this.scheduleRetry()
       } else {
         this.want = false
@@ -389,7 +391,7 @@ export class SerialConnection {
     if (reason === 'user') {
       this.set({ phase: 'idle', error: null })
     } else {
-      this.set({ error: LOST_MESSAGE })
+      this.set({ phase: 'reconnecting', error: LOST_MESSAGE })
       this.scheduleRetry()
     }
   }

@@ -111,6 +111,11 @@ export const FINDINGS: FindingDef[] = [
   f('co2-alarm', 'High cabin CO₂ or poor airflow where you were', 'Was the cabin CO₂ reading high, or were you in a spot with poor airflow?', 'event', ['co2', 'carbon dioxide', 'stuffy', 'poor (?:airflow|ventilation)', 'stale air', 'karbondioksit', 'havasiz'], 'exposure'),
   f('fall', 'Had a fall', 'Have you (or the person you are helping) had a fall?', 'event', ['\\b(?:fell|fallen)\\b', 'had a fall', '\\bfall(?:ing)? (?:down|over)', 'tripped', 'slipped', 'dustum', 'dustu', 'dusme', 'kaydim'], 'exposure'),
   f('head-injury', 'Hit the head', 'Was the head hit or injured?', 'event', ['hit (?:my |the |his |her )?head', 'head injury', 'bump\\w* (?:my )?head', 'basimi carp', 'kafami carp', 'basini vurdu'], 'exposure'),
+
+  // follow-ups asked by the environment-aware consultation (src/lib/cabinLink/envDx.ts); no condition scores them
+  f('heat-not-eased', 'Still unwell after 30 minutes of cooling down and drinking', 'Have you rested somewhere cooler and drunk water for 30 minutes — and do you still feel unwell?', 'event', ['still (?:unwell|ill|sick|bad) after (?:cooling|resting|drinking|30)', 'serinle\\w*[^.,;]{0,12}(?:gecmedi|hala)'], 'exposure'),
+  f('breathless-rest', 'Short of breath even when resting', 'Is your breathing hard even when you are resting or sitting still?', 'breathing', ['(?:short of breath|breathless|hard to breathe)[^.,;]{0,12}(?:at rest|resting|sitting still)', 'dinlenirken (?:bile )?nefes']),
+  f('eye-red-painful', 'A painful, red eye', 'Is an eye painful and red?', 'skin', ['painful red eye', 'red painful eye', 'eye pain', 'goz agri', 'gozum agriyor']),
 ]
 
 export const FINDING_BY_ID: Record<string, FindingDef> = Object.fromEntries(FINDINGS.map((x) => [x.id, x]))

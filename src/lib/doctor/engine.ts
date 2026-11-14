@@ -24,6 +24,12 @@ export type EngineInput = {
    * strength, red-flag rules or `against`. Weights <= 0 are ignored.
    */
   extraFactors?: Record<string, { label: string; w: number }[]>
+  /**
+   * Optional evidence discount per finding id (0..1 multiplier on its weight), e.g. sweating in a hot room
+   * (src/lib/cabinLink/envDx.ts). Ranking only: the yes-set used by red-flag rules, hallmark status and
+   * `against` are unchanged. Values outside [0, 1) are ignored.
+   */
+  discount?: Record<string, number>
 }
 
 export type Strength = 'strong' | 'moderate' | 'weak'
@@ -108,8 +114,10 @@ function scoreCondition(c: Condition, input: EngineInput, yes: Set<string>, now:
     totalW += f.w
     const a = answers[f.id]
     if (a === 'yes') {
-      yesW += f.w
-      matched.push({ id: f.id, label: label(f.id), w: f.w })
+      const k = input.discount?.[f.id]
+      const w = k != null && k >= 0 && k < 1 ? f.w * k : f.w
+      yesW += w
+      matched.push({ id: f.id, label: label(f.id), w })
       if (f.hallmark) hallmarkYes = true
     } else if (f.hallmark) {
       missing.push(`${label(f.id)} — ${a === 'no' ? 'you said no' : a === 'unsure' ? 'not sure' : 'not asked yet'}`)
