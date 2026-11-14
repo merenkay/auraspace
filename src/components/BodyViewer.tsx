@@ -4,7 +4,7 @@ import { SYSTEM_BY_ID, type SystemId } from '../data/systems'
 import { STATUS_COLOR, type Status } from '../data/vitals'
 import BodyMap from './BodyMap'
 import type { HoverMeta, LayerId, ViewerControls } from './three/Body3D'
-import { Button, cx, IconButton, Spinner, StatusIcon, statusLabel, StatusText } from './ui'
+import { Button, cx, IconButton, Spinner, StatusIcon, statusLabel, StatusText, useMedia } from './ui'
 
 const Body3D = lazy(() => import('./three/Body3D'))
 
@@ -76,19 +76,6 @@ const DEFAULT_LAYERS: Record<LayerId, boolean> = { skin: false, muscles: true, s
 const LOAD_TIMEOUT_MS = 45000
 const TIP_W = 240
 
-function useMediaQuery(query: string) {
-  const [match, setMatch] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(query).matches)
-  useEffect(() => {
-    const mq = window.matchMedia?.(query)
-    if (!mq) return
-    const on = () => setMatch(mq.matches)
-    on()
-    mq.addEventListener('change', on)
-    return () => mq.removeEventListener('change', on)
-  }, [query])
-  return match
-}
-
 type Props = {
   statuses: Record<SystemId, Status>
   summaries: Record<SystemId, string>
@@ -114,8 +101,8 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
   const [xray, setXray] = useState(true)
   const [insets, setInsets] = useState({ top: 48, bottom: compact ? 8 : 64 })
   const [zoomHint, setZoomHint] = useState(false)
-  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
-  const coarse = useMediaQuery('(pointer: coarse)')
+  const reducedMotion = useMedia('(prefers-reduced-motion: reduce)')
+  const coarse = useMedia('(pointer: coarse)')
 
   const wrapRef = useRef<HTMLDivElement>(null)
   const topRef = useRef<HTMLDivElement>(null)
