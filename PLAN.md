@@ -1,3 +1,5 @@
+> **Historical note (English).** This is the team's first planning note, written in Turkish at the start of the hackathon (14 November 2026) under the working name "CrewPulse". It is kept for the record and is **superseded by the product**: AURA has no OpenAI or other language model at runtime — the consultation, coach, early-warning and assistant features are deterministic, rule-based and work offline — and there is no Express server (the API is plain PHP + MySQL). See [README.md](README.md) for what was actually built.
+
 # CrewPulse — Proje Planı (NASA Space Apps 2026)
 
 Challenge: **Create Health Monitoring Software for Astronauts on Space Missions**

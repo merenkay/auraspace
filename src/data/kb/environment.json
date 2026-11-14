@@ -43,7 +43,7 @@
     "unit": "mSv/day",
     "context": "Mars surface, Gale crater, ~300 sols 2012-2013 (solar maximum)",
     "source": {"title": "Mars' surface radiation environment measured with the Mars Science Laboratory's Curiosity rover (Hassler et al., Science 343(6169), 2014); value as cited in arXiv:2208.00892 'Crewed Missions to Mars'", "organization": "Science (AAAS) / arXiv", "url": "https://arxiv.org/pdf/2208.00892", "date": "2014"},
-    "quote": "According to Hassler et al. (2014) the average radiation dose at Gale Crater is 0.64 � 0.12 mSv/day.",
+    "quote": "According to Hassler et al. (2014) the average radiation dose at Gale Crater is 0.64 ± 0.12 mSv/day.",
     "confidence": "secondary",
     "notes": "Science paper itself was not retrievable (HTTP 403); the Europe PMC abstract confirms Hassler 2014 reports absorbed dose and dose equivalent from GCR and SEP but gives no per-day mSv. NASA Science page (https://science.nasa.gov/resource/radiation-measurements-on-mars/, 2013-12-09) gives the absorbed dose: 'a slowly varying dose rate of about 210 micrograys per day'. Quote's plus/minus sign appears as a replacement character because of PDF text extraction. Other sources round to ~0.67 mSv/day."
   },
@@ -85,7 +85,7 @@
   },
   {
     "id": "radiation-artemis-ii-expected-dose",
-    "parameter": "Artemis II crew radiation dose (measured)",
+    "parameter": "Artemis II crew radiation dose (expected, pre-flight statement)",
     "value": null,
     "valueMax": null,
     "unit": "mSv",
