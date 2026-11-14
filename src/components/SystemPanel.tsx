@@ -4,7 +4,7 @@ import { recordsForSystem } from '../data/kb'
 import type { BodySystem } from '../data/systems'
 import { type Status, type Values, type VitalKey } from '../data/vitals'
 import { RecordCard } from './ScienceLibrary'
-import { List, Notice, Row, Sheet, SourceLink, StatusText, SYSTEM_ICON, VITAL_ICON, statusLabel } from './ui'
+import { Disclosure, List, Notice, Row, Sheet, SourceLink, StatusText, SYSTEM_ICON, VITAL_ICON, statusLabel } from './ui'
 
 type Props = {
   system: BodySystem
@@ -84,9 +84,10 @@ export default function SystemPanel({ system, status, values, available, action,
         {vitals.length > 0 && canEdit && <p className="-mt-3 text-sm text-dim">Select a reading to log a new value.</p>}
         {extra}
 
-        <Block title="What it does">{system.fn}</Block>
-        {impact.heading !== 'What it does' && <Block title={impact.heading}>{impact.text}</Block>}
-        <Block title="What you can do">
+        <div className="border-t border-line">
+        <Block id="system.what" title="What it does">{system.fn}</Block>
+        {impact.heading !== 'What it does' && <Block id="system.impact" title={impact.heading}>{impact.text}</Block>}
+        <Block id="system.tips" title="What you can do" defaultOpen>
           <ul className="list-disc space-y-1 pl-5">
             {system.tips.map((t) => (
               <li key={t}>{t}</li>
@@ -95,7 +96,7 @@ export default function SystemPanel({ system, status, values, available, action,
         </Block>
 
         {vitals.length > 0 && (
-          <Block title="Why these limits?">
+          <Block id="system.limits" title="Why these limits?">
             <div className="space-y-2">
               {vitals.map((k) => {
                 const d = vitalFor(k, context)
@@ -111,7 +112,7 @@ export default function SystemPanel({ system, status, values, available, action,
         )}
 
         {research.length > 0 && (
-          <Block title="NASA research on this system">
+          <Block id="system.research" title="NASA research on this system" meta={`${research.length} records`}>
             <div className="space-y-2">
               {research.map((r) => (
                 <RecordCard key={r.id} r={r} compact />
@@ -120,6 +121,7 @@ export default function SystemPanel({ system, status, values, available, action,
           </Block>
         )}
 
+        </div>
         {impact.source && <SourceLink href={impact.source.url} org={impact.source.org} title={impact.source.title} />}
         <p className="border-t border-line pt-4 text-sm text-dim">AURA supports self-assessment. It does not diagnose and does not replace your doctor or emergency services.</p>
       </div>
@@ -127,11 +129,11 @@ export default function SystemPanel({ system, status, values, available, action,
   )
 }
 
-function Block({ title, children }: { title: string; children: ReactNode }) {
+/** One folded group in the panel: the person's choice to open or close it is remembered on this device. */
+function Block({ id, title, meta, defaultOpen = false, children }: { id: string; title: string; meta?: string; defaultOpen?: boolean; children: ReactNode }) {
   return (
-    <section>
-      <h3 className="text-[15px] font-semibold text-ink">{title}</h3>
-      <div className="mt-1.5 text-sm leading-relaxed text-soft">{children}</div>
-    </section>
+    <Disclosure size="row" id={id} defaultOpen={defaultOpen} title={<span className="text-[15px] font-semibold text-ink">{title}</span>} meta={meta} className="border-b border-line">
+      <div className="text-sm leading-relaxed text-soft">{children}</div>
+    </Disclosure>
   )
 }

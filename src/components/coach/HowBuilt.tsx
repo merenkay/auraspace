@@ -14,7 +14,7 @@ const AURA_RULES = [
 export function HowBuilt({ rules }: { rules: CoachRuleId[] }) {
   const list = [...new Set(rules)].filter((r) => COACH_RULES[r])
   return (
-    <Disclosure title="How this plan was built" meta={`${list.length} sources · ${AURA_RULES.length} AURA rules`}>
+    <Disclosure id="coach.how-built" title="How this plan was built" meta={`${list.length} sources · ${AURA_RULES.length} AURA rules`}>
       <h3 className="text-[15px] font-semibold text-ink">Guidance behind your plan</h3>
       <ul className="mt-2 divide-y divide-line">
         {list.map((id) => {

@@ -418,8 +418,11 @@ export function useEnvStation() {
       : []
   const liveGasUnit: 'ratio' | 'raw' = base != null ? 'ratio' : 'raw'
 
-  const storedHasRatio = history.rows.some((r) => rowRatio(r) != null)
-  const storedSeries: ChartPoint[] = history.rows.map((r) => ({ x: atMs(r), t: r.t, h: r.h, g: storedHasRatio ? rowRatio(r) : (r.gasMax ?? r.gas) }))
+  // Memoised on the stored rows: the page ticks every second, the stored history does not change that often.
+  const { storedHasRatio, storedSeries } = useMemo(() => {
+    const ratio = history.rows.some((r) => rowRatio(r) != null)
+    return { storedHasRatio: ratio, storedSeries: history.rows.map((r): ChartPoint => ({ x: atMs(r), t: r.t, h: r.h, g: ratio ? rowRatio(r) : (r.gasMax ?? r.gas) })) }
+  }, [history.rows])
   const storedGasUnit: 'ratio' | 'raw' = storedHasRatio ? 'ratio' : 'raw'
 
   return {

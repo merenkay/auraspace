@@ -8,6 +8,7 @@ import AuraVoice from './voice/AuraVoice'
 import { CONTEXTS, type Context } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { radiation } from '../lib/health'
+import { prefetchRoute, prefetchWhenIdle } from '../lib/prefetch'
 import { useSession } from '../lib/session'
 import type { User } from '../lib/types'
 import { Avatar, Button, CONTEXT_ICON, List, Logo, Meter, MotionRoot, PageTransition, Row, SPRING, Sheet, StatusIcon, cx, useContextAccent } from './ui'
@@ -85,6 +86,10 @@ export default function AppShell() {
     window.scrollTo({ top: 0, behavior: 'instant' })
   }, [path])
 
+  // Warm the code of the other main pages once the browser is idle, so tab switches do not wait for the network.
+  const navKey = [...primary, ...subject].map((t) => t.to).join('|')
+  useEffect(() => (navKey ? prefetchWhenIdle(navKey.split('|')) : undefined), [navKey])
+
   const prof = MISSIONS.find((m) => m.id === mission?.profileId)
   const day = mission?.day ?? 1
   const total = mission?.totalDays ?? null
@@ -138,17 +143,17 @@ export default function AppShell() {
 
       <div className="flex min-h-dvh flex-col">
         {/* ---- Row 1: brand, navigation, account (sticky) ---- */}
-        <header className="sticky top-0 z-30 border-b border-line bg-space">
+        <header className="sticky top-0 z-30 border-b border-line bg-space pt-[env(safe-area-inset-top)]">
           <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-2 px-4 sm:px-6">
-            <Link to="/" aria-label="AURA home" className="-ml-1 mr-4 flex h-11 items-center rounded-lg px-1">
+            <Link to="/" aria-label="AURA home" className="-ml-1 mr-2 flex h-11 shrink-0 items-center rounded-lg px-1 lg:mr-4">
               <Logo wordmark size={26} />
             </Link>
 
-            <nav aria-label="Main" className="hidden h-full items-stretch md:flex">
+            <nav aria-label="Main" className="no-scrollbar hidden h-full min-w-0 items-stretch overflow-x-auto md:flex">
               {primary.map((t) => {
                 const on = isActive(t, path)
                 return (
-                  <Link key={t.to} to={t.to} aria-current={on ? 'page' : undefined} className={cx('relative flex items-center px-3 text-sm font-medium transition-colors', on ? 'text-ink' : 'text-dim hover:text-ink')}>
+                  <Link key={t.to} to={t.to} onPointerEnter={() => prefetchRoute(t.to)} onFocus={() => prefetchRoute(t.to)} aria-current={on ? 'page' : undefined} className={cx('press relative flex shrink-0 items-center px-2 text-sm font-medium transition-colors lg:px-3', on ? 'text-ink' : 'text-dim hover:text-ink')}>
                     {t.label}
                     {on && <motion.span layoutId="nav-underline" transition={SPRING.snappy} className="absolute inset-x-3 -bottom-px h-0.5 bg-accent" />}
                   </Link>
@@ -156,7 +161,7 @@ export default function AppShell() {
               })}
             </nav>
 
-            <div className="ml-auto flex items-center gap-3">
+            <div className="ml-auto flex shrink-0 items-center gap-2 lg:gap-3">
               <OfflineBadge />
               {/* Hands-free controls: each renders its own header button and portals its overlay. */}
               <AuraVoice crewId={voiceCrewId} />
@@ -173,7 +178,7 @@ export default function AppShell() {
               </div>
 
               {/* Phone: the one fact that orients you; tap for everything else */}
-              <button type="button" onClick={() => setMoreOpen(true)} aria-label="Mission details and account" className="-mr-2 flex h-11 items-center gap-1.5 rounded-lg px-2 text-sm md:hidden">
+              <button type="button" onClick={() => setMoreOpen(true)} aria-label="Mission details and account" className="press -mr-2 flex h-11 items-center gap-1.5 rounded-lg px-2 text-sm md:hidden">
                 {ctx === 'space' ? (
                   <>
                     <span className="text-dim">Day</span>
@@ -211,7 +216,7 @@ export default function AppShell() {
 
         {/* ---- Staff: whose record this is, and its sections (sticky under row 1) ---- */}
         {subject.length > 0 && (
-          <div className="sticky top-14 z-20 border-b border-line bg-space">
+          <div className="sticky top-[calc(3.5rem+env(safe-area-inset-top))] z-20 border-b border-line bg-space">
             <div className="mx-auto flex max-w-[1500px] items-center gap-x-5 px-4 sm:px-6">
               <Link to="/crew" className="-ml-2 flex h-11 shrink-0 items-center gap-2 rounded-lg px-2 text-sm text-soft transition-colors hover:text-ink">
                 <ChevronLeft className="h-4 w-4 text-dim" aria-hidden="true" />
@@ -223,7 +228,7 @@ export default function AppShell() {
                 {subject.map((t) => {
                   const on = isActive(t, path)
                   return (
-                    <Link key={t.to} to={t.to} aria-current={on ? 'page' : undefined} className={cx('relative flex h-11 shrink-0 items-center px-2.5 text-sm font-medium transition-colors', on ? 'text-ink' : 'text-dim hover:text-ink')}>
+                    <Link key={t.to} to={t.to} onPointerEnter={() => prefetchRoute(t.to)} onFocus={() => prefetchRoute(t.to)} aria-current={on ? 'page' : undefined} className={cx('press relative flex h-11 shrink-0 items-center rounded-md px-2.5 text-sm font-medium transition-colors', on ? 'text-ink' : 'text-dim hover:text-ink')}>
                       {t.label}
                       {on && <motion.span layoutId="subject-underline" transition={SPRING.snappy} className="absolute inset-x-2.5 -bottom-px h-0.5 bg-accent" />}
                     </Link>
@@ -250,7 +255,7 @@ export default function AppShell() {
             {barItems.map((t) => (
               <BarLink key={t.to} item={t} active={isActive(t, path)} />
             ))}
-            <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors', overflowActive ? 'text-ink' : 'text-dim')}>
+            <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" data-sfx="tick" className={cx('press bar-item relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors', overflowActive ? 'text-ink' : 'text-dim')}>
               {overflowActive && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
               {overflow.length ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : <UserRound className="h-5 w-5" aria-hidden="true" />}
               <span>{overflow.length ? 'More' : 'Account'}</span>
@@ -293,7 +298,7 @@ export default function AppShell() {
 
 function BarLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
-    <Link to={item.to} aria-current={active ? 'page' : undefined} className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors', active ? 'text-ink' : 'text-dim')}>
+    <Link to={item.to} onPointerDown={() => prefetchRoute(item.to)} data-sfx="tick" aria-current={active ? 'page' : undefined} className={cx('press bar-item relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors', active ? 'text-ink' : 'text-dim')}>
       {active && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
       <item.icon className="h-5 w-5" aria-hidden="true" />
       <span className="max-w-full truncate px-1">{item.label}</span>

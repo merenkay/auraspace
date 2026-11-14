@@ -5,7 +5,7 @@ import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { HealthProfile } from '../../data/conditions/profile'
 import type { Context } from '../../data/contexts'
-import { assess, FINDING_BY_ID, parseFindings, STARTER_FINDINGS, URGENCY_TEXT, type Answer, type Answers, type Assessment, type Readings } from '../../lib/doctor'
+import { FINDING_BY_ID, parseFindings, STARTER_FINDINGS, URGENCY_TEXT, type Answer, type Answers, type Assessment, type Readings } from '../../lib/doctor'
 import { sfx } from '../../lib/sfx'
 import { emergencyPlan } from '../../lib/voice/consult'
 import { parseIntent } from '../../lib/voice/intents'
@@ -15,6 +15,7 @@ import { cancelSpeech, speak, ttsSupported } from '../../lib/voice/speech'
 import { Button, DUR, EASE, IconButton, Logo, Meter, Notice, Textarea, cx } from '../ui'
 import AssessmentView from './AssessmentView'
 import Disclosure from './Disclosure'
+import { assessWithCabin, CabinAirNotice, useCabinContext, useCabinPrefill } from '../cabinlink'
 
 type Turn = { id: number; who: 'aura' | 'me'; text: string; sub?: string }
 
@@ -69,7 +70,8 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   const recRef = useRef<Recognizer | null>(null)
   const spokenTurns = useRef(1)
 
-  const a = useMemo(() => assess({ answers, context: ctx, readings, profile }), [answers, ctx, readings, profile])
+  const cabin = useCabinContext(ctx).cabin // cabin-air readings: supporting evidence only, never lowers urgency
+  const a = useMemo(() => assessWithCabin({ answers, context: ctx, readings, profile }, cabin), [answers, ctx, readings, profile, cabin])
 
   useEffect(() => {
     const behavior = reduce ? 'auto' : 'smooth'
@@ -79,7 +81,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
 
   /** After every answer: stop at once on an emergency, otherwise ask the most useful next question. */
   const advance = (next: Answers, askedNow: string[], notes: Turn[]) => {
-    const res = assess({ answers: next, context: ctx, readings, profile })
+    const res = assessWithCabin({ answers: next, context: ctx, readings, profile }, cabin)
     const add: Turn[] = [...notes]
     const yes = Object.values(next).some((v) => v === 'yes')
     if (res.urgency === 'emergency') {
@@ -108,6 +110,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   }
 
   const pick = (id: string) => advance({ ...answers, [id]: 'yes' }, asked, [turn('me', FINDING_BY_ID[id].label)])
+  useCabinPrefill((found, said) => advance(found, [], [turn('me', said)])) // ticks from the Environment page's symptom check
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
@@ -279,7 +282,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
           <div ref={endRef} />
 
           {/* Pinned above the phone bottom bar; flows normally from md up. */}
-          <form onSubmit={submit} className="sticky bottom-16 z-10 -mx-4 border-t border-line bg-space px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:px-0 md:pb-0 md:pt-2">
+          <form onSubmit={submit} className="sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-10 -mx-4 border-t border-line bg-space px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:px-0 md:pb-0 md:pt-2">
             <label htmlFor="aura-compose" className="sr-only">
               {pending ? 'Or describe it in your own words' : 'Describe how you feel'}
             </label>
@@ -307,7 +310,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
             </div>
             <p className="mt-1.5 text-xs text-dim">English or Turkish, e.g. “my chest hurts and my left arm is numb”. Enter sends, Shift+Enter adds a line.</p>
             {ttsSupported() && (
-              <button type="button" aria-pressed={readAloud} onClick={toggleRead} className="mt-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-lg text-sm text-dim hover:text-ink">
+              <button type="button" aria-pressed={readAloud} onClick={toggleRead} className="press mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg pr-2 text-sm text-dim hover:text-ink md:min-h-8">
                 {readAloud ? <Volume2 className="h-4 w-4" aria-hidden="true" /> : <VolumeX className="h-4 w-4" aria-hidden="true" />}
                 Read aloud: {readAloud ? 'on' : 'off'}
               </button>
@@ -320,6 +323,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
         <div ref={resultRef} className="scroll-mt-24">
           <AssessmentView
             a={a}
+            cabin={<CabinAirNotice cabin={cabin} answers={answers} ctx={ctx} />}
             ctx={ctx}
             profile={profile}
             delaySec={delaySec}
@@ -327,7 +331,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
               <div className="space-y-4 border-t border-line pt-6">
                 <div className="flex flex-wrap items-center gap-3">
                   {onSave && (
-                    <Button variant="primary" icon={Save} loading={saved === 'busy'} disabled={saved === 'ok'} onClick={() => void save()}>
+                    <Button variant="primary" icon={Save} loading={saved === 'busy'} done={saved === 'ok'} disabled={saved === 'ok'} onClick={() => void save()}>
                       {saved === 'ok' ? 'Saved to your record' : 'Save to my record'}
                     </Button>
                   )}

@@ -426,6 +426,17 @@ export const CONDITION_DEFS: ConditionDef[] = [
     against: [{ finding: 'better-away', when: 'no', w: 1, label: 'Symptoms do not ease away from the building' }],
   },
   {
+    // Crisis: always its own emergency, in every context, so the plan shown is crisis help and never a mood programme.
+    id: 'suicidal-thoughts',
+    name: 'Thoughts of self-harm or suicide',
+    blurb: 'Thoughts of harming yourself or ending your life. Help is available right now.',
+    system: 'brain',
+    contexts: ['space', 'polar', 'home'],
+    urgency: 'emergency',
+    findings: [{ id: 'self-harm', w: 3, hallmark: true }],
+    emergencyIf: [{ label: 'Thoughts of self-harm or suicide', need: [['self-harm']] }],
+  },
+  {
     id: 'seasonal-low-mood',
     name: 'Possible seasonal low mood (SAD)',
     blurb: 'Low mood that comes with the dark season, often with low energy and sleep changes.',
@@ -438,9 +449,7 @@ export const CONDITION_DEFS: ConditionDef[] = [
       { id: 'fatigue', w: 2 },
       { id: 'insomnia', w: 1 },
       { id: 'irritable', w: 1 },
-      { id: 'self-harm', w: 3 },
     ],
-    emergencyIf: [{ label: 'Thoughts of self-harm or suicide', need: [['self-harm']] }],
     factors: [
       { kind: 'reading', any: [{ metric: 'mood', op: '<=', value: 2 }], w: 2, label: 'Recent mood check-ins are low' },
       { kind: 'context', contexts: ['polar'], w: 1, label: 'Polar night and isolation' },
@@ -593,9 +602,7 @@ export const CONDITION_DEFS: ConditionDef[] = [
       { id: 'insomnia', w: 1 },
       { id: 'fatigue', w: 1 },
       { id: 'fear', w: 1 },
-      { id: 'self-harm', w: 3 },
     ],
-    emergencyIf: [{ label: 'Thoughts of self-harm or suicide', need: [['self-harm']] }],
     factors: [
       { kind: 'reading', any: [{ metric: 'mood', op: '<=', value: 2 }], w: 2, label: 'Recent mood check-ins are low' },
       { kind: 'reading', any: [{ metric: 'sleep', op: '<=', value: 6 }], w: 1, label: 'Short sleep logged recently' },

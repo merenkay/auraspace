@@ -1,7 +1,7 @@
 import { ChevronDown, SearchX } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { ENV_VALUES, EXERCISE_KB, HAZARD_LABEL, KB_RECORDS, type HazardId, type KbRecord } from '../data/kb'
-import { Badge, Card, Dialog, EmptyState, Field, Input, List, Select, SourceLink, Tabs } from './ui'
+import { Badge, Card, Dialog, EmptyState, Field, Input, List, Select, ShowMore, SourceLink, Tabs } from './ui'
 
 type Props = { onClose: () => void; initialQuery?: string }
 type LibraryTab = 'risks' | 'environment' | 'exercise'
@@ -68,7 +68,7 @@ export default function ScienceLibrary({ onClose, initialQuery = '' }: Props) {
           {risks.length ? (
             <div className="space-y-4">
               {risks.map((r) => (
-                <RecordCard key={r.id} r={r} />
+                <RecordCard key={r.id} r={r} compact />
               ))}
             </div>
           ) : (
@@ -93,7 +93,11 @@ export default function ScienceLibrary({ onClose, initialQuery = '' }: Props) {
                 {e.confidence === 'secondary' && <Badge tone="warn">Secondary source</Badge>}
               </p>
               {e.quote && <Quote text={e.quote} />}
-              {e.notes && <p className="mt-2 text-sm text-dim">{e.notes}</p>}
+              {e.notes && (
+                <ShowMore lines={1} className="mt-2 text-sm text-dim">
+                  {e.notes}
+                </ShowMore>
+              )}
               <div className="mt-2">
                 <SourceLink href={e.source.url} org={e.source.organization} title={`${e.source.title}${e.source.date ? ` (${e.source.date})` : ''}`} />
               </div>
@@ -110,7 +114,9 @@ export default function ScienceLibrary({ onClose, initialQuery = '' }: Props) {
                 <h3 className="text-[15px] font-semibold text-ink">{q.name}</h3>
                 <Badge>{q.category}</Badge>
               </div>
-              <p className="mt-1 text-sm text-soft">{q.description}</p>
+              <ShowMore lines={2} className="mt-1 text-sm text-soft">
+                {q.description}
+              </ShowMore>
               {q.capabilities.length > 0 && (
                 <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-soft">
                   {q.capabilities.map((c) => (
@@ -152,7 +158,7 @@ export function RecordCard({ r, compact = false }: { r: KbRecord; compact?: bool
   return (
     <Card tone="well" pad="none">
       <details className="group" open={!compact}>
-        <summary className="flex min-h-11 cursor-pointer list-none items-start gap-3 p-4 [&::-webkit-details-marker]:hidden">
+        <summary className="press flex min-h-11 cursor-pointer list-none items-start gap-3 rounded-2xl p-4 [&::-webkit-details-marker]:hidden">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               {r.hazards.map((h) => (
@@ -161,7 +167,7 @@ export function RecordCard({ r, compact = false }: { r: KbRecord; compact?: bool
               {r.lastUpdated && <span className="meta">updated {r.lastUpdated}</span>}
             </div>
             <h3 className="mt-2 text-[15px] font-semibold leading-snug text-ink">{r.title}</h3>
-            <p className="mt-1 text-sm leading-relaxed text-soft">{r.summary}</p>
+            <p className="mt-1 text-sm leading-relaxed text-soft group-[:not([open])]:line-clamp-2">{r.summary}</p>
           </div>
           <ChevronDown className="mt-1 h-4 w-4 shrink-0 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
         </summary>

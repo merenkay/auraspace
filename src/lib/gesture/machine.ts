@@ -1,12 +1,15 @@
 // Turns a stream of hand-landmark frames into interface intents: a cursor, air-taps, holds, pinch-drags,
-// single-hand push/pull, two-hand zoom, swipes, a fist-hold and an idle timeout. Pure and deterministic
-// (time comes from the frames), so every gesture can be unit-tested with synthetic landmark sequences.
+// single-hand push/pull, two-hand zoom, slaps (page left/right), a fist-hold and an idle timeout. Pure and
+// deterministic (time comes from the frames), so every gesture can be unit-tested with synthetic landmark sequences.
 //
 // Coordinates: frames carry raw image coordinates (0..1, not mirrored). The cursor and every event position
-// are SCREEN-normalised (0..1 of the viewport), mirrored so that moving the hand to the right moves the
-// cursor to the right, and stretched so that a comfortable central part of the camera picture covers the screen.
-import { classify, features, pinchProgress, PoseDebouncer, POSE_TH, sideOf, type Features, type HandSide, type Pose, type PoseThresholds, type Pt } from './classify'
+// are SCREEN-normalised (0..1 of the viewport). With `mirror` on (default) the picture is treated like a mirror:
+// moving the hand to your right moves the cursor to the right of the screen, and a comfortable central part of
+// the camera picture (`region`) is stretched over the whole screen, so the corners are reachable without
+// reaching the edges of the picture (where tracking is worst).
+import { classify, features, PinchCalibrator, pinchProgress, PoseDebouncer, POSE_TH, sideOf, type Features, type HandSide, type Pose, type PoseThresholds, type Pt } from './classify'
 import { OneEuro } from './oneEuro'
+import { SLAP_DEFAULTS, SlapDetector, type SlapOptions } from './slap'
 
 export type RawHand = { landmarks: Pt[]; handedness?: string | null; score?: number }
 export type RawFrame = {
@@ -33,7 +36,8 @@ export type GestureEvent =
   /** two-hand pinch: factor > 1 = the hands moved apart */
   | { type: 'zoom'; factor: number; x: number; y: number }
   | { type: 'zoomend' }
-  | { type: 'swipe'; dir: 'left' | 'right' }
+  /** fast sideways movement of the open hand; `dir` is the direction on SCREEN (as seen in the mirrored preview) */
+  | { type: 'slap'; dir: 'left' | 'right'; speed: number }
   | { type: 'fist'; x: number; y: number }
   | { type: 'idle' }
   | { type: 'found' }
@@ -55,6 +59,8 @@ export type GestureState = {
   hold: number
   /** 0..1 towards the fist-hold */
   fist: number
+  /** the cursor is held in place because the fingers are closing for a pinch (or pinched) */
+  frozen: boolean
   quality: Quality
   hands: HandView[]
   /** the two pinch points while zooming with both hands */
@@ -62,10 +68,14 @@ export type GestureState = {
 }
 
 export type GestureOptions = {
-  /** part of the (mirrored) camera picture that maps onto the whole screen */
+  /** part of the camera picture (in mirrored screen orientation) that maps onto the whole screen */
   region: { x0: number; x1: number; y0: number; y1: number }
   /** frames were flipped horizontally before detection (false for a raw webcam frame) */
   inputMirrored: boolean
+  /** behave like a mirror (default): your right = screen right. Off: the cursor follows the unmirrored picture */
+  mirror: boolean
+  /** which hand drives the cursor when both are in view */
+  primaryHand: HandSide
   /** hands the model is less sure about are ignored */
   minScore: number
   /** a pinch released within this time without moving is an air-tap */
@@ -77,39 +87,48 @@ export type GestureOptions = {
   /** change of apparent hand size (ratio) that turns a still pinch into a push/pull; 0 disables */
   depthOn: number
   fistMs: number
-  /** camera-normalised palm travel and time window for a swipe */
-  swipeMinDist: number
-  swipeMaxMs: number
-  swipeCooldownMs: number
+  slap: SlapOptions
   /** no hand for this long: idle */
   idleMs: number
   /** a hand missing for at most this long (a dropped detection) keeps its state */
   lostGraceMs: number
   /** frames a new pose must persist before it counts */
   debounceFrames: number
-  /** pinch progress above which the cursor follows the knuckle instead of the fingertip */
-  steadyFrom: number
+  /** pinch progress from which the cursor freezes (if the fingers are closing) */
+  freezeFrom: number
+  /** pinch progress that freezes the cursor however slowly the fingers closed */
+  freezeHard: number
+  /** screen-normalised palm travel that breaks a freeze before the pinch is complete (the hand is moving on) */
+  freezeBreak: number
+  /** screen-normalised dead zone: smaller cursor movements are ignored (doubled near the screen edges) */
+  deadZone: number
   filter: { minCutoff: number; beta: number; dCutoff: number }
+  /** learn pinch thresholds per hand (see PinchCalibrator); false = fixed `pose` thresholds */
+  calibrate: boolean
   pose: PoseThresholds
 }
 
 export const DEFAULT_OPTIONS: GestureOptions = {
-  region: { x0: 0.18, x1: 0.82, y0: 0.14, y1: 0.72 },
+  region: { x0: 0.2, x1: 0.8, y0: 0.15, y1: 0.68 },
   inputMirrored: false,
+  mirror: true,
+  primaryHand: 'right',
   minScore: 0.5,
   tapMaxMs: 600,
   holdMs: 900,
-  slop: 0.03,
+  slop: 0.035,
   depthOn: 1.18,
   fistMs: 700,
-  swipeMinDist: 0.22,
-  swipeMaxMs: 320,
-  swipeCooldownMs: 800,
+  slap: SLAP_DEFAULTS,
   idleMs: 2500,
-  lostGraceMs: 160,
+  lostGraceMs: 200,
   debounceFrames: 2,
-  steadyFrom: 0.35,
-  filter: { minCutoff: 1.2, beta: 4, dCutoff: 1 },
+  freezeFrom: 0.3,
+  freezeHard: 0.6,
+  freezeBreak: 0.06,
+  deadZone: 0.0035,
+  filter: { minCutoff: 0.9, beta: 5, dCutoff: 1.2 },
+  calibrate: true,
   pose: POSE_TH,
 }
 
@@ -118,85 +137,108 @@ type Track = {
   filters: OneEuro[]
   lm: Pt[]
   f: Features
-  /** palm centre before smoothing (for fast gestures) */
-  rawPalm: { x: number; y: number }
+  /** features of the unsmoothed landmarks (for fast gestures) */
+  rawF: Features
   side: HandSide | null
   pose: Pose
   raw: Pose
   deb: PoseDebouncer
+  calib: PinchCalibrator | null
+  th: PoseThresholds
   since: number
   seenAt: number
   poseSince: number
 }
 
 type Press = { t0: number; anchor: XY; last: XY; palm0: XY; scale0: number; lastScale: number; mode: 'none' | 'move' | 'depth'; held: boolean }
+type Freeze = { at: XY; palm: XY; knuckle: XY }
 
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v))
 
 export class GesturePipeline {
-  readonly o: GestureOptions
+  o: GestureOptions
   private tracks: Track[] = []
   private nextId = 1
   private primaryId: number | null = null
   private cursor: XY | null = null
-  private steady: { base: XY; knuckle: XY } | null = null
+  private freeze: Freeze | null = null
+  /** the cursor stays frozen until this time after a release (the fingertip flicks as the fingers open) */
+  private thawAt = 0
+  /** a freeze was broken by moving the hand: no new one until the fingers open (or a real pinch) */
+  private freezeVeto = false
   private blend: { dx: number; dy: number; t: number } | null = null
+  private recent: { t: number; cursor: XY; pinch: number }[] = []
   private press: Press | null = null
+  private releasedAt = -Infinity
   private zoom: { d: number } | null = null
   private suppressPinch = false
   private fistFired = false
-  private swipeHist: { t: number; x: number; y: number; open: boolean }[] = []
-  private swipeUntil = 0
+  private slap: SlapDetector
   private lastHandAt = -Infinity
   private idleSent = true
   private last: GestureState
 
   constructor(opts: Partial<GestureOptions> = {}) {
-    this.o = { ...DEFAULT_OPTIONS, ...opts, region: { ...DEFAULT_OPTIONS.region, ...opts.region }, pose: { ...POSE_TH, ...opts.pose } }
+    this.o = this.merge(DEFAULT_OPTIONS, opts)
+    this.slap = new SlapDetector(this.o.slap)
     this.last = this.emptyState(0, 'no-hand')
+  }
+
+  private merge(base: GestureOptions, opts: Partial<GestureOptions>): GestureOptions {
+    return { ...base, ...opts, region: { ...base.region, ...opts.region }, pose: { ...base.pose, ...opts.pose }, slap: { ...base.slap, ...opts.slap }, filter: { ...base.filter, ...opts.filter } }
+  }
+
+  /** Change options while running (settings panel): mirror, hand preference, region. */
+  configure(opts: Partial<GestureOptions>) {
+    this.o = this.merge(this.o, opts)
   }
 
   reset() {
     this.tracks = []
     this.primaryId = null
     this.cursor = null
-    this.steady = null
+    this.freeze = null
+    this.freezeVeto = false
     this.blend = null
+    this.recent = []
     this.press = null
     this.zoom = null
     this.suppressPinch = false
     this.fistFired = false
-    this.swipeHist = []
+    this.slap.reset()
     this.lastHandAt = -Infinity
     this.idleSent = true
+  }
+
+  /** raw x -> x in screen orientation (before stretching over the region) */
+  private sx(x: number): number {
+    return this.o.mirror !== this.o.inputMirrored ? 1 - x : x
   }
 
   /** Raw image point -> screen-normalised point (mirrored, stretched over `region`). */
   toScreen(p: XY): XY {
     const r = this.o.region
-    const mx = this.o.inputMirrored ? p.x : 1 - p.x
-    return { x: clamp01((mx - r.x0) / (r.x1 - r.x0)), y: clamp01((p.y - r.y0) / (r.y1 - r.y0)) }
+    return { x: clamp01((this.sx(p.x) - r.x0) / (r.x1 - r.x0)), y: clamp01((p.y - r.y0) / (r.y1 - r.y0)) }
   }
 
   /** Screen-normalised point -> raw image point (inverse of toScreen inside the region). */
   fromScreen(p: XY): XY {
     const r = this.o.region
     const mx = r.x0 + p.x * (r.x1 - r.x0)
-    return { x: this.o.inputMirrored ? mx : 1 - mx, y: r.y0 + p.y * (r.y1 - r.y0) }
+    return { x: this.sx(mx), y: r.y0 + p.y * (r.y1 - r.y0) }
   }
 
   private delta(a: XY, b: XY): XY {
     const r = this.o.region
-    const dx = (b.x - a.x) / (r.x1 - r.x0)
-    return { x: this.o.inputMirrored ? dx : -dx, y: (b.y - a.y) / (r.y1 - r.y0) }
+    return { x: (this.sx(b.x) - this.sx(a.x)) / (r.x1 - r.x0), y: (b.y - a.y) / (r.y1 - r.y0) }
   }
 
   private emptyState(t: number, quality: Quality): GestureState {
-    return { t, present: false, cursor: null, mode: 'idle', pose: 'none', pinch: 0, hold: 0, fist: 0, quality, hands: [], zoomPts: null }
+    return { t, present: false, cursor: null, mode: 'idle', pose: 'none', pinch: 0, hold: 0, fist: 0, frozen: false, quality, hands: [], zoomPts: null }
   }
 
   // ---------------------------------------------------------------------------------------------------
-  // tracking: identity across frames, smoothing, per-hand pose with hysteresis and debounce
+  // tracking: identity across frames, smoothing, per-hand pose with calibrated hysteresis and debounce
   // ---------------------------------------------------------------------------------------------------
   private updateTracks(frame: RawFrame, aspect: number): { fresh: Track[]; lowConfidence: boolean } {
     const t = frame.t
@@ -211,7 +253,7 @@ export class GesturePipeline {
       let bestD = 0.3
       for (const i of free) {
         const c = centre(good[i].landmarks)
-        const d = Math.hypot((c.x - tr.f.palm.x) * aspect, c.y - tr.f.palm.y)
+        const d = Math.hypot((c.x - tr.rawF.palm.x) * aspect, c.y - tr.rawF.palm.y)
         if (d < bestD) {
           bestD = d
           best = i
@@ -225,16 +267,20 @@ export class GesturePipeline {
     for (const i of free) {
       if (this.tracks.length >= 2) break
       const { minCutoff, beta, dCutoff } = this.o.filter
+      const f0 = features(good[i].landmarks, aspect)
+      const calib = this.o.calibrate ? new PinchCalibrator(this.o.pose) : null
       const tr: Track = {
         id: this.nextId++,
         filters: Array.from({ length: 63 }, () => new OneEuro(minCutoff, beta, dCutoff)),
         lm: [],
-        f: features(good[i].landmarks, aspect),
-        rawPalm: centre(good[i].landmarks),
+        f: f0,
+        rawF: f0,
         side: null,
         pose: 'none',
         raw: 'none',
         deb: new PoseDebouncer(this.o.debounceFrames),
+        calib,
+        th: calib?.th ?? this.o.pose,
         since: t,
         seenAt: t,
         poseSince: t,
@@ -247,14 +293,15 @@ export class GesturePipeline {
       const h = good[i]
       tr.lm = h.landmarks.map((p, k) => ({ x: tr.filters[k * 3].filter(p.x, t), y: tr.filters[k * 3 + 1].filter(p.y, t), z: tr.filters[k * 3 + 2].filter(p.z, t) }))
       tr.f = features(tr.lm, aspect)
-      tr.rawPalm = centre(h.landmarks)
+      tr.rawF = features(h.landmarks, aspect)
       tr.side = sideOf(h.handedness, this.o.inputMirrored) ?? tr.side
-      tr.raw = classify(tr.f, tr.raw === 'pinch', this.o.pose)
+      tr.raw = classify(tr.f, tr.raw === 'pinch', tr.th)
       const { pose, changed } = tr.deb.push(tr.raw)
       if (changed) {
         tr.pose = pose
         tr.poseSince = t
       }
+      if (tr.calib) tr.th = tr.calib.update(tr.f.pinch, tr.raw === 'pinch', tr.pose === 'open' || tr.pose === 'point', t)
       tr.seenAt = t
       fresh.push(tr)
     }
@@ -280,9 +327,9 @@ export class GesturePipeline {
     if (!primary && fresh.length) {
       this.cancelPress(ev)
       this.endZoom(ev)
-      this.steady = null
-      this.swipeHist = []
-      primary = fresh.find((tr) => tr.side === 'right') ?? fresh[0]
+      this.freeze = null
+      this.slap.reset()
+      primary = fresh.find((tr) => tr.side === this.o.primaryHand) ?? fresh[0]
       this.primaryId = primary.id
     }
 
@@ -290,8 +337,9 @@ export class GesturePipeline {
       this.cancelPress(ev)
       this.endZoom(ev)
       this.primaryId = null
-      this.steady = null
-      this.swipeHist = []
+      this.freeze = null
+      this.recent = []
+      this.slap.reset()
       if (!this.idleSent && t - this.lastHandAt >= this.o.idleMs) {
         this.idleSent = true
         ev.push({ type: 'idle' })
@@ -306,7 +354,7 @@ export class GesturePipeline {
     }
     this.lastHandAt = t
     const f = primary.f
-    const pinch = pinchProgress(f, this.o.pose)
+    const pinch = pinchProgress(f, primary.th)
     let mode: Mode = 'hover'
     let zoomPts: [XY, XY] | null = null
 
@@ -358,8 +406,11 @@ export class GesturePipeline {
       if (primary.pose === 'pinch' && !this.suppressPinch) {
         let p = this.press
         if (!p) {
-          p = this.press = { t0: t, anchor: cursor, last: cursor, palm0: f.palm, scale0: f.scale, lastScale: f.scale, mode: 'none', held: false }
-          ev.push({ type: 'press', ...cursor })
+          // the cursor is frozen while the fingers close, so the press lands where the person aimed
+          const at = this.freeze?.at ?? cursor
+          p = this.press = { t0: t, anchor: at, last: at, palm0: f.palm, scale0: f.scale, lastScale: f.scale, mode: 'none', held: false }
+          if (!this.freeze) this.freeze = { at, palm: f.palm, knuckle: f.knuckle }
+          ev.push({ type: 'press', ...at })
         }
         if (p.mode === 'none') {
           // Sideways travel of the palm vs change of apparent hand size, each against its own threshold: whichever
@@ -372,12 +423,14 @@ export class GesturePipeline {
             p.mode = depth > lateral ? 'depth' : 'move'
             if (p.mode === 'depth') p.lastScale = p.scale0
             ev.push({ type: 'dragstart', ...p.anchor })
+            if (p.mode === 'move') this.moveCursor(primary, pinch, t)
           }
         }
+        const cur = this.cursor ?? cursor
         if (p.mode === 'move') {
-          const dx = cursor.x - p.last.x
-          const dy = cursor.y - p.last.y
-          if (dx || dy) ev.push({ type: 'drag', ...cursor, dx, dy })
+          const dx = cur.x - p.last.x
+          const dy = cur.y - p.last.y
+          if (dx || dy) ev.push({ type: 'drag', ...cur, dx, dy })
           mode = 'drag'
         } else if (p.mode === 'depth') {
           const factor = f.scale / p.lastScale
@@ -391,38 +444,30 @@ export class GesturePipeline {
             ev.push({ type: 'hold', ...p.anchor })
           }
         }
-        p.last = cursor
+        p.last = cur
         p.lastScale = f.scale
       } else if (this.press) {
         const p = this.press
         this.press = null
-        if (p.mode !== 'none') ev.push({ type: 'dragend', ...cursor, cancelled: false })
+        this.releasedAt = t
+        const cur = this.cursor ?? cursor
+        if (p.mode !== 'none') ev.push({ type: 'dragend', ...cur, cancelled: false })
         else if (!p.held && t - p.t0 <= this.o.tapMaxMs) ev.push({ type: 'tap', ...p.anchor })
-        ev.push({ type: 'release', ...(p.mode === 'none' ? p.anchor : cursor) })
+        ev.push({ type: 'release', ...(p.mode === 'none' ? p.anchor : cur) })
+        // keep the cursor where it was for a moment: the fingertip flicks as the fingers open
+        if (p.mode === 'none') this.thawAt = t + 150
+        else this.freeze = null
       }
     }
 
-    // ---- swipe: a quick horizontal sweep of the open palm ----------------------------------------------
-    // Measured on the unsmoothed palm (smoothing would eat a fast flick); the sweep must span at least
-    // three frames, so a single-frame landmark jump is never a swipe.
-    const palm = primary.rawPalm
-    const palmX = this.o.inputMirrored ? palm.x : 1 - palm.x
-    this.swipeHist.push({ t, x: palmX, y: palm.y, open: primary.pose === 'open' && !this.press && !this.zoom })
-    while (this.swipeHist.length && t - this.swipeHist[0].t > this.o.swipeMaxMs) this.swipeHist.shift()
-    if (t >= this.swipeUntil && primary.pose === 'open' && !this.press && !this.zoom) {
-      let i = this.swipeHist.length - 1
-      while (i > 0 && this.swipeHist[i - 1].open) i--
-      const a = this.swipeHist[i]
-      const dx = palmX - a.x
-      const dy = palm.y - a.y
-      let maxStep = 0
-      for (let k = i + 1; k < this.swipeHist.length; k++) maxStep = Math.max(maxStep, Math.abs(this.swipeHist[k].x - this.swipeHist[k - 1].x))
-      if (i <= this.swipeHist.length - 3 && maxStep <= 0.7 * Math.abs(dx) && Math.abs(dx) >= this.o.swipeMinDist && Math.abs(dy) <= 0.6 * Math.abs(dx)) {
-        ev.push({ type: 'swipe', dir: dx > 0 ? 'right' : 'left' })
-        this.swipeUntil = t + this.o.swipeCooldownMs
-        this.swipeHist = []
-      }
-    }
+    // ---- slap: a fast sideways movement of the (loosely) open hand ------------------------------------
+    // On the unsmoothed palm (smoothing would eat the stroke), in screen direction. Never while a pinch, drag or
+    // zoom is in progress, just after one, or while the fingers are closing.
+    const rf = primary.rawF
+    const openish = rf.ext.filter((e) => e > 0.3).length >= 3 && rf.pinch > primary.th.pinchRelease
+    const blocked = !!this.press || !!this.zoom || mode === 'fist' || pinch > 0.5 || t - this.releasedAt < 350
+    const slap = this.slap.push(t, this.sx(rf.palm.x), rf.palm.y, openish, blocked)
+    if (slap) ev.push({ type: 'slap', dir: slap.dir, speed: slap.speed })
 
     // ---- tracking quality ------------------------------------------------------------------------------
     let quality: Quality = 'ok'
@@ -433,46 +478,101 @@ export class GesturePipeline {
     this.last = {
       t,
       present: true,
-      cursor,
+      cursor: this.cursor ?? cursor,
       mode,
       pose: primary.pose,
       pinch,
       hold,
       fist,
+      frozen: !!this.freeze,
       quality,
-      hands: fresh.map((tr) => ({ id: tr.id, side: tr.side, pose: tr.pose, primary: tr === primary, pinch: pinchProgress(tr.f, this.o.pose), landmarks: tr.lm })),
+      hands: fresh.map((tr) => ({ id: tr.id, side: tr.side, pose: tr.pose, primary: tr === primary, pinch: pinchProgress(tr.f, tr.th), landmarks: tr.lm })),
       zoomPts,
     }
     return { state: this.last, events: ev }
   }
 
   /**
-   * The cursor follows the index fingertip. Once the fingers start closing for a pinch it follows the index
-   * knuckle instead (the knuckle does not move when the fingertip travels to the thumb), so a pinch does not
-   * drag the cursor off its target. When the fingers open again it eases back onto the fingertip.
+   * The cursor follows the index fingertip, with a small dead zone against tremor. From the moment the fingers
+   * start closing for a pinch it FREEZES (at the spot it had just before they began to close) until the pinch is
+   * released, so the pinch cannot drag it off its target. A pinch that turns into a drag moves it with the
+   * knuckle (which does not travel when the fingertip does). A freeze before the pinch completes is broken
+   * when the whole hand moves on or the fingers open again; afterwards the cursor eases back onto the fingertip.
    */
   private moveCursor(tr: Track, pinch: number, t: number) {
     const f = tr.f
-    const steady = tr.pose === 'pinch' || pinch >= this.o.steadyFrom
-    if (steady) {
-      if (!this.steady) this.steady = { base: this.cursor ?? this.toScreen(f.tip), knuckle: f.knuckle }
-      const d = this.delta(this.steady.knuckle, f.knuckle)
-      this.cursor = { x: clamp01(this.steady.base.x + d.x), y: clamp01(this.steady.base.y + d.y) }
-      this.blend = null
+    const target = this.toScreen(f.tip)
+    const prev = this.cursor
+    this.recent.push({ t, cursor: prev ?? target, pinch })
+    while (this.recent.length > 1 && t - this.recent[0].t > 400) this.recent.shift()
+
+    const p = this.press
+    if (p && p.mode === 'move' && this.freeze) {
+      const d = this.delta(this.freeze.knuckle, f.knuckle)
+      this.cursor = { x: clamp01(this.freeze.at.x + d.x), y: clamp01(this.freeze.at.y + d.y) }
       return
     }
-    const target = this.toScreen(f.tip)
-    if (this.steady && this.cursor) this.blend = { dx: this.cursor.x - target.x, dy: this.cursor.y - target.y, t }
-    this.steady = null
+    if (p && this.freeze) {
+      this.cursor = this.freeze.at
+      return
+    }
+    if (this.freeze && !p) {
+      const moved = this.delta(this.freeze.palm, f.palm)
+      // just after a release: wait out the flick; before a pinch: the fingers opened again
+      const thawed = this.thawAt > 0 ? t >= this.thawAt : pinch < 0.15
+      if (thawed ||Math.hypot(moved.x, moved.y) > this.o.freezeBreak) {
+        this.blend = { dx: this.freeze.at.x - target.x, dy: this.freeze.at.y - target.y, t }
+        if (!thawed) this.freezeVeto = true
+        this.freeze = null
+        this.thawAt = 0
+      } else {
+        this.cursor = this.freeze.at
+        return
+      }
+    }
+    // start a freeze: the fingers are closing (fast), or are already well on the way
+    if (pinch < 0.15) this.freezeVeto = false
+    const ago = this.recent.find((r) => t - r.t <= 160)
+    const closing = ago ? pinch - ago.pinch >= 0.15 : false
+    if (!p && !this.freezeVeto && tr.pose !== 'fist' && ((pinch >= this.o.freezeFrom && closing) || pinch >= this.o.freezeHard)) {
+      // rewind to where the cursor was before the fingers began to move
+      let at = prev ?? target
+      for (let k = this.recent.length - 1; k >= 0; k--) {
+        if (t - this.recent[k].t > 350) break
+        if (this.recent[k].pinch < 0.12) {
+          at = this.recent[k].cursor
+          break
+        }
+      }
+      this.freeze = { at, palm: f.palm, knuckle: f.knuckle }
+      this.thawAt = 0
+      this.blend = null
+      this.cursor = at
+      return
+    }
+
     const k = this.blend ? 1 - (t - this.blend.t) / 250 : 0
     if (this.blend && k <= 0) this.blend = null
-    this.cursor = this.blend ? { x: clamp01(target.x + this.blend.dx * k), y: clamp01(target.y + this.blend.dy * k) } : target
+    const goal = this.blend ? { x: clamp01(target.x + this.blend.dx * k), y: clamp01(target.y + this.blend.dy * k) } : target
+    if (!prev || this.blend) {
+      this.cursor = goal
+      return
+    }
+    // dead zone (rubber band): the cursor moves only by the part of the movement beyond the zone
+    const edge = Math.min(goal.x, 1 - goal.x, goal.y, 1 - goal.y) < 0.04
+    const dz = this.o.deadZone * (edge ? 2 : 1)
+    const dx = goal.x - prev.x
+    const dy = goal.y - prev.y
+    const d = Math.hypot(dx, dy)
+    if (d <= dz) this.cursor = prev
+    else this.cursor = { x: prev.x + (dx * (d - dz)) / d, y: prev.y + (dy * (d - dz)) / d }
   }
 
   private cancelPress(ev: GestureEvent[]) {
     const p = this.press
     if (!p) return
     this.press = null
+    this.freeze = null
     if (p.mode !== 'none') ev.push({ type: 'dragend', ...p.last, cancelled: true })
     ev.push({ type: 'release', ...p.last })
   }

@@ -1,7 +1,9 @@
+import { prefetchRoute } from '../lib/prefetch'
+import EarlyWarningIndicator from '../components/early/EarlyWarningIndicator'
 import { Flag } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
-import { Avatar, Badge, Card, PageHeader, ScoreRing, Skeleton, Stagger, StaggerItem, StatusIcon, StatusPill, cx } from '../components/ui'
+import { Avatar, Badge, Card, PageHeader, ScoreRing, Skeleton, Stagger, StaggerItem, StatusIcon, StatusPill, cx, useMedia } from '../components/ui'
 import { evaluate, type Evaluation } from '../lib/health'
 import { useSession } from '../lib/session'
 
@@ -24,6 +26,7 @@ function CardSkeleton() {
 export default function Roster() {
   const { crew, backend, mission, user } = useSession()
   const [evals, setEvals] = useState<Record<number, Evaluation>>({})
+  const phone = !useMedia('(min-width: 640px)')
 
   useEffect(() => {
     if (!backend || !mission) return
@@ -36,6 +39,8 @@ export default function Roster() {
     }
   }, [backend, crew, mission, user])
 
+  // Phones: a smaller ring so all four crew members fit in fewer screens.
+  const ring = phone ? 88 : 116
   const header = <PageHeader eyebrow={user?.role === 'surgeon' ? 'Flight surgeon console' : 'Mission control'} title="Crew status" description="Sorted by who needs attention first." />
 
   if (!crew.length)
@@ -62,7 +67,7 @@ export default function Roster() {
           const priority = i === 0 && firstNeedsAttention
           return (
             <StaggerItem key={c.id} className="h-full">
-              <Link to={`/crew/${c.id}`} className="block h-full rounded-2xl">
+              <Link to={`/crew/${c.id}`} onPointerEnter={() => prefetchRoute(`/crew/${c.id}`)} className="press block h-full rounded-2xl transition-[scale]">
                 <Card className={cx('h-full transition-colors hover:bg-panel2', ev?.overall === 'crit' ? 'border-crit/50' : ev?.overall === 'warn' ? 'border-warn/40' : '')}>
                   {priority && (
                     <Badge tone={first.overall} icon={Flag} className="mb-3">
@@ -78,10 +83,10 @@ export default function Roster() {
                   </div>
                   {ev ? (
                     <>
-                      <div className="mt-5 flex justify-center">
-                        {ev.hasData ? <ScoreRing score={ev.score} status={ev.overall} size={116} /> : <p className="flex h-[116px] items-center text-sm text-dim">No data yet</p>}
+                      <div className="mt-4 flex justify-center sm:mt-5">
+                        {ev.hasData ? <ScoreRing score={ev.score} status={ev.overall} size={ring} /> : <p className="flex items-center text-sm text-dim" style={{ height: ring }}>No data yet</p>}
                       </div>
-                      <div className="mt-4 flex justify-center">
+                      <div className="mt-3 flex justify-center sm:mt-4">
                         <StatusPill status={ev.hasData ? ev.overall : null} />
                       </div>
                       <ul className="mt-4 space-y-2 border-t border-line pt-4">
@@ -95,6 +100,7 @@ export default function Roster() {
                         ))}
                         {ev.alerts.length === 0 && <li className="text-sm text-dim">No open alerts</li>}
                       </ul>
+                      <EarlyWarningIndicator crewId={c.id} />
                     </>
                   ) : (
                     <div className="mt-5" role="status" aria-label="Loading status">

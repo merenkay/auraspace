@@ -4,6 +4,7 @@
 import type { SystemId } from '../../data/systems'
 import { VITAL_BY_KEY, VITALS, type FieldId, type VitalKey } from '../../data/vitals'
 import { fold, parseFindings } from '../doctor/parse'
+import { WAKE_WORDS } from './fuzzy'
 import { extractNumbers } from './numbers'
 import type { VoiceLang } from './settings'
 
@@ -31,8 +32,8 @@ export type Intent =
 
 /* ---------- wake word ---------- */
 
-const WAKE_RE = /^\s*(?:(?:hey|hi|ok|okay|hello|selam|merhaba)[\s,]+)?(?:aura|aurora|ora|laura)\b[\s,.:!?-]*/i
-const WAKE_ANY = /\b(?:hey|ok|okay|hi|selam|merhaba)?\s*(?:aura|aurora|ora|laura)\b/i
+const WAKE_RE = new RegExp(`^\\s*(?:(?:hey|hi|ok|okay|hello|selam|merhaba)[\\s,]+)?${WAKE_WORDS}\\b[\\s,.:!?-]*`, 'i')
+const WAKE_ANY = /\b(?:hey|ok|okay|hi|selam|merhaba)?\s*(?:aura|aurora|ora|laura|orah|aurah|awra|oura)\b/i
 
 /** True when the text contains the wake word ("AURA", "hey AURA"; recognisers often hear "Ora"). */
 export const hasWake = (text: string) => WAKE_ANY.test(fold(text))
@@ -58,8 +59,8 @@ export const READING_WORDS: [VitalKey, RegExp][] = [
   ['glucose', /blood sugar|glucose|seker/],
   ['sleep', /sleep|slept|uyku|uyud/],
   ['water', /\bwater\b|hydrat|\bsu\b|\bsuyu|\bsiv[ie]/],
-  ['mood', /\bmood\b|ruh hali|morale/],
-  ['exercise', /exercis|workout|egzersiz|\bspor\b/],
+  ['mood', /\bmood\b|ruh hali|morale|moral(?:im|in)\b/],
+  ['exercise', /exercis|workout|worked out|work out|egzersiz|\bspor\b/],
   ['vision', /\bvision\b|eyesight|\bsight\b|gorme|gorus/],
 ]
 
@@ -124,17 +125,52 @@ function waterLitres(raw: string, f: string, nums: number[]): number | null {
   return n >= 20 ? n / 1000 : n
 }
 
+/** Mood words on the app's 1-5 scale (Very low, Low, Okay, Good, Great), English and Turkish (folded). */
+const MOOD_WORDS: [RegExp, number][] = [
+  [/\b(?:very low|very bad|terrible|awful|horrible|miserable|cok kotu|berbat|cok dusuk)\b/, 1],
+  [/\b(?:not bad|so so|okay|ok|fine|alright|all right|average|meh|normal|idare eder|fena degil|eh iste|orta)\b/, 3],
+  [/\b(?:not (?:good|great|well)|low|bad|down|sad|kotu|dusuk|keyifsiz|iyi degil)\b/, 2],
+  [/\b(?:very good|great|excellent|amazing|fantastic|wonderful|perfect|brilliant|cok iyi|harika|super|mukemmel|muhtesem)\b/, 5],
+  [/\b(?:good|pretty good|well|happy|iyi|guzel)\b/, 4],
+]
+/** 1-5 from a mood word, or null. Input is folded text. */
+export function moodWord(f: string): number | null {
+  return MOOD_WORDS.find(([re]) => re.test(f))?.[1] ?? null
+}
+
+function exerciseMinutes(f: string, nums: number[]): number | null {
+  if (!nums.length) {
+    if (/\b(?:half an hour|half hour|yarim saat)\b/.test(f)) return 30
+    if (/\b(?:an|one|bir) (?:hour|saat)\b/.test(f)) return 60
+    return null
+  }
+  const hours = /\b(?:hours?|hrs?|saat)\b/.test(f) && !/\b(?:minutes?|mins?|dakika)\b/.test(f)
+  return Math.round(hours ? nums[0] * 60 : nums[0])
+}
+
 function parseLog(raw: string, f: string, tr: boolean): Intent | null {
   const key = readingKeyOf(f)
   if (!key) return null
   const nums = extractNumbers(raw, tr)
-  const LOG_VERB = /\b(?:log|add|record|save|enter|drank|drink|had|ictim|icti|ekle|kaydet)\b/
+  const LOG_VERB = /\b(?:log|add|record|save|enter|drank|drink|had|did|ictim|icti|ekle|kaydet|yaptim)\b/
   if (key === 'water') {
     if (!nums.length && !(LOG_VERB.test(f) && /glass|cup|bardak/.test(f))) return null
     const l = waterLitres(raw, f, nums)
     if (l === null || !(l > 0)) return null
     const set = /\b(?:total|so far|toplam|altogether)\b|\bwater (?:today |intake )?(?:is|was|at)\b/.test(f)
     return { type: 'log', key, values: { water: Math.round(l * 1000) / 1000 }, mode: set ? 'set' : 'add' }
+  }
+  if (key === 'mood') {
+    if (!(LOG_VERB.test(f) || /\b(?:is|was|today|as|at|bugun)\b|ruh halim|moralim/.test(f))) return null
+    const n = nums[0]
+    const m = n !== undefined ? n : moodWord(f)
+    return m === null ? null : { type: 'log', key, values: { mood: m }, mode: 'set' }
+  }
+  if (key === 'exercise') {
+    const min = exerciseMinutes(f, nums)
+    if (min === null) return null
+    const set = /\b(?:total|so far|toplam|altogether)\b/.test(f)
+    return { type: 'log', key, values: { exercise: min }, mode: set ? 'set' : 'add' }
   }
   if (!nums.length) return null
   switch (key) {
@@ -185,6 +221,10 @@ export function describeEntry(key: VitalKey, v: Values, prevWater?: number): str
       return `blood sugar ${v.glucose} milligrams per decilitre`
     case 'sleep':
       return `${v.sleep} hours of sleep last night`
+    case 'mood':
+      return `your mood as ${MOOD_LABEL[(v.mood ?? 0) - 1]?.toLowerCase() ?? v.mood}, ${v.mood} out of 5`
+    case 'exercise':
+      return prevWater !== undefined && prevWater > 0 ? `${v.exercise} more minutes of exercise, ${Math.round(prevWater + (v.exercise ?? 0))} minutes today in total` : `${v.exercise} minutes of exercise today`
     case 'water':
       return prevWater !== undefined && prevWater > 0 ? `water today ${round(v.water ?? 0)} litres, adding to ${round(prevWater)}` : `water today ${round(v.water ?? 0)} litres`
     default:
@@ -192,6 +232,7 @@ export function describeEntry(key: VitalKey, v: Values, prevWater?: number): str
   }
 }
 const round = (n: number) => Math.round(n * 100) / 100
+const MOOD_LABEL = VITAL_BY_KEY.mood.fields[0].scale ?? ['Very low', 'Low', 'Okay', 'Good', 'Great']
 
 /* ---------- the parser ---------- */
 
@@ -272,5 +313,5 @@ export function pathFor(target: NavTarget, role: string | undefined, crewId: num
 export const NAV_LABEL: Record<NavTarget, string> = { overview: 'the overview', diagnostics: 'diagnostics', aura: 'the AURA consultation', coach: 'the coach', history: 'history', environment: 'the environment page', reports: 'reports', roster: 'the crew list' }
 
 /** Example phrases shown as chips and spoken by "help". */
-export const EXAMPLES = ['Status report', 'How is my blood pressure?', 'Show the heart', 'Log 250 millilitres of water', 'My blood pressure is 128 over 82', 'I have chest pain', 'Open history']
-export const EXAMPLES_TR = ['Durum raporu', 'Tansiyonum nasıl?', 'Kalbi göster', 'Nabzım kaç?', '250 mililitre su içtim', 'Göğsüm ağrıyor']
+export const EXAMPLES = ['Status report', 'How is my blood pressure?', 'What can you do?', 'Log 250 millilitres of water', 'My blood pressure is 128 over 82', 'I have chest pain', 'Open history', 'Tell me a joke']
+export const EXAMPLES_TR = ['Durum raporu', 'Tansiyonum nasıl?', 'Neler yapabilirsin?', 'Nabzım kaç?', '250 mililitre su içtim', 'Göğsüm ağrıyor']

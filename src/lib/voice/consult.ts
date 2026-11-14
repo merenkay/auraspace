@@ -25,6 +25,15 @@ export function emergencyPlan(a: Assessment, c: ConsultCtx): { plan: CarePlan | 
   return { plan, text }
 }
 
+/**
+ * Words of suicide or self-harm. The engine's emergency first step for this context, word for word, without
+ * naming a condition or listing condition-specific self-care steps (they do not fit a crisis), plus a plain
+ * human line. The consultation itself can follow on the AURA tab.
+ */
+export function crisisText(c: ConsultCtx): string {
+  return `${URGENCY_TEXT.emergency.title}. ${firstStep('emergency', c.context, c.delaySec)} You don’t have to face this alone.`
+}
+
 function summary(a: Assessment, c: ConsultCtx): { plan: CarePlan | null; text: string } {
   const top = a.candidates[0]
   const plan = top ? carePlan(top.condition, a, c.context, c.profile, c.delaySec) : null

@@ -30,13 +30,16 @@ export function viewerAtElement(el: Element | null): ViewerHandle | null {
 const hudSources = new Set<string>()
 const listeners = new Set<() => void>()
 let hudSnapshot = false
+let handSnapshot = false
 
 onUi('hud', ({ on, source }) => {
   if (on) hudSources.add(source)
   else hudSources.delete(source)
   const next = hudSources.size > 0
-  if (next === hudSnapshot) return
+  const hand = hudSources.has('hand')
+  if (next === hudSnapshot && hand === handSnapshot) return
   hudSnapshot = next
+  handSnapshot = hand
   for (const l of listeners) l()
 })
 
@@ -44,16 +47,19 @@ export function hudActive(): boolean {
   return hudSnapshot
 }
 
+const subscribe = (cb: () => void) => {
+  listeners.add(cb)
+  return () => {
+    listeners.delete(cb)
+  }
+}
+
 /** True while any hands-free mode (hand or voice) is on: overlays may switch to their HUD look. */
 export function useHud(): boolean {
-  return useSyncExternalStore(
-    (cb) => {
-      listeners.add(cb)
-      return () => {
-        listeners.delete(cb)
-      }
-    },
-    hudActive,
-    () => false,
-  )
+  return useSyncExternalStore(subscribe, hudActive, () => false)
+}
+
+/** True while camera hand control is on: the 3D viewer lowers its load (pixel ratio, frame rate, no auto-spin). */
+export function useHandMode(): boolean {
+  return useSyncExternalStore(subscribe, () => handSnapshot, () => false)
 }

@@ -1,8 +1,9 @@
+import { memo, useMemo } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { CABIN_LIMITS } from '../../data/missions'
 import { GAS_ALARM_RATIO, GAS_WARN_RATIO, rowRatio, type EnvRow } from '../../lib/envStation'
 import { STATUS_COLOR } from '../../data/vitals'
-import { ChartTooltip, chart } from '../ui'
+import { ChartTooltip, chart, Disclosure } from '../ui'
 import { clockTime, fmt } from './parts'
 import type { ChartPoint } from './useEnvStation'
 
@@ -65,7 +66,7 @@ function specs(gasUnit: 'ratio' | 'raw'): Spec[] {
   ]
 }
 
-function MiniChart({ spec, data, from, to, seconds }: { spec: Spec; data: ChartPoint[]; from: number; to: number; seconds: boolean }) {
+const MiniChart = memo(function MiniChart({ spec, data, from, to, seconds }: { spec: Spec; data: ChartPoint[]; from: number; to: number; seconds: boolean }) {
   const points = data.filter((p) => p[spec.key] != null)
   const last = points[points.length - 1]
   const values = points.map((p) => p[spec.key] as number)
@@ -108,24 +109,31 @@ function MiniChart({ spec, data, from, to, seconds }: { spec: Spec; data: ChartP
       </div>
     </figure>
   )
-}
+})
 
 /** Three small multiples on a shared time window (never one chart with two y-axes). Gaps = no data. */
-export function EnvCharts({ data, from, to, gasUnit, seconds }: { data: ChartPoint[]; from: number; to: number; gasUnit: 'ratio' | 'raw'; seconds: boolean }) {
+/** Memoised: the station ticks every second, but a chart redraws only when its data or window changes. */
+export const EnvCharts = memo(function EnvCharts({ data, from, to, gasUnit, seconds }: { data: ChartPoint[]; from: number; to: number; gasUnit: 'ratio' | 'raw'; seconds: boolean }) {
+  const list = useMemo(() => specs(gasUnit), [gasUnit])
+  // Nothing at all in the window: one line instead of three empty plot areas.
+  if (!data.some((p) => p.t != null || p.h != null || p.g != null))
+    return <p className="flex h-24 items-center justify-center rounded-xl border border-dashed border-line text-sm text-dim">No data in this time window</p>
   return (
     <div>
       <div className="grid gap-4 lg:grid-cols-3 lg:gap-6">
-        {specs(gasUnit).map((s) => (
+        {list.map((s) => (
           <MiniChart key={s.key} spec={s} data={data} from={from} to={to} seconds={seconds} />
         ))}
       </div>
-      <p className="mt-3 text-sm text-dim">
+      <Disclosure size="row" id="env.chart-key" title="How to read these charts" className="mt-1">
+      <p className="text-sm text-dim">
         Dashed grey lines: the normal band for temperature and humidity.
         {gasUnit === 'ratio' ? ' Dashed amber and red lines: the attention and alarm levels for gas (AURA demo thresholds).' : ' The gas chart shows raw values until a clean-air baseline is set.'} A gap in a line means no data.
       </p>
+      </Disclosure>
     </div>
   )
-}
+})
 
 /** Table view of stored rows (newest first) so no value is reachable only by hovering a chart. */
 export function EnvTable({ rows }: { rows: EnvRow[] }) {

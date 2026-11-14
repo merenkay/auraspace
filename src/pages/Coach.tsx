@@ -7,7 +7,7 @@ import { ProfileEditor } from '../components/coach/ProfileEditor'
 import { RuleCite, SessionView } from '../components/coach/SessionView'
 import { WeekPlan } from '../components/coach/WeekPlan'
 import { shortDate } from '../components/coach/format'
-import { Badge, Button, Card, chart, ChartTooltip, Disclosure, EmptyState, List, Meter, Metric, Notice, PageHeader, Row, Section, Skeleton, SourceLink, Stagger, StaggerItem } from '../components/ui'
+import { Badge, Button, Card, chart, ChartTooltip, Disclosure, DisclosureGroup, EmptyState, ExpandAll, List, Meter, Metric, Notice, PageHeader, Row, Saved, Section, ShowMore, Skeleton, SourceLink, Stagger, StaggerItem, useFlash } from '../components/ui'
 import { EQUIPMENT_BY_ID, FOCUS_BY_ID, LEVELS, LIMIT_LABEL, WEEKDAY } from '../data/coach/catalog'
 import { EXERCISE_BY_ID } from '../data/coach/exercises'
 import type { HealthProfile } from '../data/conditions/profile'
@@ -62,6 +62,7 @@ export default function Coach({ crewId }: { crewId: number }) {
   const [logging, setLogging] = useState(false)
   const [busy, setBusy] = useState(false)
   const [saveErr, setSaveErr] = useState<string | null>(null)
+  const [savedFlash, flashSaved] = useFlash()
 
   useEffect(() => {
     let alive = true
@@ -125,6 +126,7 @@ export default function Coach({ crewId }: { crewId: number }) {
       setSelected(null)
       setWeek(null)
       setEditing(false)
+      flashSaved()
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : 'Please try again.')
     } finally {
@@ -147,6 +149,7 @@ export default function Coach({ crewId }: { crewId: number }) {
         if (delta !== 0) await data.add({ exercise: Math.min(300, Math.max(0, Math.round(already + delta))) }, 'manual', 'Coach session log').catch(() => undefined)
       }
       setLogging(false)
+      flashSaved()
     } catch (e) {
       setSaveErr(e instanceof Error ? e.message : 'Please try again.')
     } finally {
@@ -164,17 +167,26 @@ export default function Coach({ crewId }: { crewId: number }) {
   const water = ev?.meta.water ? ev.values.water : null
 
   return (
+    <DisclosureGroup>
     <div>
       <PageHeader
         eyebrow={space ? 'Coach' : CONTEXTS[ctx].activityTab}
         title="Your programme"
-        description={`A 4-week plan built from your training profile, health profile, latest AURA assessment and readings. Restrictions come first. AURA never raises a load on its own — your ${contact} sets loads.`}
+        description={
+          <ShowMore id="coach.intro" lines={2}>
+            {`A 4-week plan built from your training profile, health profile, latest AURA assessment and readings. Restrictions come first. AURA never raises a load on its own — your ${contact} sets loads.`}
+          </ShowMore>
+        }
         actions={
-          canEdit ? (
-            <Button icon={SlidersHorizontal} onClick={() => setEditing(true)}>
-              Training profile
-            </Button>
-          ) : undefined
+          <>
+            <Saved show={savedFlash} />
+            <ExpandAll />
+            {canEdit ? (
+              <Button icon={SlidersHorizontal} onClick={() => setEditing(true)}>
+                Training profile
+              </Button>
+            ) : undefined}
+          </>
         }
       />
       <div className="space-y-10">
@@ -297,9 +309,11 @@ export default function Coach({ crewId }: { crewId: number }) {
                       </Notice>
                     )}
                     {canEdit && isToday && !p.onHold && (
-                      <Button variant="primary" icon={Check} onClick={() => setLogging(true)}>
-                        {done ? 'Update today’s log' : 'Log this session'}
-                      </Button>
+                      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-1 flex items-center gap-4 rounded-xl bg-space/95 p-1 md:static md:mx-0 md:bg-transparent md:p-0">
+                        <Button variant="primary" icon={Check} done={savedFlash} onClick={() => setLogging(true)}>
+                          {done ? 'Update today’s log' : 'Log this session'}
+                        </Button>
+                      </div>
                     )}
                     {canEdit && !isToday && session.date > today && <p className="text-sm text-dim">You can log this session on {shortDate(session.date)}.</p>}
                   </div>
@@ -329,17 +343,17 @@ export default function Coach({ crewId }: { crewId: number }) {
               )}
             </Section>
 
-            <Section
+            <Disclosure
+              id="coach.training-profile"
               title="Your training profile"
-              description={training.confirmed ? (training.updatedAt ? `Saved ${new Date(training.updatedAt).toLocaleDateString()}` : 'Saved') : 'Suggested by AURA — not confirmed yet'}
-              action={
-                canEdit ? (
-                  <Button size="sm" onClick={() => setEditing(true)}>
-                    Edit
-                  </Button>
-                ) : undefined
-              }
+              meta={training.confirmed ? (training.updatedAt ? `Saved ${new Date(training.updatedAt).toLocaleDateString()}` : 'Saved') : 'Suggested by AURA — not confirmed yet'}
+              summary={`${p.focus.map((f) => FOCUS_BY_ID[f].label).join(', ')} · ${p.targets.days} days a week`}
             >
+              {canEdit && (
+                <Button size="sm" className="mb-3" icon={SlidersHorizontal} onClick={() => setEditing(true)}>
+                  Edit
+                </Button>
+              )}
               <List>
                 <Row title="Focus" description={p.focus.map((f) => FOCUS_BY_ID[f].label).join(', ')} />
                 <Row title="Level" description={LEVELS.find((l) => l.id === training.level)?.label} />
@@ -357,12 +371,12 @@ export default function Coach({ crewId }: { crewId: number }) {
                   ))}
                 </ul>
               )}
-            </Section>
+            </Disclosure>
           </div>
         </div>
 
         {p.notes.length > 0 && (
-          <Section title="For your focus areas">
+          <Disclosure id="coach.focus-notes" title="For your focus areas" meta={`${p.notes.length} notes`}>
             <ul className="max-w-3xl divide-y divide-line border-y border-line">
               {p.notes.map((n) => (
                 <li key={n.text} className="py-3">
@@ -371,11 +385,11 @@ export default function Coach({ crewId }: { crewId: number }) {
                 </li>
               ))}
             </ul>
-          </Section>
+          </Disclosure>
         )}
 
         {safety.plan.focus && (
-          <Disclosure title={safety.plan.focus.title} meta={`${safety.plan.focus.items.length} tips`}>
+          <Disclosure id="coach.focus-tips" title={safety.plan.focus.title} meta={`${safety.plan.focus.items.length} tips`}>
             <p className="mb-2 text-sm text-dim">Prevention and lifestyle advice from the sources behind that assessment.</p>
             <ul className="divide-y divide-line">
               {safety.plan.focus.items.map((x) => (
@@ -388,7 +402,7 @@ export default function Coach({ crewId }: { crewId: number }) {
           </Disclosure>
         )}
 
-        <Disclosure title="Your activity data" meta="Last 7 days">
+        <Disclosure id="coach.activity" title="Your activity data" meta="Last 7 days" summary={sleepAvg != null ? `Sleep ${sleepAvg.toFixed(1)} h a night${water != null ? ` · water ${water.toFixed(1)} of ${waterTarget} L today` : ''}` : undefined}>
           {!ev ? (
             <EmptyState icon={Activity} title="No measurements yet" description="Logged sessions, sleep and water appear here once you add them." />
           ) : (
@@ -441,7 +455,7 @@ export default function Coach({ crewId }: { crewId: number }) {
         </Disclosure>
 
         {space && (
-          <Disclosure title="Onboard equipment" meta="3 devices">
+          <Disclosure id="coach.equipment" title="Onboard equipment" meta="3 devices">
             <List>
               {EQUIPMENT.map((q) => (
                 <Row key={q.id} title={`${q.id} · ${q.name}`} description={q.spec} />
@@ -461,5 +475,6 @@ export default function Coach({ crewId }: { crewId: number }) {
         </>
       )}
     </div>
+    </DisclosureGroup>
   )
 }

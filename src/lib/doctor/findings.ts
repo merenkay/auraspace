@@ -68,6 +68,7 @@ export const FINDINGS: FindingDef[] = [
   f('chills', 'Shivering or feeling very cold', 'Are you shivering or feeling very cold?', 'body', ['shiver', 'chills', 'freezing', 'very cold', '\\busu(?:yor|me|dum)', 'titre(?:me|iyor) ?(?:soguk)?', 'donuyorum']),
   f('infection', 'A known or suspected infection', 'Do you have signs of an infection — for example a chest, urine or wound infection?', 'body', ['infection', 'infected', 'wound', '\\buti\\b', 'enfeksiyon', 'iltihap', '\\byara\\b']),
   f('hot-skin-no-sweat', 'Very hot skin that has stopped sweating', 'Is the skin very hot but not sweating?', 'skin', ['hot (?:and )?dry skin', 'not sweating', 'stopped sweating', 'skin is (?:very )?hot', 'terlemiyor', 'cilt\\w* (?:cok )?sicak']),
+  f('eye-throat-irritation', 'Stinging eyes or a scratchy throat', 'Do your eyes sting, or does your throat feel scratchy or irritated?', 'skin', ['(?:stinging|burning|irritated|watering) eyes', 'eyes? (?:are |is )?(?:sting|burn|irritat|water)', 'scratchy throat', 'throat (?:is |feels )?(?:scratchy|irritated|burning)', 'goz\\w* (?:yan|bat|sulan)', 'bogaz\\w* (?:kasin|tahris|yan)']),
   f('rash', 'Itchy rash or hives', 'Is there an itchy rash, raised bumps or hives on the skin?', 'skin', ['rash', 'hives', 'itchy', 'welts', 'kurdesen', 'kasinti', 'dokuntu']),
 
   // cold, altitude
@@ -91,7 +92,7 @@ export const FINDINGS: FindingDef[] = [
   // mood and sleep
   f('low-mood', 'Low mood, sadness or loss of interest', 'Have you been feeling low, sad, hopeless or lost interest in things?', 'mood', ['low mood', 'depress', 'sad\\b', 'hopeless', 'feel(?:ing)? down', 'lost interest', 'mutsuz', 'keyifsiz', 'umutsuz', 'cokkun', 'moralim bozuk', 'depresif']),
   f('irritable', 'Irritable or on edge', 'Have you been unusually irritable, tense or on edge?', 'mood', ['irritab', 'on edge', 'short[- ]tempered', 'snapping at', 'sinirli', 'gergin', 'tahammul']),
-  f('self-harm', 'Thoughts of harming yourself or that life is not worth living', 'Have you had thoughts of harming yourself, or that life is not worth living?', 'mood', ['self[- ]harm', 'harm myself', 'kill myself', 'suicid', 'end my life', 'not worth living', 'kendime zarar', 'intihar', 'yasamak istemiyorum', 'olmek istiyorum']),
+  f('self-harm', 'Thoughts of harming yourself or that life is not worth living', 'Have you had thoughts of harming yourself, or that life is not worth living?', 'mood', ['self[- ]harm', 'harm myself', 'kill myself', 'suicid', 'end my life', 'not worth living', 'want to die', 'wanna die', 'do(?:n.?t| not) want to live', 'take my (?:own )?life', 'kendime zarar', 'intihar', 'yasamak istemiyorum', 'olmek istiyorum']),
   f('insomnia', 'Trouble falling or staying asleep', 'Do you have trouble falling asleep, staying asleep, or waking too early?', 'mood', ["(?:can't|cannot|trouble|hard to|difficulty) (?:sleep|fall(?:ing)? asleep|stay(?:ing)? asleep)", 'insomnia', 'not sleeping', 'waking up (?:early|at night)', 'uykusuz', 'uyuyamiyorum', 'uyku sorun', 'gece uyan']),
 
   // exposures and events (asked as yes/no context questions)

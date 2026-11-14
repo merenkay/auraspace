@@ -4,7 +4,7 @@ import { VITAL_BY_KEY, type VitalKey } from '../../data/vitals'
 import { answer, topicFor, type AuraAnswer } from '../../lib/aura'
 import type { Evaluation } from '../../lib/health'
 import type { Measurement } from '../../lib/types'
-import { Button, Field, Input, Notice, Section, SourceLink } from '../ui'
+import { Button, Disclosure, Field, Input, Notice, Section, SourceLink } from '../ui'
 
 const TONE = { ok: 'ok', warn: 'warn', crit: 'crit' } as const
 
@@ -41,15 +41,16 @@ export default function ExplainReading({ ev, rows, today }: { ev: Evaluation; ro
       </form>
       <div className="mt-3 flex flex-wrap gap-2">
         {suggestions.map((k) => (
-          <Button key={k} size="sm" variant="quiet" onClick={() => ask(k, `Explain my ${VITAL_BY_KEY[k].label.toLowerCase()}`)}>
+          <Button key={k} size="sm" onClick={() => ask(k, `Explain my ${VITAL_BY_KEY[k].label.toLowerCase()}`)}>
             Explain my {VITAL_BY_KEY[k].label.toLowerCase()}
           </Button>
         ))}
       </div>
       {hint && <p className="mt-3 text-sm text-warn">{hint}</p>}
       <div className="mt-8 max-w-3xl space-y-8">
-        {turns.map((t) => (
-          <article key={t.id} className="space-y-4">
+        {turns.map((t, i) => {
+          const body = (
+          <article className="space-y-4">
             <p className="ml-auto w-fit max-w-[85%] rounded-2xl bg-panel2 px-4 py-3 text-[15px]">{t.a.question}</p>
             <div className="grid gap-4 sm:grid-cols-2">
               {t.a.sections.map((s) => (
@@ -62,13 +63,26 @@ export default function ExplainReading({ ev, rows, today }: { ev: Evaluation; ro
             <Notice tone={TONE[t.a.escalation.level]} title="Professional review">
               {t.a.escalation.text}
             </Notice>
-            <div className="flex flex-wrap gap-x-4 gap-y-1">
-              {t.a.refs.map((r) => (
-                <SourceLink key={r.url + r.title} href={r.url} org={r.org} title={r.title} />
-              ))}
-            </div>
+            {t.a.refs.length > 0 && (
+              <Disclosure size="row" id="aura.explain-sources" title={`Sources (${t.a.refs.length})`}>
+                <div className="flex flex-col gap-y-1">
+                  {t.a.refs.map((r) => (
+                    <SourceLink key={r.url + r.title} href={r.url} org={r.org} title={r.title} />
+                  ))}
+                </div>
+              </Disclosure>
+            )}
           </article>
-        ))}
+          )
+          // The newest answer is open; earlier ones fold into one line each.
+          return i === 0 ? (
+            <div key={t.id}>{body}</div>
+          ) : (
+            <Disclosure key={t.id} size="row" title={t.a.question} className="border-t border-line pt-2">
+              {body}
+            </Disclosure>
+          )
+        })}
       </div>
     </Section>
   )

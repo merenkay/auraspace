@@ -41,7 +41,7 @@ export default function MedicationCard({ med }: { med: MedAdvice }) {
         </blockquote>
       )}
       {med.cautions.length > 0 && (
-        <Disclosure size="row" title={`Cautions from the source (${med.cautions.length})`} defaultOpen={check} className="mt-2">
+        <Disclosure size="row" title={`Cautions from the source (${med.cautions.length})`} defaultOpen={check || med.matched.length > 0} className="mt-2">
           <ul className="divide-y divide-line">
             {med.cautions.map((c) => {
               const s = sourceOf(c.s)

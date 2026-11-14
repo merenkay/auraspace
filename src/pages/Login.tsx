@@ -1,8 +1,8 @@
 import { ArrowRight, RadioTower, Stethoscope, type LucideIcon } from 'lucide-react'
-import { lazy, Suspense, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useState, type FormEvent, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AuthLayout } from '../components/AuthLayout'
-import { Avatar, Button, Field, Input, List, Notice, PasswordInput, Row, SourceLink, Stagger, StaggerItem, CONTEXT_ICON } from '../components/ui'
+import { Avatar, Button, Disclosure, Field, Input, List, Notice, PasswordInput, Row, SourceLink, Stagger, StaggerItem, CONTEXT_ICON, useMedia } from '../components/ui'
 import { contextFacts, type Context } from '../data/contexts'
 import { ENV_VALUES } from '../data/kb'
 import { CREW, MISSION, STAFF } from '../lib/demoData'
@@ -60,6 +60,7 @@ export default function Login() {
 }
 
 function SignIn() {
+  const wide = useMedia('(min-width: 1024px)')
   const { login, demoLogin, backend } = useSession()
   const signupOpen = backend?.signupOpen !== false
   const demoOpen = backend?.demoOpen !== false
@@ -98,6 +99,7 @@ function SignIn() {
       }
       lead="Measure, understand, and know when to call for help. Built for astronauts on a long mission, and just as useful at a polar station or at home."
       aside={
+        <Premises wide={wide}>
         <Stagger as="ul" delay={0.15} step={0.07} className="max-w-xl border-b border-line">
           {premises().map((p) => {
             const Icon = CONTEXT_ICON[p.context]
@@ -120,6 +122,7 @@ function SignIn() {
             )
           })}
         </Stagger>
+        </Premises>
       }
     >
       <form onSubmit={submit} className="space-y-4" aria-labelledby="signin-h">
@@ -127,7 +130,7 @@ function SignIn() {
           Sign in
         </h2>
         <Field label="Email or username">
-          <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} />
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} enterKeyHint="next" />
         </Field>
         <Field label="Password">
           <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
@@ -202,5 +205,15 @@ function SignIn() {
       </section>
       )}
     </AuthLayout>
+  )
+}
+
+/** The three sourced facts beside the sign-in form. On phones and tablets they fold under one line, after the form and the demo list. */
+function Premises({ wide, children }: { wide: boolean; children: ReactNode }) {
+  if (wide) return <>{children}</>
+  return (
+    <Disclosure size="row" id="login.premises" title={<span className="text-[15px] font-semibold text-ink">Why it matters</span>} meta="3 sourced facts" className="max-w-xl border-t border-line">
+      {children}
+    </Disclosure>
   )
 }

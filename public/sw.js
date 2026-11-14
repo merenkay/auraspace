@@ -7,7 +7,7 @@
  *  - /api/* and every non-GET request is NEVER touched: health data and sign-in always use the network.
  *  - App shell + every JS/CSS chunk of this build is precached (so every page opens offline).
  *  - Heavy extras (3D viewer chunk, body.glb) are cached on first use or on a WARM message (idle time).
- *  - Hand control (MediaPipe chunk, /mediapipe/ runtime + model, ~22 MB) is cached on first use ONLY, never
+ *  - Hand control (MediaPipe chunk, hand-detection worker, /mediapipe/ runtimes + model) is cached on first use ONLY, never
  *    warmed, in its own cache named after the content of those files (an app deploy keeps it).
  *  - Navigations: network first (so a deploy is picked up), 4 s timeout, then cached index.html, then offline.html.
  *  - A new worker waits; the page sends SKIP_WAITING at the next in-app navigation (see src/main.tsx).

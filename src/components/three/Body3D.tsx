@@ -153,9 +153,10 @@ export function rankHits(hits: RayHit[]): RayHit[] {
 const CLICK_SLOP: Record<string, number> = { mouse: 5, pen: 8, touch: 12 }
 // EDGE: a pointer just off the body (or over a see-through shell only) snaps to what is next to it.
 // ORGAN: a pointer on a bone or a big organ snaps to a more specific organ this close (eyes, spleen, kidneys, heart).
-const EDGE_RADIUS: Record<string, number> = { mouse: 10, pen: 12, touch: 22 }
-const ORGAN_RADIUS: Record<string, number> = { mouse: 4, pen: 6, touch: 12 }
-const CYCLE_RADIUS: Record<string, number> = { mouse: 8, pen: 10, touch: 20 }
+// 'hand': the camera hand cursor (less precise than a finger on glass, so the most forgiving)
+const EDGE_RADIUS: Record<string, number> = { mouse: 10, pen: 12, touch: 22, hand: 30 }
+const ORGAN_RADIUS: Record<string, number> = { mouse: 4, pen: 6, touch: 12, hand: 18 }
+const CYCLE_RADIUS: Record<string, number> = { mouse: 8, pen: 10, touch: 20, hand: 30 }
 const RING: [number, number][] = Array.from({ length: 8 }, (_, i): [number, number] => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)])
 
 // ---------------------------------------------------------------------------------------------------------
@@ -431,10 +432,12 @@ export type ViewerControls = {
   rotateBy: (dx: number, dy: number) => void
   /** multiply the camera distance (< 1 moves closer), keeping the body height under clientY in place */
   zoomBy: (factor: number, clientY?: number) => void
-  /** select what a click at this point would select (same ranked resolver, touch tolerances); returns it */
+  /** select what a click at this point would select (same ranked resolver, hand-cursor tolerances); returns it */
   pickAt: (clientX: number, clientY: number) => SystemId | null
-  /** hover feedback (highlight + tooltip) as a mouse at this point would get; null clears it */
+  /** hover feedback (highlight + tooltip) for the system a pick at this point would select; null clears it */
   hoverAt: (clientX: number | null, clientY?: number) => void
+  /** the system highlighted by the hover right now (what a pick at the hover point would select) */
+  hovered: () => SystemId | null
   /** where a system is on screen right now, or null when it is behind the camera */
   anchor: (id: SystemId) => ViewerAnchor | null
 }
@@ -465,6 +468,8 @@ export type Body3DProps = {
   /** the user scrolled over the viewer without Ctrl (the page scrolls; zoom needs Ctrl or a pinch) */
   onZoomHint?: () => void
   controlsRef?: RefObject<ViewerControls | null>
+  /** lighter rendering while camera hand control runs: pixel ratio 1 and at most 30 frames a second */
+  lowPower?: boolean
   /** called after a frame in which the camera moved (or the canvas resized), for overlays that track a system */
   onView?: () => void
 }
@@ -952,7 +957,7 @@ function Model(props: Body3DProps) {
       },
       pickAt: (clientX, clientY) => {
         const r = gl.domElement.getBoundingClientRect()
-        return selectAt(clientX - r.left, clientY - r.top, 'touch')
+        return selectAt(clientX - r.left, clientY - r.top, 'hand')
       },
       hoverAt: (clientX, clientY) => {
         if (clientX == null || clientY == null) {
@@ -965,9 +970,10 @@ function Model(props: Body3DProps) {
         }
         const r = gl.domElement.getBoundingClientRect()
         st.inside = true
-        st.pointer = { x: clientX - r.left, y: clientY - r.top, type: 'touch' }
+        st.pointer = { x: clientX - r.left, y: clientY - r.top, type: 'hand' }
         st.hoverDirty = true
       },
+      hovered: () => st.hover?.id ?? null,
       anchor: (id) => {
         const a = inst.anchors[id]
         if (!a) return null
@@ -1124,6 +1130,16 @@ function ContextWatch({ onLost }: { onLost?: () => void }) {
   return null
 }
 
+// Renders at most `fps` frames a second (with frameloop 'demand'): frees the GPU and main thread for hand tracking.
+function FrameCap({ fps }: { fps: number }) {
+  const invalidate = useThree((s) => s.invalidate)
+  useEffect(() => {
+    const id = setInterval(() => invalidate(), 1000 / fps)
+    return () => clearInterval(id)
+  }, [invalidate, fps])
+  return null
+}
+
 export default function Body3D(props: Body3DProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const [inView, setInView] = useState(true)
@@ -1141,13 +1157,14 @@ export default function Body3D(props: Body3DProps) {
   return (
     <div ref={wrap} className="absolute inset-0">
       <Canvas
-        dpr={dpr}
-        frameloop={inView ? 'always' : 'never'}
+        dpr={props.lowPower ? 1 : dpr}
+        frameloop={!inView ? 'never' : props.lowPower ? 'demand' : 'always'}
         camera={{ position: [0, 1, 3.4], fov: FOV, near: 0.05, far: 50 }}
         gl={{ antialias: true, alpha: true }}
       >
         <PerformanceMonitor onDecline={() => setDpr(1)} />
         <ContextWatch onLost={props.onLost} />
+        {props.lowPower && inView && <FrameCap fps={30} />}
         <ambientLight intensity={0.55} />
         <hemisphereLight args={['#f1ede6', '#12110F', 0.7]} />
         <directionalLight position={[2.5, 4, 3]} intensity={1.6} />

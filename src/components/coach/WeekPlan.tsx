@@ -46,7 +46,7 @@ export function WeekPlan({ p, week, onWeek, selected, onSelect, today }: { p: Pr
                 aria-pressed={isSel}
                 aria-label={`${WEEKDAY[d]}${isToday ? ', today' : ''}: ${s ? s.title : 'rest day'}${done ? ', done' : ''}`}
                 className={cx(
-                  'flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-lg border px-0.5 py-2 text-center transition-colors',
+                  'press flex min-h-16 w-full flex-col items-center justify-center gap-1 rounded-lg border px-0.5 py-2 text-center transition-colors',
                   isSel ? 'border-ink bg-panel2' : isToday ? 'border-edge' : 'border-line',
                   s ? 'hover:bg-panel2' : 'cursor-default opacity-70',
                 )}

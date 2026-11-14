@@ -225,3 +225,54 @@
     opacity: 1;
   }
 }
+
+/* listening countdown: a ring around the mic button drains during the silence window, then AURA takes the words */
+.vx-listen-ring {
+  position: absolute;
+  inset: -5px;
+  width: calc(100% + 10px);
+  height: calc(100% + 10px);
+  pointer-events: none;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+.vx-listen-ring circle {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 0;
+  animation: vx-drain var(--vx-ring-dur, 2s) linear var(--vx-ring-delay, 0ms) forwards;
+}
+.vx-listen-ring[data-hold='true'] circle {
+  animation: vx-hold 1.6s ease-in-out infinite;
+}
+@keyframes vx-drain {
+  from {
+    stroke-dashoffset: 0;
+    opacity: 0.9;
+  }
+  to {
+    stroke-dashoffset: 100;
+    opacity: 0.35;
+  }
+}
+@keyframes vx-hold {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .vx-listen-ring circle {
+    animation-duration: var(--vx-ring-dur, 2s);
+  }
+  .vx-listen-ring[data-hold='true'] circle {
+    animation: none;
+    opacity: 0.8;
+  }
+}

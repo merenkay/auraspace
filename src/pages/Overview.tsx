@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router'
 import BodyViewer from '../components/BodyViewer'
 import EditVitalModal from '../components/EditVitalModal'
+import EarlyWarningBlock from '../components/early/EarlyWarningBlock'
 import SystemPanel from '../components/SystemPanel'
 import VitalCard from '../components/VitalCard'
 import {
@@ -12,6 +13,7 @@ import {
   Checkbox,
   CONTEXT_ICON,
   Dialog,
+  Disclosure,
   DUR,
   EASE,
   EmptyState,
@@ -22,6 +24,7 @@ import {
   PageHeader,
   PasswordInput,
   Row,
+  Saved,
   ScoreRing,
   Section,
   Skeleton,
@@ -31,6 +34,7 @@ import {
   StatusText,
   SYSTEM_ICON,
   VITAL_ICON,
+  useFlash,
 } from '../components/ui'
 import { CONTEXTS, vitalFor, vitalsFor, type Context } from '../data/contexts'
 import { MISSIONS, formatDelay } from '../data/missions'
@@ -69,6 +73,7 @@ export default function Overview({ crewId }: { crewId: number }) {
   const [sendError, setSendError] = useState(false)
   const [sending, setSending] = useState(false)
   const [printable, setPrintable] = useState(false)
+  const [justSaved, flashSaved] = useFlash(2200)
   const member = crew.find((c) => c.id === crewId)
   const canEdit = user?.role === 'astronaut' || user?.role === 'member'
   const ctx: Context = mission?.context ?? 'space'
@@ -90,6 +95,13 @@ export default function Overview({ crewId }: { crewId: number }) {
     ) as Record<SystemId, string>
   }, [ev])
 
+  // Sparklines: recomputed only when the readings change, not on every render of the page.
+  const day = mission?.day ?? 142
+  const trends = useMemo(() => {
+    if (!ev) return {} as Partial<Record<VitalKey, ReturnType<typeof seriesOf>>>
+    return Object.fromEntries(CARDS.filter((k) => ev.vitalStatus[k]).map((k) => [k, seriesOf(data.rows, ev.defByKey[k]!.primary, 14, day)])) as Partial<Record<VitalKey, ReturnType<typeof seriesOf>>>
+  }, [ev, data.rows, day])
+
   if (data.loading && !data.rows.length) return <OverviewSkeleton />
   if (data.error)
     return (
@@ -106,6 +118,7 @@ export default function Overview({ crewId }: { crewId: number }) {
       onSave={async (patch) => {
         setEditing(null)
         await data.add(patch, 'manual', 'Manual entry')
+        flashSaved()
       }}
     />
   )
@@ -177,6 +190,8 @@ export default function Overview({ crewId }: { crewId: number }) {
           </div>
         )}
 
+        <EarlyWarningBlock rows={data.rows} crewId={crewId} />
+
         <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
           <div className="space-y-4 lg:col-span-5 lg:col-start-8 lg:row-start-1">
             <Card>
@@ -200,7 +215,9 @@ export default function Overview({ crewId }: { crewId: number }) {
                   </List>
                 </div>
               )}
-              <p className="mt-5 border-t border-line pt-4 text-sm text-dim">100 minus 9 points per reading needing attention and 22 per urgent one. Rule-based, works offline; AURA explains it but never sets it.</p>
+              <Disclosure size="row" id="overview.score-how" title="How the score is calculated" className="mt-4 border-t border-line pt-2">
+                <p className="text-sm text-dim">100 minus 9 points per reading needing attention and 22 per urgent one. Rule-based, works offline; AURA explains it but never sets it.</p>
+              </Disclosure>
             </Card>
 
             {canEdit && (
@@ -240,7 +257,7 @@ export default function Overview({ crewId }: { crewId: number }) {
                 </span>
               </div>
               <ul className="divide-y divide-line border-y border-line">
-                {data.tasks.map((t) => (
+                {data.tasks.filter((t) => !t.done).map((t) => (
                   <li key={t.id} className="px-2">
                     <Checkbox
                       checked={t.done}
@@ -255,12 +272,45 @@ export default function Overview({ crewId }: { crewId: number }) {
                     />
                   </li>
                 ))}
+                {doneCount === data.tasks.length && data.tasks.length > 0 && <li className="px-2 py-3 text-sm text-soft">All of today's tasks are done.</li>}
               </ul>
+              {doneCount > 0 && (
+                <Disclosure size="row" id="overview.tasks-done" title={`Done today (${doneCount})`} className="mt-1">
+                  <ul className="divide-y divide-line">
+                    {data.tasks.filter((t) => t.done).map((t) => (
+                      <li key={t.id} className="px-2">
+                        <Checkbox
+                          checked={t.done}
+                          disabled={!canEdit}
+                          onChange={() => void data.toggleTask(t.id)}
+                          label={
+                            <>
+                              <span className="text-dim line-through">{t.label}</span>
+                              <span className="meta ml-2">{t.time}</span>
+                            </>
+                          }
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </Disclosure>
+              )}
             </Section>
           </div>
         </div>
 
-        <Section title="Latest measurements" action={canEdit ? <AddMenu ctx={ctx} onPick={setEditing} /> : undefined}>
+        <Section
+          className="cv-auto"
+          title="Latest measurements"
+          action={
+            canEdit ? (
+              <>
+                <Saved show={justSaved} label="Reading saved" className="hidden sm:inline-flex" />
+                <AddMenu ctx={ctx} onPick={setEditing} />
+              </>
+            ) : undefined
+          }
+        >
           <Stagger className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-6">
             {cards.map((k) => {
               const d = ev.defByKey[k]!
@@ -275,7 +325,7 @@ export default function Overview({ crewId }: { crewId: number }) {
                     source={m?.source ?? 'manual'}
                     device={m?.device ?? ''}
                     time={timeAgo(m?.at)}
-                    trend={seriesOf(data.rows, d.primary, 14, mission?.day ?? 142)}
+                    trend={trends[k] ?? []}
                     onClick={canEdit ? () => setEditing(k) : undefined}
                   />
                 </StaggerItem>
@@ -376,7 +426,7 @@ function AddMenu({ ctx, onPick }: { ctx: Context; onPick: (k: VitalKey) => void 
                       setOpen(false)
                       onPick(d.key)
                     }}
-                    className="flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] text-ink transition-colors hover:bg-panel"
+                    className="press flex min-h-11 w-full items-center gap-3 rounded-lg px-3 text-left text-[15px] text-ink transition-colors hover:bg-panel"
                   >
                     <Icon className="h-4 w-4 text-dim" aria-hidden="true" />
                     {d.label}

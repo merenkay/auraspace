@@ -57,7 +57,7 @@ function CandidateDetail({ c }: { c: Candidate }) {
   )
 }
 
-export default function AssessmentView({ a, ctx, profile, delaySec, footer }: { a: Assessment; ctx: Context; profile: HealthProfile | null; delaySec: number; footer?: ReactNode }) {
+export default function AssessmentView({ a, ctx, profile, delaySec, footer, cabin }: { a: Assessment; ctx: Context; profile: HealthProfile | null; delaySec: number; footer?: ReactNode; cabin?: ReactNode }) {
   const shown = a.candidates.slice(0, 4)
   const [selected, setSelected] = useState<string | null>(null)
   const focus = shown.find((c) => c.condition.id === selected) ?? shown[0]
@@ -136,14 +136,17 @@ export default function AssessmentView({ a, ctx, profile, delaySec, footer }: { 
 
   const watch =
     plan && (plan.redflags.length > 0 || plan.escalate.length > 0 || plan.monitor.length > 0) ? (
+      <div className="space-y-6">
+        {/* Red flags are safety information: always visible, never behind a disclosure. */}
+        {plan.redflags.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-[15px] font-semibold text-ink">Get help at once if</h3>
+            <Lines items={plan.redflags} />
+          </div>
+        )}
+        {(plan.escalate.length > 0 || plan.monitor.length > 0) && (
       <Disclosure title="Watch and escalate" defaultOpen={!hot}>
         <div className="grid gap-8 lg:grid-cols-2">
-          {plan.redflags.length > 0 && (
-            <div>
-              <h3 className="mb-2 text-[15px] font-semibold text-ink">Get help at once if</h3>
-              <Lines items={plan.redflags} />
-            </div>
-          )}
           <div className="space-y-6">
             {plan.escalate.length > 0 && (
               <div>
@@ -160,11 +163,13 @@ export default function AssessmentView({ a, ctx, profile, delaySec, footer }: { 
           </div>
         </div>
       </Disclosure>
+        )}
+      </div>
     ) : null
 
   const sources =
     plan && plan.sources.length > 0 ? (
-      <Disclosure title="Sources" meta={`${plan.sources.length} pages`}>
+      <Disclosure id="aura.sources" title="Sources" meta={`${plan.sources.length} pages`}>
         <p className="mb-2 text-sm text-dim">Every line above comes from these pages. The quotes are the sources’ own words.</p>
         <ul className="divide-y divide-line">
           {plan.sources.map((s) => (
@@ -192,10 +197,12 @@ export default function AssessmentView({ a, ctx, profile, delaySec, footer }: { 
           </p>
         )}
       </Notice>
+      {!emergency && cabin /* cabin-air notice (src/components/cabinlink); after the emergency steps when it is an emergency */}
 
       {hot ? (
         <>
           {actions}
+          {emergency && cabin}
           <div className="space-y-6">
             <Disclosure title="What this could be" meta={shown.length ? `${shown.length} possible` : undefined}>
               {candidates}

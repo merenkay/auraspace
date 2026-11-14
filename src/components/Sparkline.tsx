@@ -1,8 +1,9 @@
+import { memo } from 'react'
 import { Line, LineChart, ReferenceDot, ResponsiveContainer, XAxis, YAxis } from 'recharts'
 import { DUR } from './ui'
 
 /** A trend at a glance: straight segments between real measurements, a dot on the latest one. No fill, no smoothing. */
-export default function Sparkline({ data, color, height = 44 }: { data: { day: number; value: number }[]; color: string; height?: number }) {
+function SparklineImpl({ data, color, height = 44 }: { data: { day: number; value: number }[]; color: string; height?: number }) {
   if (data.length < 2)
     return (
       <div style={{ height }} className="flex items-end text-xs text-dim">
@@ -24,4 +25,7 @@ export default function Sparkline({ data, color, height = 44 }: { data: { day: n
   )
 }
 
+/** Memoised: a page re-render does not redraw every trend unless its data changed. */
+const Sparkline = memo(SparklineImpl)
+export default Sparkline
 export { Sparkline }

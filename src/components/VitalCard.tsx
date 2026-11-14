@@ -28,7 +28,7 @@ export default function VitalCard({ label, value, unit, status, source, device, 
   // Normal data stays neutral; only a reading that needs attention takes its status colour.
   const trendColor = status === 'ok' ? 'var(--color-soft)' : STATUS_COLOR[status]
   return (
-    <Card className={cx('relative flex h-full flex-col gap-3', onClick && 'transition-colors hover:bg-panel2')} pad="sm">
+    <Card className={cx('relative flex h-full flex-col gap-3', onClick && 'transition-[background-color,scale] duration-150 hover:bg-panel2 motion-safe:has-[button:active]:scale-[0.98]')} pad="sm">
       <Metric size={wide ? 'lg' : 'md'} label={label} value={value} unit={unit} status={status} hint={time} />
       <Sparkline data={trend} color={trendColor} />
       <div className="mt-auto flex flex-wrap items-center gap-1.5">
@@ -36,7 +36,7 @@ export default function VitalCard({ label, value, unit, status, source, device, 
           <span title={device || undefined}>{src}</span>
         </Badge>
       </div>
-      {onClick && <button type="button" onClick={onClick} aria-label={`Log a new ${label} reading`} className="absolute inset-0 rounded-2xl" />}
+      {onClick && <button type="button" onClick={onClick} aria-label={`Log a new ${label} reading`} data-sfx="tick" className="press absolute inset-0 rounded-2xl text-ink" />}
     </Card>
   )
 }

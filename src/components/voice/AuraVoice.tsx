@@ -7,8 +7,8 @@ import { createPortal } from 'react-dom'
 import { sfxEnabled, setSfxEnabled } from '../../lib/sfx'
 import { EXAMPLES, EXAMPLES_TR } from '../../lib/voice/intents'
 import { ERROR_TEXT } from '../../lib/voice/recognition'
-import { speak } from '../../lib/voice/speech'
-import { Checkbox, IconButton, Input, SPRING, Tabs, cx } from '../ui'
+import { Checkbox, IconButton, Input, SPRING, Select, Tabs, cx } from '../ui'
+import ListenRing from './ListenRing'
 import { useVoiceAgent, type Phase } from './useVoiceAgent'
 import VoiceOrb from './VoiceOrb'
 import './voice.css'
@@ -106,20 +106,61 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                         <p className="mt-1.5 text-xs text-dim">Replies are always in English.</p>
                       </div>
                       <div>
+                        <p className="mb-1.5 text-sm text-dim">Listening time</p>
+                        <Tabs
+                          label="Listening time"
+                          value={v.settings.listen}
+                          onChange={(listen) => v.update({ listen })}
+                          options={[
+                            { value: 'short', label: 'Short' },
+                            { value: 'normal', label: 'Normal' },
+                            { value: 'long', label: 'Long' },
+                          ]}
+                        />
+                        <p className="mt-1.5 text-xs text-dim">How long a pause ends what you say. Choose Long if AURA stops while you are still talking.</p>
+                      </div>
+                      <div>
+                        <label htmlFor="vx-voice" className="mb-1.5 block text-sm text-dim">
+                          Voice
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <Select
+                            id="vx-voice"
+                            className="min-w-0 flex-1"
+                            value={v.settings.voice ?? ''}
+                            disabled={!v.ttsOk || !v.voices.length}
+                            onChange={(e) => {
+                              const voice = e.target.value || null
+                              v.update({ voice })
+                              v.previewVoice(voice)
+                            }}
+                          >
+                            <option value="">Automatic (most natural available)</option>
+                            {v.voices.map((x) => (
+                              <option key={x.uri} value={x.uri}>
+                                {x.name.replace(/^Microsoft /, '').replace(/ - English.*$/, '')} · {x.lang}
+                                {x.natural ? ' · natural' : ''}
+                              </option>
+                            ))}
+                          </Select>
+                          <button type="button" className="min-h-9 shrink-0 text-sm text-accent underline-offset-2 hover:underline disabled:opacity-50" onClick={() => v.previewVoice(v.settings.voice)} disabled={!v.ttsOk}>
+                            Preview
+                          </button>
+                        </div>
+                        <p className="mt-1.5 text-xs text-dim">Natural voices (Edge “Online (Natural)”, Google, Apple enhanced) sound most human. Edge streams its natural voices from Microsoft.</p>
+                      </div>
+                      <div>
                         <label htmlFor="vx-rate" className="mb-1.5 block text-sm text-dim">
                           Speech speed {v.settings.rate.toFixed(1)}×
                         </label>
                         <input id="vx-rate" type="range" min={0.7} max={1.3} step={0.1} value={v.settings.rate} onChange={(e) => v.update({ rate: Number(e.target.value) })} className="w-full accent-[var(--color-accent)]" />
-                        <button type="button" className="mt-1 text-sm text-accent underline-offset-2 hover:underline" onClick={() => speak('Voice check. This is AURA.')} disabled={!v.ttsOk}>
-                          Try the voice
-                        </button>
                       </div>
                       <div className="space-y-1.5 border-t border-line pt-3 text-xs leading-relaxed text-dim">
                         <p>
                           <span className="font-medium text-soft">Privacy.</span> Spoken replies are generated on this device. Speech recognition is provided by your browser: in Chrome and Edge the audio is sent to the browser vendor’s service while you speak, so it needs internet. Without it, or in Firefox (no recognition), voice input is unavailable and typing still works. The microphone is open only while AURA is listening; with the wake word on, it stays open until you turn that off. AURA never records or stores audio.
                         </p>
                         <p>
-                          <span className="font-medium text-soft">Keys.</span> Alt+V opens or closes voice. With it open, hold Space to talk (when you are not typing). Esc closes.
+                          <span className="font-medium text-soft">Keys.</span> Alt+V opens or closes voice. With it open, tap Space to talk until you pause, or hold Space and release when you are done (when you are not typing). Press Space again, or “Done”, to finish early. Esc closes.
                         </p>
                       </div>
                       <button type="button" className="min-h-9 text-sm font-medium text-accent underline-offset-2 hover:underline" onClick={() => setSettingsOpen(false)}>
@@ -160,6 +201,19 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                     </div>
                   </div>
 
+                  {v.phase === 'listening' && (
+                    <div className="flex items-center justify-between gap-2 px-4 pt-3">
+                      <p className="vx-mono text-xs text-dim" aria-live="off">
+                        {v.window?.mode === 'hold' ? 'Release to send' : v.window?.heard ? 'Pause to finish' : 'Listening…'}
+                      </p>
+                      {v.window?.mode !== 'hold' && (
+                        <button type="button" onClick={v.finishListening} className="min-h-8 rounded-full border border-accent/60 px-3 text-sm text-accent transition-colors hover:bg-accent/10">
+                          Done, tap to finish
+                        </button>
+                      )}
+                    </div>
+                  )}
+
                   {err && (
                     <p role="status" className="mx-4 mt-3 rounded-lg border border-warn/50 px-3 py-2 text-sm leading-snug text-soft">
                       {err}
@@ -167,15 +221,28 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                   )}
 
                   <form onSubmit={submit} className="flex items-center gap-2 px-4 pt-3">
-                    <IconButton
-                      variant="secondary"
-                      icon={Mic}
-                      label={v.phase === 'listening' ? 'Stop listening' : 'Listen'}
-                      aria-pressed={v.phase === 'listening'}
-                      disabled={!v.recOk}
-                      className={cx('shrink-0', v.phase === 'listening' && 'border-accent text-accent')}
-                      onClick={() => (v.phase === 'listening' ? v.stopPtt() : v.startPtt())}
-                    />
+                    <span className="relative shrink-0">
+                      <IconButton
+                        variant="secondary"
+                        icon={Mic}
+                        label={v.phase === 'listening' ? 'Finish speaking' : 'Listen (tap, or hold to talk)'}
+                        aria-pressed={v.phase === 'listening'}
+                        disabled={!v.recOk}
+                        className={cx('shrink-0', v.phase === 'listening' && 'border-accent text-accent')}
+                        onPointerDown={(e) => {
+                          if (e.button !== 0) return
+                          e.preventDefault()
+                          v.pressStart()
+                        }}
+                        onPointerUp={() => v.pressEnd()}
+                        onPointerCancel={() => v.pressEnd()}
+                        onClick={(e) => {
+                          // keyboard activation (Enter / Space on the focused button): tap behaviour
+                          if (e.detail === 0) (v.phase === 'listening' ? v.finishListening() : v.startPtt())
+                        }}
+                      />
+                      {v.phase === 'listening' && v.window && <ListenRing win={v.window} />}
+                    </span>
                     <label htmlFor="vx-type" className="sr-only">
                       Type a command for AURA
                     </label>

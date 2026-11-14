@@ -182,3 +182,19 @@ describe('interview', () => {
     expect(a.reasons.join(' ')).toMatch(/professional should review/)
   })
 })
+
+describe('thoughts of self-harm', () => {
+  it('is an emergency in every context and leads with the crisis plan, never a mood programme', () => {
+    for (const context of ['space', 'polar', 'home'] as const) {
+      const a = assess({ answers: { 'self-harm': 'yes', 'low-mood': 'yes', 'dark-season': 'yes', fatigue: 'yes' }, context, profile: profile(), now: NOW })
+      expect(a.urgency).toBe('emergency')
+      expect(a.candidates[0].condition.id).toBe('suicidal-thoughts')
+    }
+  })
+
+  it('is recognised in plain English and Turkish', () => {
+    expect(parseFindings("I don't want to live anymore").answers['self-harm']).toBe('yes')
+    expect(parseFindings('I want to die').answers['self-harm']).toBe('yes')
+    expect(parseFindings('Yaşamak istemiyorum').answers['self-harm']).toBe('yes')
+  })
+})

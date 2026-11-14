@@ -1,7 +1,7 @@
 import { ChartLine, FlaskConical, Upload, Watch } from 'lucide-react'
 import { lazy, Suspense, useMemo, useState, type ReactNode } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { Badge, Button, ChartTooltip, EmptyState, Notice, PageHeader, Reveal, Section, Skeleton, StatusText, Tabs, chart } from '../components/ui'
+import { Badge, Button, ChartTooltip, Disclosure, EmptyState, Notice, PageHeader, Reveal, Section, ShowMore, Skeleton, StatusText, Tabs, chart, useMedia } from '../components/ui'
 import { VITAL_BY_KEY, type FieldId, type VitalKey } from '../data/vitals'
 import { baselineOf } from '../lib/health'
 import { isImportedDevice, isSyntheticDevice } from '../lib/samsungHealth'
@@ -43,6 +43,10 @@ function seriesFor(rows: Measurement[], primary: FieldId, second?: FieldId): Poi
     .map(([day, { m, second: s }]) => ({ day, value: m.value, value2: s?.value, imported: isImportedDevice(m.device) }))
 }
 
+function recordValue(r: Measurement, pair: Measurement | undefined, unit: string) {
+  return `${pair ? `${Math.round(r.value)}/${Math.round(pair.value)}` : r.value} ${unit}`
+}
+
 function SourceCell({ r }: { r: Measurement }) {
   if (isImportedDevice(r.device)) {
     const synthetic = isSyntheticDevice(r.device)
@@ -66,6 +70,22 @@ export default function History({ crewId }: { crewId: number }) {
   const canImport = !!backend && !!user && (user.role === 'astronaut' || user.role === 'member') && user.crewId === crewId
   const today = mission?.day ?? 142
   const imported = useMemo(() => data.rows.filter((r) => isImportedDevice(r.device)), [data.rows])
+  const phone = !useMedia('(min-width: 640px)')
+  // The chart series and the newest records: recomputed only when the readings or the chosen measurement change.
+  const derived = useMemo(() => {
+    if (!ev || !ev.vitals.length) return null
+    const d = ev.defByKey[ev.vitals.some((x) => x.key === key) ? key : ev.vitals[0].key] ?? VITAL_BY_KEY[key]
+    const sec = d.fields[1]?.id
+    let min = Infinity
+    for (const r of data.rows) if (r.day < min) min = r.day
+    return {
+      def: d,
+      second: sec,
+      series: seriesFor(data.rows, d.primary, sec),
+      minDay: min,
+      recent: data.rows.filter((r) => r.metric === d.primary).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12),
+    }
+  }, [ev, data.rows, key])
 
   const openImport = () => {
     setImportMounted(true)
@@ -114,7 +134,7 @@ export default function History({ crewId }: { crewId: number }) {
       </>,
     )
   }
-  if (!data.rows.length || !ev || !ev.vitals.length) {
+  if (!data.rows.length || !ev || !ev.vitals.length || !derived) {
     return shell(
       <>
         {header}
@@ -128,17 +148,13 @@ export default function History({ crewId }: { crewId: number }) {
   }
 
   const available = ev.vitals
-  const def = ev.defByKey[available.some((d) => d.key === key) ? key : available[0].key] ?? VITAL_BY_KEY[key]
-  const second = def.fields[1]?.id
-  const series = seriesFor(data.rows, def.primary, second)
-  const minDay = Math.min(...data.rows.map((r) => r.day))
+  const { def, second, series, minDay, recent } = derived
   // calendar dates instead of "D-12" outside space missions and whenever history predates day 1
   const dateMode = mission?.context !== 'space' || minDay <= 0
   const dayLabel = (d: number) => (dateMode ? fmtShort(dateOfDay(d, today)) : `D${d}`)
   const base = baselineOf(data.rows, def.primary)
   const band = BANDS[def.key]
   const yAxis = niceAxis([...series.flatMap((p) => (p.value2 != null ? [p.value, p.value2] : [p.value])), ...(base != null ? [base] : [])])
-  const recent = data.rows.filter((r) => r.metric === def.primary).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12)
   const pairOf = (r: Measurement) => (second ? data.rows.find((x) => x.metric === second && x.at === r.at && x.device === r.device) : undefined)
   const importedDays = series.filter((p) => p.imported).length
   const importedByDay = new Map(series.map((p) => [p.day, p.imported]))
@@ -186,6 +202,7 @@ export default function History({ crewId }: { crewId: number }) {
                         domain={['dataMin', 'dataMax']}
                         allowDecimals={false}
                         {...chart.xAxis}
+                        minTickGap={phone ? 48 : 28}
                         tickFormatter={dayLabel}
                         label={{ value: dateMode ? 'Date' : 'Mission day', position: 'insideBottom', offset: -12, style: AXIS_LABEL }}
                       />
@@ -216,6 +233,7 @@ export default function History({ crewId }: { crewId: number }) {
                         dataKey="value"
                         name={firstName}
                         {...chart.line}
+                        activeDot={{ ...chart.line.activeDot, r: phone ? 7 : 4 }}
                         dot={(p: { cx?: number; cy?: number; index?: number; payload?: Point }) => {
                           if (p.cx == null || p.cy == null || !p.payload) return <g key={`d${p.index}`} />
                           // hollow ring = imported from a device; filled dot = entered or simulated (shown when there are few points)
@@ -227,13 +245,15 @@ export default function History({ crewId }: { crewId: number }) {
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
-                <p className="mt-2 text-sm text-dim">
+                <Disclosure size="row" id="history.chart-key" title="How to read this chart" className="mt-1">
+                <p className="text-sm text-dim">
                   {second ? `Ink line: ${firstName.toLowerCase()}. Grey line: ${secondName?.toLowerCase()}. ` : ''}
                   {band && `Green band: usual reference range${second ? ' for the upper number' : ''}, ${band[0]}–${band[1]} ${def.unit}. `}
                   {base != null && 'Dashed grey line: your baseline, the average of your first 14 days with this measurement. '}
                   {importedDays > 0 && 'Hollow rings: days imported from a device. '}
                   {dateMode ? 'The horizontal axis shows calendar dates.' : 'D is the mission day.'}
                 </p>
+                </Disclosure>
               </>
             ) : (
               <EmptyState title={series.length ? 'Only one day of readings' : 'No readings for this measurement yet'} description="A line needs at least two different days. Log another reading, or import your device history." />
@@ -242,8 +262,29 @@ export default function History({ crewId }: { crewId: number }) {
         </Reveal>
 
         <Reveal delay={0.05}>
-          <Section title="Records" description="Newest first, up to 12 entries">
-            <div className="overflow-x-auto rounded-xl border border-line">
+          <Disclosure id="history.records" title="Records" meta={`Newest first · ${recent.length} entr${recent.length === 1 ? 'y' : 'ies'}`} summary={recent[0] ? `Latest: ${recordValue(recent[0], pairOf(recent[0]), def.unit)} · ${dateMode ? fmtShort(dateOfDay(recent[0].day, today)) : `Day ${recent[0].day}`}` : undefined}>
+            {/* Phone: stacked rows instead of a sideways-scrolling table */}
+            <ul className="divide-y divide-line border-y border-line sm:hidden">
+              {recent.map((r) => {
+                const pair = pairOf(r)
+                const st = def.fields.length === 1 ? def.evaluate({ ...ev.values, [def.primary]: r.value }) : pair ? def.evaluate({ ...ev.values, [def.primary]: r.value, [second!]: pair.value }) : null
+                return (
+                  <li key={r.id} className="py-3">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="text-[15px] font-medium text-ink">{recordValue(r, pair, def.unit)}</span>
+                      {st ? <StatusText status={st} /> : <span className="text-sm text-dim">No data</span>}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                      <span className="text-soft">
+                        {dateMode ? fmtShort(dateOfDay(r.day, today)) : `Day ${r.day}`} · <span className="font-mono text-xs">{hhmm(r.at)}</span>
+                      </span>
+                      <SourceCell r={r} />
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="hidden overflow-x-auto rounded-xl border border-line sm:block">
               <table className="w-full min-w-[540px] text-sm">
                 <caption className="sr-only">Recent {def.label} records, newest first</caption>
                 <thead>
@@ -284,11 +325,11 @@ export default function History({ crewId }: { crewId: number }) {
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 max-w-3xl text-sm text-dim">
+            <ShowMore id="history.records-note" className="mt-2 max-w-3xl text-sm text-dim">
               Records are append-only: a correction adds a new entry and never erases the original measurement. Rows tagged “Imported” are daily values from a Samsung Health export (device data; one value per day, see
               the import for how each is derived). For the simulated demo crew, all other values are simulated demo data unless you entered them.
-            </p>
-          </Section>
+            </ShowMore>
+          </Disclosure>
         </Reveal>
       </div>
     </>,

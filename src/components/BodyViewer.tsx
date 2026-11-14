@@ -4,7 +4,7 @@ import { SYSTEM_BY_ID, type SystemId } from '../data/systems'
 import { STATUS_COLOR, type Status } from '../data/vitals'
 import BodyMap from './BodyMap'
 import HudLock from './gesture/HudLock'
-import { registerViewer, useHud } from './gesture/viewerBridge'
+import { registerViewer, useHandMode, useHud } from './gesture/viewerBridge'
 import type { HoverMeta, LayerId, ViewerControls } from './three/Body3D'
 import { Button, cx, IconButton, Spinner, StatusIcon, statusLabel, StatusText, useMedia } from './ui'
 
@@ -118,6 +118,8 @@ export default function BodyViewer({ statuses, measured, summaries, selected, on
   const hintCount = useRef(0)
   const hudUpdate = useRef<(() => void) | null>(null)
   const hud = useHud()
+  // camera hand control is on: no idle auto-spin, and a lighter renderer (detection shares the device)
+  const handMode = useHandMode()
 
   const fail = useCallback(() => {
     viewerBroken = true
@@ -248,7 +250,8 @@ export default function BodyViewer({ statuses, measured, summaries, selected, on
             selected={selected}
             onSelect={onSelect}
             onHover={onHover}
-            autoRotate={spinning}
+            autoRotate={spinning && !handMode}
+            lowPower={handMode}
             onInteract={onInteract}
             xray={xray}
             showRadiation={showRadiation}

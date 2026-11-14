@@ -7,6 +7,8 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown,
   CircleCheck,
   CircleDashed,
   Droplet,
@@ -39,6 +41,8 @@ import { AnimatePresence, MotionConfig, animate, motion, useReducedMotion, type 
 import {
   cloneElement,
   createContext,
+  useCallback,
+  useMemo,
   useContext,
   useEffect,
   useId,
@@ -56,6 +60,7 @@ import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
 import type { SystemId } from '../data/systems'
 import { STATUS_COLOR, type Status, type VitalKey } from '../data/vitals'
+import { sfx } from '../lib/sfx'
 
 /* ================================================================== */
 /* Foundations                                                         */
@@ -254,7 +259,7 @@ type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger'
 type ButtonSize = 'sm' | 'md' | 'lg'
 
 const BTN_BASE =
-  'relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors active:translate-y-px disabled:pointer-events-none aria-disabled:pointer-events-none'
+  'press relative inline-flex shrink-0 select-none items-center justify-center gap-2 whitespace-nowrap rounded-lg font-medium transition-colors disabled:pointer-events-none aria-disabled:pointer-events-none'
 const BTN_VARIANT: Record<ButtonVariant, string> = {
   // A disabled primary button turns into a plain grey plate: obviously inactive, never a dimmed white slab.
   primary: 'bg-ink text-space hover:bg-white disabled:bg-panel2 disabled:text-dim aria-disabled:bg-panel2 aria-disabled:text-dim',
@@ -282,15 +287,23 @@ type ButtonProps = {
   to?: string
   /** Render as an external link (opens in a new tab). */
   href?: string
+  /** Briefly true after a successful action: the icon becomes a check that pops in once (pair with useFlash). */
+  done?: boolean
   children?: ReactNode
   className?: string
 } & Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children' | 'className'>
 
-export function Button({ variant = 'secondary', size = 'md', loading = false, icon: Icon, iconRight: IconRight, full = false, to, href, children, className, disabled, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', loading = false, done = false, icon: Icon, iconRight: IconRight, full = false, to, href, children, className, disabled, type = 'button', ...rest }: ButtonProps) {
   const cls = cx(BTN_BASE, BTN_VARIANT[variant], BTN_SIZE[size], full && 'w-full', className)
   const inner = (
     <>
-      {loading ? <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" /> : Icon ? <Icon className="h-4 w-4" aria-hidden="true" /> : null}
+      {loading ? (
+        <LoaderCircle className="h-4 w-4 animate-spin" aria-hidden="true" />
+      ) : done ? (
+        <Check className="h-4 w-4 animate-pop" aria-hidden="true" />
+      ) : Icon ? (
+        <Icon className="h-4 w-4" aria-hidden="true" />
+      ) : null}
       {children}
       {IconRight && <IconRight className="h-4 w-4" aria-hidden="true" />}
     </>
@@ -308,7 +321,7 @@ export function Button({ variant = 'secondary', size = 'md', loading = false, ic
       </a>
     )
   return (
-    <button type={type} className={cls} disabled={disabled || loading} aria-busy={loading || undefined} {...rest}>
+    <button type={type} className={cls} disabled={disabled || loading} aria-busy={loading || undefined} data-sfx={variant === 'primary' ? 'select' : undefined} {...rest}>
       {inner}
     </button>
   )
@@ -402,10 +415,10 @@ export function Textarea({ className, rows = 3, id, ...rest }: TextareaHTMLAttri
 
 export function Checkbox({ label, className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'className'> & { label: ReactNode; className?: string }) {
   return (
-    <label className={cx('flex min-h-11 cursor-pointer items-start gap-3 py-2 text-sm text-soft', className)}>
-      <span className="relative mt-0.5 flex h-5 w-5 shrink-0">
+    <label className={cx('tap-check flex min-h-11 cursor-pointer items-start gap-3 py-2 text-sm text-soft', className)}>
+      <span className="tap-box relative mt-0.5 flex h-5 w-5 shrink-0">
         <input type="checkbox" {...rest} className="peer h-5 w-5 cursor-pointer appearance-none rounded-[5px] border border-edge bg-deep transition-colors checked:border-ink checked:bg-ink hover:border-soft" />
-        <Check className="pointer-events-none absolute inset-0 m-auto h-3.5 w-3.5 text-space opacity-0 transition-opacity peer-checked:opacity-100" strokeWidth={3} aria-hidden="true" />
+        <Check className="pointer-events-none absolute inset-0 m-auto h-3.5 w-3.5 scale-50 text-space opacity-0 transition-[opacity,scale] duration-150 peer-checked:scale-100 peer-checked:opacity-100" strokeWidth={3} aria-hidden="true" />
       </span>
       <span>{label}</span>
     </label>
@@ -423,7 +436,7 @@ export function PageHeader({ title, eyebrow, description, status, actions, class
       <div className="min-w-0">
         {eyebrow && <p className="mb-1 text-sm text-dim">{eyebrow}</p>}
         <h1 className="text-title text-ink">{title}</h1>
-        {description && <p className="mt-2 max-w-2xl text-soft">{description}</p>}
+        {description && <div className="mt-2 max-w-2xl text-soft">{description}</div>}
       </div>
       {(status || actions) && (
         <div className="flex flex-wrap items-center gap-3">
@@ -501,7 +514,7 @@ type RowProps = {
 
 export function Row({ title, description, leading, trailing, to, onClick, selected = false, disabled = false, className }: RowProps) {
   const interactive = Boolean(to || onClick)
-  const cls = cx('flex min-h-14 w-full items-center gap-3 px-2 py-2.5 text-left', interactive && 'transition-colors hover:bg-panel2', selected && 'bg-panel2', disabled && 'pointer-events-none opacity-45', className)
+  const cls = cx('flex min-h-14 w-full items-center gap-3 px-2 py-2.5 text-left', interactive && 'press transition-colors hover:bg-panel2', selected && 'bg-panel2', disabled && 'pointer-events-none opacity-45', className)
   const body = (
     <>
       {leading && <span className="flex shrink-0 items-center text-dim">{leading}</span>}
@@ -802,20 +815,295 @@ export function ChartTooltip({ active, payload, label, unit, formatLabel, format
   )
 }
 
-/** A collapsed-by-default group: heading + hairline like <Section>, opens in place. Native <details>, so keyboard and screen readers work without extra code. */
-export function Disclosure({ title, meta, defaultOpen = false, size = 'section', children, className }: { title: ReactNode; meta?: ReactNode; defaultOpen?: boolean; size?: 'section' | 'row'; children: ReactNode; className?: string }) {
-  return (
-    <details open={defaultOpen} className={cx('group', className)}>
-      <summary className={cx('flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 rounded-lg [&::-webkit-details-marker]:hidden', size === 'section' ? 'border-b border-line pb-3 pt-1 group-open:mb-4' : 'py-2 text-sm text-soft hover:text-ink group-open:mb-2')}>
-        <span className="min-w-0">
-          <span className={size === 'section' ? 'text-heading text-ink' : 'font-medium'}>{title}</span>
-          {meta && <span className="ml-3 text-sm text-dim">{meta}</span>}
-        </span>
-        <ChevronDown className="h-4 w-4 shrink-0 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
-      </summary>
-      {children}
-    </details>
+/* ================================================================== */
+/* Progressive disclosure                                              */
+/* ================================================================== */
+
+const OPEN_KEY = 'aura.open.v1'
+let openStore: Record<string, boolean> | null = null
+function loadOpenStore(): Record<string, boolean> {
+  if (!openStore) {
+    try {
+      const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? '{}')
+      openStore = v && typeof v === 'object' ? v : {}
+    } catch {
+      openStore = {}
+    }
+  }
+  return openStore!
+}
+function writeOpen(id: string, open: boolean) {
+  const s = loadOpenStore()
+  s[id] = open
+  try {
+    localStorage.setItem(OPEN_KEY, JSON.stringify(s))
+  } catch {
+    /* remembered for this page view only */
+  }
+}
+
+/** Remembers an open/closed choice on this device (localStorage, guarded). `id` = a stable key such as 'coach.equipment'. */
+export function useRememberedOpen(id: string | undefined, defaultOpen = false): [boolean, (open: boolean) => void] {
+  const [open, setOpenState] = useState(() => (id ? (loadOpenStore()[id] ?? defaultOpen) : defaultOpen))
+  const setOpen = useCallback(
+    (v: boolean) => {
+      setOpenState(v)
+      if (id) writeOpen(id, v)
+    },
+    [id],
   )
+  return [open, setOpen]
+}
+
+type GroupSignal = { n: number; open: boolean }
+const DisclosureGroupCtx = createContext<{ signal: GroupSignal; report: (key: string, open: boolean | null) => void } | null>(null)
+const DisclosureStateCtx = createContext<{ anyClosed: boolean; count: number; setAll: (open: boolean) => void } | null>(null)
+
+/** Wrap a page (or part of one) so an <ExpandAll /> inside it can open or close every Disclosure at once. */
+export function DisclosureGroup({ children }: { children: ReactNode }) {
+  const [signal, setSignal] = useState<GroupSignal>({ n: 0, open: false })
+  const [states, setStates] = useState<Record<string, boolean>>({})
+  const report = useCallback((key: string, open: boolean | null) => {
+    setStates((s) => {
+      if (open === null) {
+        if (!(key in s)) return s
+        const next = { ...s }
+        delete next[key]
+        return next
+      }
+      return s[key] === open ? s : { ...s, [key]: open }
+    })
+  }, [])
+  const group = useMemo(() => ({ signal, report }), [signal, report])
+  const values = Object.values(states)
+  const anyClosed = values.some((v) => !v)
+  const count = values.length
+  const state = useMemo(() => ({ anyClosed, count, setAll: (open: boolean) => setSignal((s) => ({ n: s.n + 1, open })) }), [anyClosed, count])
+  return (
+    <DisclosureGroupCtx.Provider value={group}>
+      <DisclosureStateCtx.Provider value={state}>{children}</DisclosureStateCtx.Provider>
+    </DisclosureGroupCtx.Provider>
+  )
+}
+
+/** "Expand all" / "Collapse all" for the surrounding DisclosureGroup. Renders nothing with fewer than `min` sections. */
+export function ExpandAll({ min = 3, className }: { min?: number; className?: string }) {
+  const s = useContext(DisclosureStateCtx)
+  if (!s || s.count < min) return null
+  return (
+    <Button size="sm" variant="quiet" icon={s.anyClosed ? ChevronsUpDown : ChevronsDownUp} onClick={() => s.setAll(s.anyClosed)} className={className}>
+      {s.anyClosed ? 'Expand all' : 'Collapse all'}
+    </Button>
+  )
+}
+
+/**
+ * A collapsed-by-default group: heading + hairline like <Section>, opens in place with a short height animation.
+ * `id` remembers the person's choice on this device. `summary` is one line shown while it is closed.
+ * Never put alerts, emergency steps or safety restrictions inside one.
+ */
+export function Disclosure({
+  title,
+  meta,
+  summary,
+  defaultOpen = false,
+  id,
+  size = 'section',
+  children,
+  className,
+  onToggle,
+}: {
+  title: ReactNode
+  /** Count or short fact on the header row, e.g. "4 sources". */
+  meta?: ReactNode
+  /** One line under the title while closed. */
+  summary?: ReactNode
+  defaultOpen?: boolean
+  /** Stable key: remembers open/closed on this device. */
+  id?: string
+  size?: 'section' | 'row'
+  children: ReactNode
+  className?: string
+  onToggle?: (open: boolean) => void
+}) {
+  const [open, setOpen] = useRememberedOpen(id, defaultOpen)
+  const group = useContext(DisclosureGroupCtx)
+  const key = useId()
+  const panelId = `${key}-panel`
+  const reduce = useReducedMotion()
+  const report = group?.report
+  useEffect(() => {
+    report?.(key, open)
+  }, [report, key, open])
+  useEffect(() => () => report?.(key, null), [report, key])
+  const seen = useRef(group?.signal.n ?? 0)
+  const signal = group?.signal
+  useEffect(() => {
+    if (!signal || signal.n === seen.current) return
+    seen.current = signal.n
+    if (open !== signal.open) {
+      setOpen(signal.open)
+      onToggle?.(signal.open)
+    }
+  }, [signal]) // eslint-disable-line react-hooks/exhaustive-deps
+  const toggle = () => {
+    setOpen(!open)
+    onToggle?.(!open)
+    sfx(open ? 'close' : 'open')
+  }
+  const sec = size === 'section'
+  const Heading = sec ? 'h2' : 'div'
+  return (
+    <div className={className} data-open={open}>
+      <Heading className="m-0 font-[inherit]">
+        <button
+          type="button"
+          aria-expanded={open}
+          aria-controls={panelId}
+          onClick={toggle}
+          className={cx(
+            'press flex min-h-11 w-full items-center justify-between gap-4 rounded-lg text-left transition-colors',
+            sec ? 'border-b border-line pb-3 pt-1 hover:border-edge' : 'py-2 text-sm text-soft hover:text-ink',
+          )}
+        >
+          <span className="min-w-0">
+            <span className="flex flex-wrap items-baseline gap-x-3">
+              <span className={sec ? 'text-heading text-ink' : 'font-medium'}>{title}</span>
+              {meta && <span className="text-sm font-normal text-dim">{meta}</span>}
+            </span>
+            {summary && !open && <span className="mt-0.5 block text-sm font-normal text-dim">{summary}</span>}
+          </span>
+          <ChevronDown className={cx('h-4 w-4 shrink-0 text-dim transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />
+        </button>
+      </Heading>
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            id={panelId}
+            key="panel"
+            initial={reduce ? { opacity: 0 } : { height: 0, opacity: 0 }}
+            animate={reduce ? { opacity: 1 } : { height: 'auto', opacity: 1, transition: { height: { duration: DUR.base, ease: EASE.out }, opacity: { duration: DUR.fast, delay: 0.04 } } }}
+            exit={reduce ? { opacity: 0 } : { height: 0, opacity: 0, transition: { height: { duration: DUR.fast, ease: EASE.in }, opacity: { duration: DUR.instant } } }}
+            className="overflow-hidden"
+            onAnimationComplete={() => {
+              // let focus rings and popovers escape once the panel has settled open
+              const el = document.getElementById(panelId)
+              if (el && el.style.height !== '0px') el.style.overflow = 'visible'
+            }}
+          >
+            <div className={sec ? 'pt-4' : 'pb-2'}>{children}</div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+/**
+ * Long text, shortened: the first line (or `lines`) shows, "Show more" reveals the rest in place.
+ * Pass the full text as children; pass `short` for a hand-written short version instead of clamping.
+ */
+export function ShowMore({ children, short, lines = 1, className, label = 'Show more', id }: { children: ReactNode; short?: ReactNode; lines?: 1 | 2 | 3; className?: string; label?: string; id?: string }) {
+  const [open, setOpen] = useRememberedOpen(id, false)
+  const clamp = lines === 1 ? 'line-clamp-1' : lines === 2 ? 'line-clamp-2' : 'line-clamp-3'
+  const box = useRef<HTMLDivElement>(null)
+  // Only offer "Show more" when the clamped text is actually cut off (re-checked when the width changes).
+  const [cut, setCut] = useState(Boolean(short))
+  useEffect(() => {
+    if (short || open) return
+    const el = box.current
+    if (!el) return
+    const check = () => setCut(el.scrollHeight > el.clientHeight + 1)
+    check()
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(check)
+    ro?.observe(el)
+    return () => ro?.disconnect()
+  }, [short, open, children])
+  return (
+    <div className={className}>
+      <div ref={box} className={cx(!open && !short && clamp)}>{open || !short ? children : short}</div>
+      {(cut || open) && <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="press link relative mt-1 inline-flex items-center gap-1 text-sm after:absolute after:-inset-3 after:content-['']">
+        {open ? 'Show less' : label}
+        <ChevronDown className={cx('h-3.5 w-3.5 transition-transform duration-200', open && 'rotate-180')} aria-hidden="true" />
+      </button>}
+    </div>
+  )
+}
+
+/* ================================================================== */
+/* Press feedback                                                      */
+/* ================================================================== */
+
+/**
+ * One delegated listener gives every `.press` element a short highlight that starts where the pointer
+ * touched it (opacity only, 200 ms, skipped under reduced motion). The scale-down lives in index.css.
+ * `data-sfx="tick|select|confirm"` on an element plays that sound on click (silent unless sounds are on).
+ */
+function installPress() {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return
+  const w = window as unknown as { __auraPress?: boolean }
+  if (w.__auraPress) return
+  w.__auraPress = true
+  const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)')
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const el = (e.target as Element | null)?.closest?.<HTMLElement>('.press')
+      if (!el || reduce?.matches || el.matches(':disabled,[aria-disabled="true"]') || typeof el.animate !== 'function') return
+      const r = el.getBoundingClientRect()
+      el.style.setProperty('--px', `${Math.round(e.clientX - r.left)}px`)
+      el.style.setProperty('--py', `${Math.round(e.clientY - r.top)}px`)
+      try {
+        el.animate({ opacity: [0.18, 0] }, { duration: 200, easing: 'cubic-bezier(0.2,0.8,0.2,1)', pseudoElement: '::before' })
+      } catch {
+        /* pseudo-element animation unsupported: the scale-down still gives feedback */
+      }
+    },
+    { passive: true, capture: true },
+  )
+  document.addEventListener(
+    'click',
+    (e) => {
+      const s = (e.target as Element | null)?.closest?.<HTMLElement>('[data-sfx]')?.dataset.sfx
+      if (s === 'tick' || s === 'select' || s === 'confirm') sfx(s)
+    },
+    { passive: true, capture: true },
+  )
+}
+installPress()
+
+/** A small check that pops in once after something was saved: <Saved show={justSaved} />. Announced to screen readers. */
+export function Saved({ show, label = 'Saved', className }: { show: boolean; label?: string; className?: string }) {
+  return (
+    <span role="status" className={cx('inline-flex min-h-6 items-center', className)}>
+      <AnimatePresence>
+        {show && (
+          <motion.span
+            initial={{ opacity: 0, scale: 0.6 }}
+            animate={{ opacity: 1, scale: 1, transition: SPRING.snappy }}
+            exit={{ opacity: 0, transition: { duration: DUR.fast } }}
+            className="inline-flex items-center gap-1.5 text-sm text-soft"
+          >
+            <Check className="h-4 w-4 text-ok" aria-hidden="true" />
+            {label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </span>
+  )
+}
+
+/** True for `ms` after `trigger()` — drives <Saved> or a Button's `done` state. */
+export function useFlash(ms = 1800): [boolean, () => void] {
+  const [on, setOn] = useState(false)
+  const t = useRef<number | undefined>(undefined)
+  useEffect(() => () => window.clearTimeout(t.current), [])
+  const trigger = useCallback(() => {
+    window.clearTimeout(t.current)
+    setOn(true)
+    t.current = window.setTimeout(() => setOn(false), ms)
+  }, [ms])
+  return [on, trigger]
 }
 
 /* ================================================================== */
@@ -878,9 +1166,10 @@ export function Tabs<T extends string>({ value, onChange, options, variant = 'pi
             tabIndex={on ? 0 : -1}
             disabled={o.disabled}
             onClick={() => onChange(o.value)}
+            data-sfx="tick"
             onKeyDown={(e) => onKey(e, i)}
             className={cx(
-              'relative inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap text-sm font-medium transition-colors disabled:opacity-40',
+              'press relative inline-flex shrink-0 items-center justify-center gap-1.5 whitespace-nowrap text-sm font-medium transition-colors disabled:opacity-40',
               pill ? "h-9 rounded-md px-3 after:absolute after:inset-x-0 after:-inset-y-1 after:content-['']" : 'h-11',
               full && 'flex-1',
               on ? 'text-ink' : 'text-dim hover:text-ink',

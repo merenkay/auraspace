@@ -114,6 +114,8 @@ import { PageHeader, Section, Card, List, Row, Metric, StatusPill, Button, Notic
 | Pick one | `Tabs` `{value, onChange, options: {value, label, icon?, status?, disabled?}[], variant?: 'pill'\|'line', label, full?}` | `pill` = filter / segmented; `line` = sections. Scrolls sideways, arrow keys work |
 | Blocking question | `Dialog` `{open, onClose, title, description?, footer?, wide?}` | Bottom sheet on phones. Put `data-autofocus` on the element to focus |
 | Side detail / long form | `Sheet` `{open, onClose, title, description?, footer?}` | Right on desktop, bottom on phones |
+| Fold away detail | `Disclosure` `{title, meta?, summary?, id?, defaultOpen?, size?: 'section'|'row', onToggle?}`, `ShowMore` `{lines?, short?, id?}`, `DisclosureGroup` + `ExpandAll` | §12. `id` remembers open/closed on the device |
+| Confirm a save | `Button done`, `<Saved show />`, `useFlash()` | §12 |
 | Hint | `Tooltip` `{label, side?, align?}` | Never for essential information |
 | Loading | `Skeleton` `{className}` (shape of the content), `Spinner` `{label}` | Prefer skeletons for page content |
 | Nothing yet | `EmptyState` `{icon?, title, description?, action?}` | Say why, offer the one fix |
@@ -153,7 +155,8 @@ Tokens: `DUR` (seconds) `instant .09 · fast .16 · base .24 · slow .4 · draw 
 | Meter / ring | Fill grows once in 700 ms | Built in |
 | Selection moves | Thumb or underline slides with `SPRING.snappy` | `Tabs` |
 | Dialog / sheet | Scrim fades 160 ms; dialog rises 10 px; sheet slides with `SPRING.soft`; exit is faster than entry | `Dialog`, `Sheet` |
-| Press | 1 px down, colours in 160 ms | `Button` |
+| Press | Scales to 97 % while held (rows and section headers 99 %), a soft highlight starts where the finger touched and fades in 200 ms; a save shows a check that pops in once | `.press` (built into `Button`, `IconButton`, `Tabs`, `Row`, `Disclosure`, nav), `Button done`, `<Saved>` — see §12 |
+| Open / close a section | Height grows in 240 ms, closes in 160 ms; chevron turns | `Disclosure` (§12) |
 | Refused input | One 320 ms horizontal shake | `CodeInput invalid`; `animate-shake` |
 
 ```tsx
@@ -284,3 +287,27 @@ Work top to bottom on your page; search for each pattern.
 | Raw hex values, raw durations and beziers, `z-50` in pages | Bypasses the system; the next change will miss them |
 | New fonts, weights 700+, italics for emphasis | Three weights of one family is the whole typographic voice (italic is for quotations only) |
 | NASA or agency insignia | Not affiliated with NASA |
+
+## 12. Progressive disclosure and press feedback
+
+**Show first, fold the rest.** Each page opens on what the person needs to act: status, alerts, the one next action and the key numbers. Everything that explains is folded and one tap away.
+
+| Always visible | Folded by default |
+|---|---|
+| Alerts and their action, emergency steps, red flags ("Get help at once if"), restrictions and "Changed for your safety", "Do not" lists, medicine cautions that apply to the person, the gas alarm and its steps while it is active, the "not a certified alarm" line | "How it is calculated", chart keys ("How to read this chart"), sources and quotes, research notes, secondary charts and activity data, equipment lists, history tables (records), settings / profiles, long descriptions, setup instructions, older answers in a thread |
+
+- **Section level:** `<Disclosure id="page.thing" title meta summary>` — same heading + hairline as `Section`. `meta` is a count or short fact ("4 sources"), `summary` one line shown only while closed (e.g. "Latest: 138/86 mmHg · Day 142"), so the closed row still informs.
+- **Row level** (inside cards, sheets, under charts): `size="row"`.
+- **Long paragraphs:** `<ShowMore lines={1|2}>` clamps to one or two lines and offers "Show more" only when text is actually cut off; `short` gives a hand-written short version.
+- **Remembered:** give every disclosure a stable `id` (`'coach.equipment'`). The choice is stored on the device under `aura.open.v1` (localStorage, guarded; private mode simply forgets). Do not pass an `id` where the safe default must win every time (e.g. "Watch and escalate" opens by default when the result is not urgent).
+- **Many sections:** wrap the page in `<DisclosureGroup>` and put `<ExpandAll />` in the `PageHeader` actions (it hides itself with fewer than three sections).
+- Closed panels are unmounted, so folded charts cost nothing. Long below-the-fold sections may add `cv-auto` (`content-visibility: auto`).
+- Accessibility is built in: a real `button` with `aria-expanded`/`aria-controls`, inside an `h2` for sections; reduced motion swaps the height animation for a fade.
+
+**Press feedback** comes from the primitives — do not hand-roll it.
+- `.press` on any control: scale 0.97 while held (0.99 for full-width rows and section headers), plus a 200 ms highlight that starts at the pointer (a `::before` radial in `currentColor`, animated with the Web Animations API from one delegated listener in `ui.tsx`). Transform and opacity only; nothing under `prefers-reduced-motion`. Already on `Button`, `IconButton`, `Tabs`, `Row`, `Disclosure`, `ShowMore`, nav links and the phone bottom bar (its icon dips to 0.86). Checkboxes squeeze their box and the tick scales in.
+- Custom clickable things (a card-sized button, a `summary`) add `className="press"` and keep `position: relative`.
+- **After a save:** `const [done, flash] = useFlash()`; call `flash()` on success; `<Button done={done}>` turns its icon into a check that pops once, `<Saved show={done} />` shows "Saved" (announced as status). No confetti, no green buttons.
+- **Sound (optional):** `data-sfx="tick|select|confirm"` on an element plays that tone on click (`src/lib/sfx.ts`; silent unless the person turned sounds on). Primary buttons get `select`, tabs and nav `tick`.
+
+**Phones.** Long forms pin their one primary action above the bottom bar: `sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:static`. Tables become stacked rows below `sm`. Charts on phones use `minTickGap={48}` and a larger active dot (r 7) for touch.

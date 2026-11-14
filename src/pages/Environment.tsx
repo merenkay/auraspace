@@ -1,8 +1,9 @@
 import { Library } from 'lucide-react'
 import { useState } from 'react'
 import EnvStation from '../components/env/EnvStation'
+import { CabinSymptomPrompt } from '../components/cabinlink'
 import ScienceLibrary from '../components/ScienceLibrary'
-import { Badge, Button, Card, List, Meter, Metric, PageHeader, Reveal, Section, Tabs } from '../components/ui'
+import { Badge, Button, Card, Disclosure, DisclosureGroup, ExpandAll, List, Meter, Metric, PageHeader, Reveal, Section, ShowMore, Tabs } from '../components/ui'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { radiation } from '../lib/health'
 import { useSession } from '../lib/session'
@@ -40,22 +41,27 @@ export default function Environment() {
   ]
 
   return (
+    <DisclosureGroup>
     <div>
       <PageHeader
         title="Environment"
         description={DESCRIPTION[ctx]}
         actions={
-          space ? (
-            <Button icon={Library} onClick={() => setLibrary(true)}>
-              Science Library
-            </Button>
-          ) : undefined
+          <>
+            <ExpandAll />
+            {space ? (
+              <Button icon={Library} onClick={() => setLibrary(true)}>
+                Science Library
+              </Button>
+            ) : undefined}
+          </>
         }
       />
 
       <div className="space-y-10">
         {/* The live sensor station comes first in every context: it is the only part with real-time data. */}
         <EnvStation context={ctx} title={stationTitle} />
+        <CabinSymptomPrompt context={ctx} />
 
         {space && (
           <Section title="Mission profile" description="Pick where the crew is. The dose, gravity and delay below follow it.">
@@ -99,7 +105,9 @@ export default function Environment() {
                     </span>
                   </div>
                 </div>
-                <p className="mt-2 max-w-prose text-sm text-soft">{prof.doseNote}. About 30% of ISS radiation is neutrons, which CSA’s CANS instrument is built to measure.</p>
+                <ShowMore id="env.dose-note" lines={2} className="mt-2 max-w-prose text-sm text-soft">
+                  {prof.doseNote}. About 30% of ISS radiation is neutrons, which CSA’s CANS instrument is built to measure.
+                </ShowMore>
               </Section>
             </Reveal>
 
@@ -129,7 +137,7 @@ export default function Environment() {
 
         {space && (
           <Reveal>
-            <Section title="Other cabin values" description="Sample values, not measured by AURA">
+            <Disclosure id="env.cabin-samples" title="Other cabin values" meta="Sample values, not measured by AURA">
               <div className="grid gap-4 sm:grid-cols-2 lg:gap-6">
                 {CABIN_SAMPLES.map((c) => (
                   <Card key={c.name}>
@@ -139,12 +147,13 @@ export default function Environment() {
                 ))}
               </div>
               <p className="mt-3 text-sm text-dim">AURA’s sensor kit has no CO₂ or pressure sensor; these are typical reference values, not readings.</p>
-            </Section>
+            </Disclosure>
           </Reveal>
         )}
       </div>
 
       {library && <ScienceLibrary onClose={() => setLibrary(false)} />}
     </div>
+    </DisclosureGroup>
   )
 }

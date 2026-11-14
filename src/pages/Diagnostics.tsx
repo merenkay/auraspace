@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import BodyViewer from '../components/BodyViewer'
 import EditVitalModal from '../components/EditVitalModal'
-import { Button, Card, ChartTooltip, EmptyState, List, Meter, Metric, Notice, PageHeader, PageTransition, Row, Section, SourceLink, Skeleton, StatusIcon, StatusPill, Tabs, SYSTEM_ICON, chart, cx } from '../components/ui'
+import { Button, Card, ChartTooltip, Disclosure, EmptyState, List, Meter, Metric, Notice, PageHeader, PageTransition, Row, Section, ShowMore, SourceLink, Skeleton, StatusIcon, StatusPill, Tabs, SYSTEM_ICON, chart, cx, useMedia } from '../components/ui'
 import { impactOf, vitalFor } from '../data/contexts'
 import { recordsForSystem } from '../data/kb'
 import { SYSTEMS, SYSTEM_BY_ID, type SystemId } from '../data/systems'
@@ -60,6 +60,7 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
   const sys = SYSTEM_BY_ID[sel]
   const vitals = ev ? sys.vitals.filter((k) => ev.vitalStatus[k]) : []
   const [metric, setMetric] = useState<VitalKey | null>(null)
+  const phone = !useMedia('(min-width: 640px)')
   const active = metric && vitals.includes(metric) ? metric : vitals[0] ?? null
   const research = useMemo(() => (ctx === 'space' ? recordsForSystem(sel).filter((r) => r.findings.length)[0] : undefined), [sel, ctx])
   const impact = impactOf(sel, ctx)
@@ -142,7 +143,9 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                   </h2>
                   <StatusPill status={sysStatus} />
                 </div>
-                <p className="mt-3 text-sm leading-relaxed text-soft">{impact.text}</p>
+                <ShowMore lines={2} className="mt-3 text-sm leading-relaxed text-soft">
+                  {impact.text}
+                </ShowMore>
 
                 {vitals.length > 0 && (
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -156,7 +159,8 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                           type="button"
                           aria-pressed={on}
                           onClick={() => setMetric(k)}
-                          className={cx('rounded-2xl border p-4 text-left transition-colors', on ? 'border-ink bg-panel2' : 'border-line bg-panel hover:bg-panel2')}
+                          data-sfx="tick"
+                          className={cx('press rounded-2xl border p-4 text-left transition-colors', on ? 'border-ink bg-panel2' : 'border-line bg-panel hover:bg-panel2')}
                         >
                           <Metric size="md" label={d.label} value={d.display(ev.values)} unit={d.unit} status={ev.vitalStatus[k]} hint={timeAgo(m?.at)} />
                           <p className="meta mt-1.5 break-words">{m?.device}</p>
@@ -173,7 +177,9 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                       <Meter value={ev.rad.pct} min={0} max={100} marks={[{ at: 50, status: 'warn' }, { at: 80, status: 'crit' }]} status={ev.rad.status === 'ok' ? undefined : ev.rad.status} label="Share of the career dose limit" />
                     </div>
                     <p className="mt-3 text-sm text-dim">{ev.rad.pct.toFixed(0)}% of the career limit. Marks at 50% (attention) and 80% (urgent) are AURA demo thresholds.</p>
-                    <p className="mt-1 text-sm text-dim">{ev.rad.mission.doseNote}</p>
+                    <Disclosure size="row" id="diag.dose-note" title="About this dose" className="mt-1">
+                      <p className="text-sm text-dim">{ev.rad.mission.doseNote}</p>
+                    </Disclosure>
                   </Card>
                 )}
               </section>
@@ -186,7 +192,7 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                         <ResponsiveContainer width="100%" height="100%">
                           <LineChart key={def.key} data={trend} margin={{ ...chart.margin, bottom: 18, left: 4 }}>
                             <CartesianGrid {...chart.grid} />
-                            <XAxis dataKey="day" type="number" domain={['dataMin', 'dataMax']} allowDecimals={false} {...chart.xAxis} tickFormatter={dayLabel} label={{ ...{ value: dateMode ? 'Date' : 'Mission day', position: 'insideBottom', offset: -12 }, style: AXIS_LABEL }} />
+                            <XAxis dataKey="day" type="number" domain={['dataMin', 'dataMax']} allowDecimals={false} {...chart.xAxis} minTickGap={phone ? 48 : 28} tickFormatter={dayLabel} label={{ ...{ value: dateMode ? 'Date' : 'Mission day', position: 'insideBottom', offset: -12 }, style: AXIS_LABEL }} />
                             <YAxis domain={yAxis.domain} ticks={yAxis.ticks} {...chart.yAxis} width={52} label={{ value: def.unit, angle: -90, position: 'insideLeft', offset: 4, style: { ...AXIS_LABEL, textAnchor: 'middle' } }} />
                             {band && <ReferenceArea y1={band[0]} y2={band[1]} {...chart.band('ok')} />}
                             {base != null && <ReferenceLine y={base} {...chart.refLine()} />}
@@ -208,6 +214,7 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                               dataKey="value"
                               name={metricName}
                               {...chart.line}
+                              activeDot={{ ...chart.line.activeDot, r: phone ? 7 : 4 }}
                               dot={(p: { cx?: number; cy?: number; index?: number; payload?: Point }) => {
                                 if (p.cx == null || p.cy == null || !p.payload) return <g key={`d${p.index}`} />
                                 const st = pointStatus(p.payload.value)
@@ -223,13 +230,15 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
-                      <p className="mt-2 text-sm text-dim">
+                      <Disclosure size="row" id="diag.chart-key" title="How to read this chart" className="mt-1">
+                      <p className="text-sm text-dim">
                         {band && `Green band: usual reference range, ${band[0]}–${band[1]} ${def.unit}. `}
                         {base != null && 'Dashed grey line: your baseline, the average of your first 14 days with this measurement. '}
                         {outOfRange && 'Amber or red dots: readings outside the normal range. '}
                         {importedDays > 0 && 'Hollow rings: days imported from a device. '}
                         {dateMode ? 'The horizontal axis shows calendar dates.' : 'D is the mission day.'}
                       </p>
+                      </Disclosure>
                     </>
                   ) : (
                     <EmptyState
@@ -241,24 +250,24 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
               )}
 
               {!research && impact.source && ctx !== 'space' && (
-                <Section title="What the research says">
+                <Disclosure id="diag.research" title="What the research says" meta={impact.source.org}>
                   <p className="text-sm leading-relaxed text-soft">{impact.text}</p>
                   <div className="mt-3">
                     <SourceLink href={impact.source.url} org={impact.source.org} title={impact.source.title} />
                   </div>
-                </Section>
+                </Disclosure>
               )}
               {research && (
-                <Section title="What NASA research says">
+                <Disclosure id="diag.research" title="What NASA research says" meta={research.organization}>
                   <p className="text-sm leading-relaxed text-soft">{research.findings[0].text}</p>
                   <blockquote className="mt-3 border-l-2 border-edge pl-3 text-sm italic leading-snug text-dim">“{research.findings[0].quote}”</blockquote>
                   <div className="mt-3">
                     <SourceLink href={research.url} org={research.organization} title={research.title} />
                   </div>
-                </Section>
+                </Disclosure>
               )}
 
-              <div className="flex flex-wrap gap-3">
+              <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-1 flex flex-wrap gap-3 rounded-xl bg-space/95 p-1 md:static md:mx-0 md:bg-transparent md:p-0">
                 {user?.role === 'astronaut' && vitals.length > 0 && (
                   <Button variant="primary" className="flex-1" onClick={() => setEditing(active)}>
                     Log a measurement

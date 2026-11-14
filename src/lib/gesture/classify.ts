@@ -131,3 +131,87 @@ export class PoseDebouncer {
     return { pose: this.pose, changed: false }
   }
 }
+
+/**
+ * Per-hand pinch thresholds, learned while the hand is tracked instead of fixed constants.
+ *
+ * The pinch ratio (thumb–index distance / palm size) already ignores the distance to the camera, but people
+ * differ: a relaxed open hand may hold the thumb close to the index (open ratio ~0.7) or far from it (~1.5),
+ * and a "touching" pinch reads as anything from ~0.05 to ~0.4 depending on finger thickness and landmark noise.
+ *  - `open`: learned in the first `learnMs` of tracking from the hand at rest (robust upper quartile), then
+ *    follows slowly.
+ *  - `closed`: follows the tightest ratio seen while pinching; a "near miss" (the fingers clearly closed but
+ *    stopped just short of the press threshold) moves it up, so a hand that cannot get lower is accepted after
+ *    a try or two.
+ * Press / release / ring-start thresholds are then placed between the two, with a hysteresis gap that scales
+ * with the hand's own range.
+ */
+export const CALIB = {
+  learnMs: 2000,
+  /** defaults before anything is learned */
+  open: 1.15,
+  closed: 0.1,
+  /** where the thresholds sit between closed (0) and open (1) */
+  pressAt: 0.25,
+  releaseAt: 0.42,
+  ringAt: 0.8,
+  /** smallest hysteresis gap between press and release, in ratio units */
+  minGap: 0.1,
+  /** a near miss counts when its lowest ratio is at most this far above the press threshold */
+  nearMiss: 0.16,
+}
+
+export class PinchCalibrator {
+  open = CALIB.open
+  closed = CALIB.closed
+  learned = false
+  private t0: number | null = null
+  private samples: number[] = []
+  /** lowest ratio of the current closing movement (for near misses) */
+  private dip: number | null = null
+  th: PoseThresholds
+
+  constructor(private base: PoseThresholds = POSE_TH) {
+    this.th = this.compute()
+  }
+
+  private compute(): PoseThresholds {
+    const span = Math.max(0.4, this.open - this.closed)
+    const press = Math.min(0.55, Math.max(0.2, this.closed + CALIB.pressAt * span))
+    const release = Math.min(0.75, Math.max(press + CALIB.minGap, this.closed + CALIB.releaseAt * span))
+    const ring = Math.min(1.6, Math.max(release + 0.12, this.closed + CALIB.ringAt * span))
+    return { ...this.base, pinchPress: press, pinchRelease: release, pinchOpen: ring }
+  }
+
+  /** Feed one frame of this hand: its pinch ratio, whether it is pinched now, and whether it looks like an open/pointing hand at rest. */
+  update(ratio: number, pinching: boolean, atRest: boolean, t: number): PoseThresholds {
+    if (this.t0 === null) this.t0 = t
+    if (!this.learned) {
+      if (atRest && !pinching && ratio > 0.45) this.samples.push(ratio)
+      if (t - this.t0 >= CALIB.learnMs && this.samples.length >= 6) {
+        const s = [...this.samples].sort((a, b) => a - b)
+        this.open = s[Math.floor(s.length * 0.75)]
+        this.learned = true
+        this.samples = []
+      }
+    } else if (atRest && !pinching && ratio > this.open * 0.8) {
+      this.open += 0.02 * (ratio - this.open)
+    }
+    if (pinching) {
+      if (ratio < this.closed + 0.12) this.closed += 0.12 * (ratio - this.closed)
+      this.dip = null
+    } else {
+      const th = this.th
+      if (ratio < th.pinchOpen * 0.85) this.dip = this.dip === null ? ratio : Math.min(this.dip, ratio)
+      // the fingers opened again after a dip that stopped just short of the press threshold: a near miss
+      if (this.dip !== null && ratio > this.dip + 0.18) {
+        if (this.dip > th.pinchPress && this.dip <= th.pinchPress + CALIB.nearMiss) this.closed += 0.45 * (this.dip - this.closed)
+        this.dip = null
+      }
+    }
+    this.closed = Math.min(0.38, Math.max(0.02, this.closed))
+    this.open = Math.min(2.2, Math.max(this.closed + 0.4, this.open))
+    this.th = this.compute()
+    return this.th
+  }
+}

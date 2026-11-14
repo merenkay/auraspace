@@ -241,46 +241,6 @@ describe('interaction state machine', () => {
     expect(count(tl, 'hold')).toBe(0)
   })
 
-  it('a quick sweep of the open hand is a swipe; a slow move or a pointing hand is not', () => {
-    const p = new GesturePipeline()
-    const tl = play(p, timeline(), 300, hold({ ...OPEN, x: 0.68 }))
-    play(p, tl, 200, (k, n) => [{ ...OPEN, x: 0.68 - (0.34 * (k + 1)) / n }])
-    expect(tl.events.filter((e) => e.type === 'swipe')).toEqual([expect.objectContaining({ dir: 'right' })])
-    play(p, tl, 1000, hold({ ...OPEN, x: 0.34 }))
-    play(p, tl, 200, (k, n) => [{ ...OPEN, x: 0.34 + (0.34 * (k + 1)) / n }])
-    expect(tl.events.filter((e) => e.type === 'swipe').map((e) => (e as { dir: string }).dir)).toEqual(['right', 'left'])
-
-    const slow = new GesturePipeline()
-    const ts = play(slow, timeline(), 300, hold({ ...OPEN, x: 0.68 }))
-    play(slow, ts, 1200, (k, n) => [{ ...OPEN, x: 0.68 - (0.34 * (k + 1)) / n }])
-    expect(count(ts, 'swipe')).toBe(0)
-
-    const pointing = new GesturePipeline()
-    const tp = play(pointing, timeline(), 300, hold({ pose: 'point', x: 0.68, y: 0.45 }))
-    play(pointing, tp, 200, (k, n) => [{ pose: 'point', y: 0.45, x: 0.68 - (0.34 * (k + 1)) / n }])
-    expect(count(tp, 'swipe')).toBe(0)
-  })
-
-  it('a swipe is still recognised when detection runs at only 15 frames per second', () => {
-    const p = new GesturePipeline()
-    let t = 0
-    const types: string[] = []
-    const feed = (x: number) => {
-      t += 1000 / 15
-      types.push(...p.push(frame(t, [{ ...OPEN, x }])).events.map((e) => e.type))
-    }
-    for (let k = 0; k < 6; k++) feed(0.7)
-    for (let k = 1; k <= 3; k++) feed(0.7 - (0.32 * k) / 3) // 200 ms sweep = 3 frames
-    expect(types).toContain('swipe')
-  })
-
-  it('a single-frame jump of the hand is not a swipe', () => {
-    const p = new GesturePipeline()
-    const tl = play(p, timeline(), 400, hold({ ...OPEN, x: 0.6 }))
-    play(p, tl, 400, hold({ ...OPEN, x: 0.35 }))
-    expect(count(tl, 'swipe')).toBe(0)
-  })
-
   it('a fist held for 0.7 s fires once; a brief fist does nothing', () => {
     const p = new GesturePipeline()
     const tl = play(p, timeline(), 300, hold(OPEN))
@@ -304,10 +264,12 @@ describe('interaction state machine', () => {
   it('rejects noise near the pinch threshold: no false press, and an established pinch does not flicker', () => {
     const rng = seeded(3)
     const p = new GesturePipeline()
-    const tl = play(p, timeline(), 2000, () => [{ ...OPEN, pinch: 0.69, noise: 0.002, rng }])
+    const tl = play(p, timeline(), 2500, hold(OPEN)) // the hand calibrates its pinch thresholds
+    play(p, tl, 2000, () => [{ ...OPEN, pinch: 0.62, noise: 0.002, rng }])
+
     expect(count(tl, 'press')).toBe(0)
     play(p, tl, 200, hold(PINCH))
-    play(p, tl, 2000, () => [{ ...OPEN, pinch: 0.69, noise: 0.002, rng }])
+    play(p, tl, 2000, () => [{ ...OPEN, pinch: 0.62, noise: 0.002, rng }])
     expect(count(tl, 'press')).toBe(1)
     expect(count(tl, 'release')).toBe(0)
   })

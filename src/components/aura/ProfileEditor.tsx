@@ -1,20 +1,23 @@
 import { Save } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { AGE_BANDS, ALLERGIES, CHOICE_LABEL, KNOWN_CONDITIONS, MEDICINES, emptyProfile, type Choice, type HealthProfile } from '../../data/conditions/profile'
-import { Badge, Button, Checkbox, Field, Notice, Section, Select, Textarea } from '../ui'
+import { Badge, Button, Checkbox, Disclosure, Field, Notice, Saved, Section, Select, Textarea, useFlash } from '../ui'
 
 type ListKey = 'conditions' | 'allergies' | 'medicines'
 
 function Group({ title, choices, value, onToggle }: { title: string; choices: Choice[]; value: string[]; onToggle: (id: string) => void }) {
+  const picked = choices.filter((c) => value.includes(c.id)).map((c) => c.label)
   return (
+    <Disclosure size="row" title={<span className="text-[15px] font-semibold text-ink">{title}</span>} meta={picked.length ? `${picked.length} selected` : 'None selected'} summary={picked.length ? picked.join(' · ') : undefined} className="border-t border-line pt-3">
     <fieldset>
-      <legend className="mb-1 text-[15px] font-semibold text-ink">{title}</legend>
+      <legend className="sr-only">{title}</legend>
       <div className="grid gap-x-6 sm:grid-cols-2">
         {choices.map((c) => (
           <Checkbox key={c.id} label={c.label} checked={value.includes(c.id)} onChange={() => onToggle(c.id)} />
         ))}
       </div>
     </fieldset>
+    </Disclosure>
   )
 }
 
@@ -44,6 +47,7 @@ export default function ProfileEditor({ profile, editable, onSave }: { profile: 
   const [draft, setDraft] = useState<HealthProfile>(profile ?? emptyProfile())
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<{ tone: 'ok' | 'crit'; text: string } | null>(null)
+  const [justSaved, flashSaved] = useFlash()
   useEffect(() => setDraft(profile ?? emptyProfile()), [profile])
 
   const toggle = (k: ListKey) => (id: string) => setDraft((d) => ({ ...d, [k]: d[k].includes(id) ? d[k].filter((x) => x !== id) : [...d[k], id] }))
@@ -53,6 +57,7 @@ export default function ProfileEditor({ profile, editable, onSave }: { profile: 
     try {
       await onSave(draft)
       setMsg({ tone: 'ok', text: 'Saved. AURA and your coach now use this profile.' })
+      flashSaved()
     } catch (e) {
       setMsg({ tone: 'crit', text: e instanceof Error ? e.message : 'Could not save' })
     } finally {
@@ -70,7 +75,7 @@ export default function ProfileEditor({ profile, editable, onSave }: { profile: 
       {!editable ? (
         profile ? <ReadOnly p={profile} /> : <p className="text-soft">This person has not recorded a health profile.</p>
       ) : (
-        <div className="max-w-3xl space-y-6 [&>fieldset]:border-t [&>fieldset]:border-line [&>fieldset]:pt-6">
+        <div className="max-w-3xl space-y-4">
           <Field label="Age band" className="max-w-xs">
             <Select value={draft.ageBand ?? ''} onChange={(e) => setDraft({ ...draft, ageBand: (e.target.value || null) as HealthProfile['ageBand'] })}>
               <option value="">Prefer not to say</option>
@@ -88,9 +93,12 @@ export default function ProfileEditor({ profile, editable, onSave }: { profile: 
             <Textarea value={draft.notes} maxLength={300} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} />
           </Field>
           {msg && <Notice tone={msg.tone} role={msg.tone === 'crit' ? 'alert' : 'status'}>{msg.text}</Notice>}
-          <Button variant="primary" icon={Save} loading={busy} onClick={() => void save()}>
-            Save profile
-          </Button>
+          <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-10 -mx-1 flex items-center gap-4 rounded-xl bg-space/95 p-1 md:static md:mx-0 md:bg-transparent md:p-0">
+            <Button variant="primary" icon={Save} loading={busy} done={justSaved} onClick={() => void save()}>
+              Save profile
+            </Button>
+            <Saved show={justSaved} />
+          </div>
         </div>
       )}
     </Section>

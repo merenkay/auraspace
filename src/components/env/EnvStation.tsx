@@ -1,9 +1,9 @@
-import { ChevronDown, Droplets, Flame, FlaskConical, Plug, Square, Table2, Thermometer, Unplug, Wind } from 'lucide-react'
+import { Droplets, Flame, FlaskConical, Plug, Square, Table2, Thermometer, Unplug, Wind } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { Context } from '../../data/contexts'
 import { CABIN_LIMITS } from '../../data/missions'
 import { BUCKET_MS, GAS_ALARM_RATIO, GAS_WARN_RATIO, LIVE_WINDOW_MS, type Level } from '../../lib/envStation'
-import { Button, Card, EmptyState, LiveDot, Meter, Notice, Section, Stagger, StaggerItem, Tabs, cx } from '../ui'
+import { Button, Card, Disclosure as UiDisclosure, EmptyState, LiveDot, Meter, Notice, Section, Stagger, StaggerItem, Tabs, cx } from '../ui'
 import { EnvCharts, EnvTable } from './EnvCharts'
 import { GasAlarmBanner, GasGuidance } from './GasAlarm'
 import { MQ2_GASES, MQ2_PREHEAT } from './gasGuidance'
@@ -29,16 +29,12 @@ const LINK_STATE: Record<string, { level: Level; label: string }> = {
   unsupported: { level: 'none', label: 'Not available here' },
 }
 
-/** A native disclosure styled like the rest of the page: 44 px target, a chevron that turns, a hairline above. */
-function Disclosure({ title, open, onToggle, children }: { title: string; open?: boolean; onToggle?: (open: boolean) => void; children: ReactNode }) {
+/** The shared disclosure with this page's look: 44 px target, a chevron that turns, a hairline above. Remembers its state. */
+function Disclosure({ id, title, summary, onToggle, children }: { id: string; title: string; summary?: ReactNode; onToggle?: (open: boolean) => void; children: ReactNode }) {
   return (
-    <details className="group border-t border-line" open={open} onToggle={onToggle ? (e) => onToggle(e.currentTarget.open) : undefined}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 text-[15px] font-semibold text-ink [&::-webkit-details-marker]:hidden">
-        {title}
-        <ChevronDown className="h-4 w-4 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
-      </summary>
-      <div className="pb-4 pt-1">{children}</div>
-    </details>
+    <UiDisclosure size="row" id={id} title={<span className="text-[15px] font-semibold text-ink">{title}</span>} summary={summary} onToggle={onToggle} className="border-t border-line">
+      <div className="pb-2 pt-1">{children}</div>
+    </UiDisclosure>
   )
 }
 
@@ -51,7 +47,6 @@ export default function EnvStation({ context, title }: { context: Context; title
   const { serial, mode } = s
   const [tab, setTab] = useState<'live' | 'stored'>('stored')
   const [table, setTable] = useState(false)
-  const [guideOpen, setGuideOpen] = useState(false)
 
   useEffect(() => {
     setTab(mode === 'live' || mode === 'sim' ? 'live' : 'stored')
@@ -130,7 +125,9 @@ export default function EnvStation({ context, title }: { context: Context; title
   // The live window grows from the first sample (min. 1 minute) up to the last 5 minutes.
   const firstLive = s.liveSeries.length ? s.liveSeries[0].x : s.now
   const liveFrom = Math.min(s.now - 60_000, Math.max(s.now - LIVE_WINDOW_MS, firstLive - 5_000))
-  const storedFrom = s.now - s.range * 60_000
+  // Stored history moves in whole buckets, so the (memoised) charts redraw once per bucket instead of every second.
+  const storedTo = Math.ceil(s.now / BUCKET_MS) * BUCKET_MS
+  const storedFrom = storedTo - s.range * 60_000
 
   return (
     <Section title={title} description="Live temperature, humidity and flammable gas from the Arduino kit" action={<SourceBadge mode={mode} pulse={liveLink && serial.status === 'live'} suffix={badgeSuffix} />}>
@@ -298,7 +295,7 @@ export default function EnvStation({ context, title }: { context: Context; title
             )
           ) : (
             <div className={cx('space-y-4 transition-opacity', s.history.loading && 'opacity-60')}>
-              <EnvCharts data={s.storedSeries} from={storedFrom} to={s.now} gasUnit={s.storedGasUnit} seconds={s.range <= 15} />
+              <EnvCharts data={s.storedSeries} from={storedFrom} to={storedTo} gasUnit={s.storedGasUnit} seconds={s.range <= 15} />
               {table && <EnvTable rows={s.history.rows} />}
             </div>
           )}
@@ -320,16 +317,18 @@ export default function EnvStation({ context, title }: { context: Context; title
         {/* guidance + setup */}
         <div className="border-b border-line">
           {!guidanceShown && (
-            <Disclosure title="What to do if the gas alarm goes off" open={guideOpen} onToggle={setGuideOpen}>
+            <Disclosure id="env.gas-guide" title="What to do if the gas alarm goes off">
               <GasGuidance context={context} />
             </Disclosure>
           )}
-          <Disclosure title="Set up the Arduino sensor">
+          <Disclosure id="env.setup" title="Set up the Arduino sensor">
             <SensorSetup device={s.device} noise={s.noise} lines={serial.lineCount} />
           </Disclosure>
         </div>
 
-        {/* honesty + storage notes */}
+        {/* honesty + storage notes: the safety line stays visible, the rest folds away */}
+        <p className="max-w-3xl text-sm text-dim">Simulated values are never saved. Not a certified gas or carbon-monoxide alarm.</p>
+        <Disclosure id="env.notes" title="About these readings and their sources">
         <div className="max-w-3xl space-y-2 text-sm text-dim">
           <p>
             <b className="font-medium text-soft">{s.station.label}.</b> {s.station.who}{' '}
@@ -355,6 +354,7 @@ export default function EnvStation({ context, title }: { context: Context; title
             a much longer warm-up (“{MQ2_PREHEAT.quote}”) than our 2-minute demo warm-up, so readings can drift. Not a certified gas or carbon-monoxide alarm.
           </p>
         </div>
+        </Disclosure>
       </div>
     </Section>
   )

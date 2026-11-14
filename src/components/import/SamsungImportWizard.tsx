@@ -2,7 +2,7 @@
 // Parsing happens in this browser (a Web Worker); only the daily values the user confirms are saved.
 import { ChevronDown, ChevronLeft, Download, EllipsisVertical, FileArchive, FileSpreadsheet, FlaskConical, FolderOpen, Laptop, ShieldCheck, Smartphone, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
-import { Badge, Button, Card, Checkbox, Dialog, Field, Input, List, Meter, Notice, PageTransition, SourceLink, Tabs, cx } from '../ui'
+import { Badge, Button, Card, Checkbox, Dialog, Field, Input, List, Meter, Notice, PageTransition, SourceLink, Tabs, cx, Disclosure, ShowMore } from '../ui'
 import Sparkline from '../Sparkline'
 import {
   DEVICE_LABEL,
@@ -278,14 +278,16 @@ function Intro() {
       <Notice tone="info" title="Stays on this device">
         The export is read inside this browser. The raw files never leave your device — only the daily values you confirm in the next steps are saved to your AURA record.
       </Notice>
-      <div className="space-y-1">
-        <p className="text-xs text-dim">Steps from Samsung’s support pages. Menu names can differ slightly between app versions.</p>
-        {SOURCES.map((s) => (
-          <div key={s.href}>
-            <SourceLink href={s.href} org={s.org} title={s.title} />
-          </div>
-        ))}
-      </div>
+      <Disclosure size="row" id="import.sources" title={`Sources (${SOURCES.length})`}>
+        <div className="space-y-1">
+          <p className="text-xs text-dim">Steps from Samsung’s support pages. Menu names can differ slightly between app versions.</p>
+          {SOURCES.map((s) => (
+            <div key={s.href}>
+              <SourceLink href={s.href} org={s.org} title={s.title} />
+            </div>
+          ))}
+        </div>
+      </Disclosure>
     </div>
   )
 }
@@ -509,7 +511,9 @@ function Preview({ summary, sel, onSel, synthetic, rows, demo, error }: { summar
                     }
                     className="py-1"
                   />
-                  <p className="ml-8 text-xs leading-relaxed text-dim">{info.method}</p>
+                  <ShowMore id="import.method" label="How it is calculated" className="ml-8 text-xs leading-relaxed text-dim">
+                    {info.method}
+                  </ShowMore>
                   {m.notes.map((n) => (
                     <p key={n} className="ml-8 mt-1 text-xs leading-relaxed text-soft">
                       {n}
@@ -565,7 +569,7 @@ function FilesReport({ files, sidecars, open = false }: { files: FileReport[]; s
   const counts = files.reduce<Record<string, number>>((acc, f) => ((acc[f.status] = (acc[f.status] ?? 0) + 1), acc), {})
   return (
     <details className="group rounded-xl border border-line" open={open}>
-      <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 px-3.5 py-2 text-sm text-soft [&::-webkit-details-marker]:hidden">
+      <summary className="press flex min-h-11 cursor-pointer list-none flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-3.5 py-2 text-sm text-soft [&::-webkit-details-marker]:hidden">
         <ChevronDown className="h-4 w-4 shrink-0 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
         <span className="font-medium text-ink">Files in the export ({files.length + sidecars})</span>
         <span className="meta ml-auto text-right">

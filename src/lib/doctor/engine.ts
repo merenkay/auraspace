@@ -18,6 +18,12 @@ export type EngineInput = {
   profile?: HealthProfile | null
   /** ms timestamp used to decide whether a reading is current (default: Date.now()). */
   now?: number
+  /**
+   * Optional extra supporting factors per condition id (e.g. cabin-air readings from src/lib/cabinLink).
+   * Additive only: they add to the score like a matched factor, never count as a key factor, never change
+   * strength, red-flag rules or `against`. Weights <= 0 are ignored.
+   */
+  extraFactors?: Record<string, { label: string; w: number }[]>
 }
 
 export type Strength = 'strong' | 'moderate' | 'weak'
@@ -135,6 +141,11 @@ function scoreCondition(c: Condition, input: EngineInput, yes: Set<string>, now:
       factorW += fac.w
       if (fac.w >= 3) keyFactor = true
     }
+  }
+  for (const fac of input.extraFactors?.[c.id] ?? []) {
+    if (!(fac.w > 0)) continue
+    factors.push({ id: fac.label, label: fac.label, w: fac.w })
+    factorW += fac.w
   }
   const against: Match[] = []
   let againstW = 0

@@ -1,8 +1,15 @@
-// Camera + MediaPipe Hand Landmarker. Loaded only when hand control is switched on (this module and the
-// MediaPipe library are separate lazy chunks; the WebAssembly runtime and the model are self-hosted under
+// Camera + MediaPipe Hand Landmarker. Loaded only when hand control is switched on (this module, the worker and
+// the MediaPipe library are separate lazy chunks; the WebAssembly runtime and the model are self-hosted under
 // /mediapipe/ and cached by the service worker on first use). Everything runs in this browser: no frame,
 // landmark or image leaves the device.
+//
+// Fast path: detection runs in a module Web Worker (hand.worker.ts). Each new camera frame (requestVideoFrameCallback)
+// is downscaled by the browser while it is turned into an ImageBitmap, and transferred (not copied) to the worker.
+// Only one frame is in flight: frames that arrive while the worker is busy are dropped, never queued, so the
+// result is always about the newest picture. Fallback (no Worker / OffscreenCanvas / createImageBitmap, or the
+// worker fails to start): the same detection on the main thread, on a downscaled canvas, between rendered frames.
 import type { RawFrame } from '../../lib/gesture/machine'
+import type { WorkerIn, WorkerOut } from './hand.worker'
 
 export type HandErrorKind = 'insecure' | 'unsupported' | 'denied' | 'no-camera' | 'busy' | 'model'
 
@@ -17,6 +24,8 @@ export class HandError extends Error {
 
 const WASM_BASE = '/mediapipe/wasm'
 const MODEL_URL = '/mediapipe/hand_landmarker.task'
+/** long side of the picture given to the model (the camera delivers 640 x 480; MediaPipe works at 192–224 px inside) */
+export const DETECT_LONG = 384
 
 export function supported(): HandErrorKind | null {
   if (typeof window === 'undefined') return 'unsupported'
@@ -31,7 +40,8 @@ export async function openCamera(): Promise<MediaStream> {
   try {
     return await navigator.mediaDevices.getUserMedia({
       audio: false,
-      video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30, max: 30 } },
+      // a modest picture: the model does not need more, and a smaller one is cheaper to copy and to scale
+      video: { facingMode: 'user', width: { ideal: 640, max: 1280 }, height: { ideal: 480, max: 720 }, frameRate: { ideal: 30, max: 30 } },
     })
   } catch (e) {
     const name = (e as { name?: string })?.name ?? ''
@@ -46,147 +56,341 @@ export function stopStream(stream: MediaStream | null) {
   stream?.getTracks().forEach((t) => t.stop())
 }
 
-export type Detector = {
+/** Measured performance, for the camera dock. */
+export type TrackerStats = {
+  mode: 'worker' | 'main'
   delegate: 'GPU' | 'CPU'
-  detect: (video: HTMLVideoElement, t: number) => RawFrame
-  /** the GPU path failed at run time: continue on the CPU */
-  degrade: () => Promise<void>
+  /** detections per second over the last second */
+  fps: number
+  /** model time per frame, ms (moving average) */
+  detectMs: number
+  /** camera frame -> landmarks available on the main thread, ms (moving average) */
+  latencyMs: number
+  frames: number
+  dropped: number
+  bench: { gpuMs: number | null; cpuMs: number | null } | null
+  input: string
+}
+
+export type Tracker = {
+  stats: TrackerStats
+  /** start feeding frames from the video; returns stop */
+  start: (video: HTMLVideoElement, onFrame: (f: RawFrame) => void, onError: (e: unknown) => void) => () => void
+  /** look for 1 hand (cheapest) or 2 (two-hand zoom over the 3D body) */
+  setHands: (n: 1 | 2) => void
   close: () => void
 }
 
-export async function createDetector(): Promise<Detector> {
+function detectSize(video: HTMLVideoElement) {
+  const vw = video.videoWidth || 640
+  const vh = video.videoHeight || 480
+  const k = Math.min(1, DETECT_LONG / Math.max(vw, vh))
+  return { w: Math.max(2, Math.round(vw * k)), h: Math.max(2, Math.round(vh * k)), aspect: vw / vh }
+}
+
+type VideoWithRvfc = HTMLVideoElement & { requestVideoFrameCallback?: (cb: (now: number) => void) => number; cancelVideoFrameCallback?: (h: number) => void }
+
+/**
+ * Calls `onNew(t)` once per new camera frame: with requestVideoFrameCallback at the camera's own cadence, else
+ * by polling `currentTime` every 10 ms. Pauses while the page is hidden. Returns stop.
+ */
+function frames(video: HTMLVideoElement, onNew: (t: number) => void): () => void {
+  const v = video as VideoWithRvfc
+  let stopped = false
+  let handle = 0
+  let timer: ReturnType<typeof setTimeout> | undefined
+  if (typeof v.requestVideoFrameCallback === 'function') {
+    const cb = () => {
+      if (stopped) return
+      if (!document.hidden) onNew(performance.now())
+      handle = v.requestVideoFrameCallback!(cb)
+    }
+    handle = v.requestVideoFrameCallback(cb)
+    return () => {
+      stopped = true
+      v.cancelVideoFrameCallback?.(handle)
+    }
+  }
+  let last = -1
+  const poll = () => {
+    if (stopped) return
+    if (!document.hidden && video.readyState >= 2 && video.currentTime !== last) {
+      last = video.currentTime
+      onNew(performance.now())
+    }
+    timer = setTimeout(poll, document.hidden ? 400 : 10)
+  }
+  poll()
+  return () => {
+    stopped = true
+    clearTimeout(timer)
+  }
+}
+
+function newStats(mode: 'worker' | 'main', delegate: 'GPU' | 'CPU'): TrackerStats {
+  return { mode, delegate, fps: 0, detectMs: 0, latencyMs: 0, frames: 0, dropped: 0, bench: null, input: '' }
+}
+
+/** detection-rate meter: results in the last second */
+function meter(stats: TrackerStats) {
+  const times: number[] = []
+  return (t: number, detectMs: number, latencyMs: number) => {
+    times.push(t)
+    while (times.length && t - times[0] > 1000) times.shift()
+    stats.fps = times.length
+    stats.frames++
+    stats.detectMs = stats.detectMs ? stats.detectMs * 0.85 + detectMs * 0.15 : detectMs
+    stats.latencyMs = stats.latencyMs ? stats.latencyMs * 0.85 + latencyMs * 0.15 : latencyMs
+  }
+}
+
+function workerCapable() {
+  return typeof Worker !== 'undefined' && typeof OffscreenCanvas !== 'undefined' && typeof createImageBitmap === 'function'
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// worker path
+// ---------------------------------------------------------------------------------------------------------
+async function createWorkerTracker(): Promise<Tracker> {
+  const worker = new Worker(new URL('./hand.worker.ts', import.meta.url), { type: 'module', name: 'aura-hand' })
+  const post = (m: WorkerIn, transfer: Transferable[] = []) => worker.postMessage(m, transfer)
+  let listener: ((m: WorkerOut) => void) | null = null
+  const ready = new Promise<'GPU' | 'CPU'>((resolve, reject) => {
+    listener = (m) => {
+      if (m.type === 'ready') resolve(m.delegate)
+      else if (m.type === 'error' && m.phase === 'init') reject(new Error(m.message))
+    }
+    worker.onerror = (e) => reject(new Error(e.message || 'worker failed to start'))
+  })
+  worker.onmessage = (e: MessageEvent<WorkerOut>) => listener?.(e.data)
+  // absolute URLs: the runtime is loaded with a dynamic import(), which the dev server would otherwise rewrite
+  post({ type: 'init', wasmBase: new URL(WASM_BASE, location.href).href, modelUrl: new URL(MODEL_URL, location.href).href, numHands: 1 })
+  let delegate: 'GPU' | 'CPU'
   try {
-    const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
-    const [fileset, model] = await Promise.all([
-      FilesetResolver.forVisionTasks(WASM_BASE),
-      fetch(MODEL_URL).then((r) => {
-        if (!r.ok) throw new Error(`model ${r.status}`)
-        return r.arrayBuffer()
-      }),
-    ])
-    const make = (delegate: 'GPU' | 'CPU') =>
-      HandLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetBuffer: new Uint8Array(model), delegate },
-        runningMode: 'VIDEO',
-        numHands: 2,
-        minHandDetectionConfidence: 0.6,
-        minHandPresenceConfidence: 0.6,
-        minTrackingConfidence: 0.5,
-      })
-    let delegate: 'GPU' | 'CPU' = 'GPU'
-    let closed = false
-    let lm: Awaited<ReturnType<typeof make>>
-    try {
-      lm = await make('GPU')
-    } catch {
-      delegate = 'CPU'
-      lm = await make('CPU')
-    }
-    const det: Detector = {
-      delegate,
-      detect(video, t) {
-        const r = lm.detectForVideo(video, t)
-        const aspect = video.videoWidth && video.videoHeight ? video.videoWidth / video.videoHeight : 4 / 3
-        return {
-          t,
-          aspect,
-          hands: r.landmarks.map((points, i) => ({
-            landmarks: points.map((p) => ({ x: p.x, y: p.y, z: p.z })),
-            handedness: r.handedness[i]?.[0]?.categoryName ?? null,
-          })),
-        }
-      },
-      async degrade() {
-        try {
-          lm.close()
-        } catch {
-          /* already gone */
-        }
-        const next = await make('CPU')
-        if (closed) {
-          next.close()
-          throw new Error('closed')
-        }
-        lm = next
-        det.delegate = delegate = 'CPU'
-      },
-      close() {
-        closed = true
-        try {
-          lm.close()
-        } catch {
-          /* already closed */
-        }
-      },
-    }
-    return det
+    delegate = await ready
   } catch (e) {
-    throw e instanceof HandError ? e : new HandError('model', e)
+    worker.terminate()
+    throw e
+  }
+  const stats = newStats('worker', delegate)
+  let closed = false
+  const tracker: Tracker = {
+    stats,
+    start(video, onFrame, onError) {
+      let inFlight: { id: number; t: number } | null = null
+      let nextId = 1
+      let size = detectSize(video)
+      const record = meter(stats)
+      worker.onerror = (e) => {
+        if (!closed) onError(new Error(e.message))
+      }
+      listener = (m) => {
+        if (m.type === 'result') {
+          if (inFlight?.id === m.id) inFlight = null
+          const now = performance.now()
+          stats.delegate = m.delegate
+          record(now, m.ms, now - m.t)
+          onFrame({ t: m.t, aspect: size.aspect, hands: m.hands })
+        } else if (m.type === 'skip') {
+          if (inFlight?.id === m.id) inFlight = null
+        } else if (m.type === 'delegate') {
+          stats.delegate = m.delegate
+          stats.bench = { gpuMs: m.gpuMs, cpuMs: m.cpuMs }
+        } else if (m.type === 'error') {
+          inFlight = null
+          if (!closed) onError(new Error(m.message))
+        }
+      }
+      const stop = frames(video, (t) => {
+        if (closed || video.readyState < 2 || !video.videoWidth) return
+        if (inFlight) {
+          // the worker is still busy with an older frame: drop this one (never queue)
+          if (t - inFlight.t < 2000) {
+            stats.dropped++
+            return
+          }
+          inFlight = null // a lost reply: do not stall forever
+        }
+        size = detectSize(video)
+        stats.input = `${size.w}x${size.h}`
+        const job = { id: nextId++, t }
+        inFlight = job
+        createImageBitmap(video, { resizeWidth: size.w, resizeHeight: size.h, resizeQuality: 'low' }).then(
+          (bitmap) => {
+            if (closed) return bitmap.close()
+            post({ type: 'frame', id: job.id, t: job.t, bitmap }, [bitmap])
+          },
+          () => {
+            if (inFlight === job) inFlight = null
+          },
+        )
+      })
+      return () => {
+        stop()
+        listener = null
+      }
+    },
+    setHands(n) {
+      if (!closed) post({ type: 'hands', n })
+    },
+    close() {
+      if (closed) return
+      closed = true
+      listener = null
+      try {
+        post({ type: 'close' })
+      } catch {
+        /* already gone */
+      }
+      // the worker closes itself; terminate shortly after in case it is stuck in a long detection
+      setTimeout(() => worker.terminate(), 500)
+    },
+  }
+  return tracker
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// main-thread fallback
+// ---------------------------------------------------------------------------------------------------------
+async function createMainTracker(): Promise<Tracker> {
+  const { FilesetResolver, HandLandmarker } = await import('@mediapipe/tasks-vision')
+  const [fileset, model] = await Promise.all([
+    FilesetResolver.forVisionTasks(WASM_BASE),
+    fetch(MODEL_URL).then((r) => {
+      if (!r.ok) throw new Error(`model ${r.status}`)
+      return r.arrayBuffer()
+    }),
+  ])
+  const bytes = new Uint8Array(model)
+  const make = (delegate: 'GPU' | 'CPU') =>
+    HandLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetBuffer: bytes, delegate },
+      runningMode: 'VIDEO',
+      numHands: 1,
+      minHandDetectionConfidence: 0.6,
+      minHandPresenceConfidence: 0.6,
+      minTrackingConfidence: 0.5,
+    })
+  let delegate: 'GPU' | 'CPU' = 'GPU'
+  let lm: Awaited<ReturnType<typeof make>>
+  try {
+    lm = await make('GPU')
+  } catch {
+    delegate = 'CPU'
+    lm = await make('CPU')
+  }
+  let closed = false
+  const stats = newStats('main', delegate)
+  let degrading = false
+  let hands = 1
+  const degrade = async () => {
+    degrading = true
+    try {
+      lm.close()
+    } catch {
+      /* already gone */
+    }
+    const next = await make('CPU')
+    if (closed) {
+      next.close()
+      throw new Error('closed')
+    }
+    lm = next
+    if (hands !== 1) void lm.setOptions({ numHands: hands }).catch(() => undefined)
+    stats.delegate = delegate = 'CPU'
+    degrading = false
+  }
+  return {
+    stats,
+    start(video, onFrame, onError) {
+      const canvas = document.createElement('canvas')
+      const ctx = canvas.getContext('2d', { alpha: false })
+      const record = meter(stats)
+      let busy = false
+      let stopped = false
+      let lastT = 0
+      let nextAt = 0
+      let count = 0
+      let triedCpu = false
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const run = async (t: number) => {
+        busy = false
+        if (stopped || closed) return
+        const size = detectSize(video)
+        if (canvas.width !== size.w) canvas.width = size.w
+        if (canvas.height !== size.h) canvas.height = size.h
+        stats.input = `${size.w}x${size.h}`
+        ctx?.drawImage(video, 0, 0, size.w, size.h)
+        const ts = Math.max(t, lastT + 1)
+        lastT = ts
+        const t0 = performance.now()
+        let r
+        try {
+          r = lm.detectForVideo(canvas, ts)
+        } catch (e) {
+          if (delegate === 'GPU') return void degrade().catch(onError)
+          return onError(e)
+        }
+        const now = performance.now()
+        const ms = now - t0
+        record(now, ms, now - t)
+        // leave the main thread at least 60 % of the time (the page and the 3D viewer render on it)
+        nextAt = now + ms * 1.5
+        onFrame({ t, aspect: size.aspect, hands: r.landmarks.map((points, i) => ({ landmarks: points.map((p) => ({ x: p.x, y: p.y, z: p.z })), handedness: r.handedness[i]?.[0]?.categoryName ?? null })) })
+        // a GPU path that turns out slow (weak or software GPU, busy with the 3D viewer): try the CPU once
+        if (delegate === 'GPU' && !triedCpu && ++count >= 20 && stats.detectMs > 80) {
+          triedCpu = true
+          await degrade().catch(onError)
+        }
+      }
+      const stop = frames(video, (t) => {
+        if (busy || closed || degrading || video.readyState < 2 || !video.videoWidth) return
+        if (t < nextAt) {
+          stats.dropped++
+          return
+        }
+        busy = true
+        // as an ordinary task, never inside the frame callback (keeps the 3D viewer's frames on time)
+        timer = setTimeout(() => void run(t), 0)
+      })
+      return () => {
+        stopped = true
+        clearTimeout(timer)
+        stop()
+      }
+    },
+    setHands(n) {
+      if (n === hands || closed) return
+      hands = n
+      void lm.setOptions({ numHands: n }).catch(() => undefined)
+    },
+    close() {
+      closed = true
+      try {
+        lm.close()
+      } catch {
+        /* already closed */
+      }
+    },
   }
 }
 
 /**
- * Runs detection on new camera frames at most 30 times a second, as ordinary tasks between rendered frames
- * (never inside requestAnimationFrame, so the 3D viewer's render loop is not held up). When detection is slow
- * the rate drops so it takes at most about 40 % of the main thread (down to 1 frame a second on a very slow
- * device); while the page is hidden it pauses.
+ * The fastest available tracker: the worker when the browser can run it, else the main-thread fallback.
+ * `prefer: 'main'` forces the fallback (for measurements).
  */
-export function runDetection(video: HTMLVideoElement, det: Detector, onFrame: (f: RawFrame, ms: number) => void, onError: (e: unknown) => void): () => void {
-  let stopped = false
-  let timer: ReturnType<typeof setTimeout> | undefined
-  let lastVideoTime = -1
-  let avg = 15
-  let lastT = 0
-  let count = 0
-  let triedCpu = false
-  const fail = (e: unknown) => {
-    if (!stopped) onError(e)
-  }
-  const later = (ms: number) => {
-    if (!stopped) timer = setTimeout(tick, ms)
-  }
-  const tick = async () => {
-    if (stopped) return
-    if (document.hidden) return later(400)
-    if (video.readyState < 2 || !video.videoWidth) return later(60)
-    if (video.currentTime === lastVideoTime) return later(8)
-    lastVideoTime = video.currentTime
-    const t0 = Math.max(performance.now(), lastT + 1)
-    lastT = t0
-    let frame: RawFrame
-    try {
-      frame = det.detect(video, t0)
-    } catch (e) {
-      if (det.delegate === 'GPU') {
-        try {
-          await det.degrade()
-          return later(0)
-        } catch (e2) {
-          return fail(e2)
-        }
-      }
-      return fail(e)
-    }
-    const ms = performance.now() - t0
-    avg = avg * 0.85 + ms * 0.15
-    onFrame(frame, ms)
-    // a GPU path that turns out slow (weak or software GPU, busy with the 3D viewer): try the CPU path once
-    if (det.delegate === 'GPU' && !triedCpu && ++count >= 20 && avg > 80) {
-      triedCpu = true
+export async function createTracker(prefer: 'auto' | 'main' = 'auto'): Promise<Tracker> {
+  try {
+    if (prefer !== 'main' && workerCapable()) {
       try {
-        await det.degrade()
-        avg = 15
+        return await createWorkerTracker()
       } catch (e) {
-        return fail(e)
+        if (import.meta.env.DEV) console.warn('hand worker failed, using the main thread', e)
       }
     }
-    const interval = Math.min(1000, Math.max(33, avg * 2.5))
-    later(Math.max(0, interval - (performance.now() - t0)))
-  }
-  later(0)
-  return () => {
-    stopped = true
-    clearTimeout(timer)
+    return await createMainTracker()
+  } catch (e) {
+    throw e instanceof HandError ? e : new HandError('model', e)
   }
 }
 

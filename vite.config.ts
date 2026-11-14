@@ -14,7 +14,8 @@ const API_ORIGIN = process.env.AURA_API_ORIGIN
  * precache the app shell (hashed file names are only known after the build). The version in the worker
  * is a hash of that list + index.html, so every deploy that changes anything gives the browser a new worker.
  * Heavy extras (the 3D engine chunk, the body model) are "optional": fetched when idle or on first use.
- * Hand control (the MediaPipe library chunk, its WebAssembly runtime and model, ~22 MB in public/mediapipe) is
+ * Hand control (the MediaPipe library chunk, the hand-detection worker, the WebAssembly runtime and the model in
+ * public/mediapipe: a classic runtime build for the main-thread fallback, a module build for the worker) is
  * "lazy": cached only the first time someone switches hand control on, never warmed, in a cache whose name
  * follows the content of those files (an app deploy keeps it; a MediaPipe upgrade replaces it).
  */
@@ -36,7 +37,8 @@ function auraServiceWorker(): Plugin {
       if (!existsSync(swPath)) return
       const names = Object.keys(bundle).filter((n) => !n.endsWith('.map'))
       const heavy = names.filter((n) => /^assets\/three-.*\.js$/.test(n))
-      const handChunks = names.filter((n) => /^assets\/mediapipe-.*\.js$/.test(n))
+      // the MediaPipe library chunk (main-thread fallback) and the hand-detection worker (which bundles it)
+      const handChunks = names.filter((n) => /^assets\/(mediapipe|hand\.worker)-.*\.js$/.test(n))
       const core = names.filter((n) => n.startsWith('assets/') && !heavy.includes(n) && !handChunks.includes(n)).map((n) => '/' + n)
       const statics = ['/', '/offline.html', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png']
       const precache = [...statics, ...core].sort()

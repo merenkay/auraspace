@@ -1,0 +1,201 @@
+{
+ "note": "Real DONKI records captured 2026-11-14 (SEP/GST/notification from the May 2024 storms; flares from Oct-Nov 2026).",
+ "sep": [
+  {
+   "sepID": "2024-05-09T13:59:00-SEP-001",
+   "eventTime": "2024-05-09T13:59Z",
+   "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/SEP/30609/-1",
+   "instruments": [
+    {
+     "displayName": "MODEL: REleASE:ACE/EPAM 15.8-39.8 MeV"
+    }
+   ],
+   "linkedEvents": [
+    {
+     "activityID": "2024-05-09T08:45:00-FLR-001"
+    }
+   ]
+  },
+  {
+   "sepID": "2024-05-09T14:25:00-SEP-001",
+   "eventTime": "2024-05-09T14:25Z",
+   "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/SEP/30610/-1",
+   "instruments": [
+    {
+     "displayName": "MODEL: REleASE:SOHO/EPHIN 15.8-39.8 MeV"
+    }
+   ],
+   "linkedEvents": [
+    {
+     "activityID": "2024-05-09T08:45:00-FLR-001"
+    }
+   ]
+  },
+  {
+   "sepID": "2024-05-10T12:59:00-SEP-001",
+   "eventTime": "2024-05-10T12:59Z",
+   "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/SEP/30675/-1",
+   "instruments": [
+    {
+     "displayName": "SOHO: COSTEP 15.8-39.8 MeV"
+    }
+   ],
+   "linkedEvents": [
+    {
+     "activityID": "2024-05-09T08:45:00-FLR-001"
+    },
+    {
+     "activityID": "2024-05-09T17:23:00-FLR-001"
+    },
+    {
+     "activityID": "2024-05-10T06:27:00-FLR-001"
+    }
+   ]
+  }
+ ],
+ "gst": [
+  {
+   "gstID": "2024-05-10T15:00:00-GST-001",
+   "startTime": "2024-05-10T15:00Z",
+   "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/GST/30693/-1",
+   "allKpIndex": [
+    {
+     "observedTime": "2024-05-10T18:00Z",
+     "kpIndex": 7.67,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-10T21:00Z",
+     "kpIndex": 8.67,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T00:00Z",
+     "kpIndex": 9,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T03:00Z",
+     "kpIndex": 9,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T06:00Z",
+     "kpIndex": 8.33,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T09:00Z",
+     "kpIndex": 8.67,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T12:00Z",
+     "kpIndex": 9,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T15:00Z",
+     "kpIndex": 8.67,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T18:00Z",
+     "kpIndex": 8.33,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-11T21:00Z",
+     "kpIndex": 7.33,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-12T00:00Z",
+     "kpIndex": 7.33,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-12T03:00Z",
+     "kpIndex": 6.67,
+     "source": "NOAA"
+    },
+    {
+     "observedTime": "2024-05-12T06:00Z",
+     "kpIndex": 7,
+     "source": "NOAA"
+    }
+   ],
+   "linkedEvents": [
+    {
+     "activityID": "2024-05-08T05:36:00-CME-001"
+    },
+    {
+     "activityID": "2024-05-08T12:24:00-CME-001"
+    },
+    {
+     "activityID": "2024-05-08T19:12:00-CME-001"
+    },
+    {
+     "activityID": "2024-05-08T22:24:00-CME-001"
+    },
+    {
+     "activityID": "2024-05-09T09:24:00-CME-001"
+    },
+    {
+     "activityID": "2024-05-10T16:36:00-IPS-001"
+    }
+   ]
+  }
+ ],
+ "notifications": [
+  {
+   "messageType": "SEP",
+   "messageID": "20240510-AL-004",
+   "messageURL": "https://ccmc.gsfc.nasa.gov/DONKI/view/Alert/30678/1",
+   "messageIssueTime": "2024-05-10T13:46Z",
+   "messageBody": "## Community Coordinated Modeling Center Database Of Notifications, Knowledge, Information ( CCMC DONKI )\n## Message Type: Auto-generated Space Weather Notification - SEP\n##\n## Message Issue Date: 2024-05-10T13:46:58Z\n## Message ID: 20240510-AL-004\n##\n## Disclaimer: NOAA's Space Weather Prediction Center is the United States Government official source for space weather forecasts. This \"Experimental Research Information\" consists of preliminary NASA research products and should be interpreted and used accordingly.\n\n\n## Summary:\n\nSolar energetic particle event detected by GOES.  The flux of > 10 MeV protons exceeds 10 pfu starting at 2024-05-10T13:35Z.\n\nNASA spacecraft at MEO, GEO and other high-altitude orbits and high-inclination LEO can be impacted.\n\nActivity ID: 2024-05-10T13:35:00-SEP-001.\n\n## Notes: \n\n\n\nCommunity Coordinated Modeling Center Database Of Notifications, Knowledge, Information (CCMC DONKI) Disclaimer\n\nData and/or information stored within the CCMC DONKI is provided \"as is\" without any warranty of any kind, either expressed, implied, or statutory, including, but not limited to, any warranty that the data and/or information will conform to specifications, any implied warranties of merchantability, fitness for a particular purpose, or freedom from infringement, any warranty that the information will be error free, or any warranty that documentation, if provided, will conform to the data and/or information. In no event shall the United States Government, or its contractors or subcontractors, be liable for any damages, including, but not limited to, direct, indirect, special or consequential damages, arising out of, resulting from, or in any way connected with this information, whether or not based upon warranty, contract, tort, or otherwise, whether or not injury was sustained by persons or property or otherwise, and whether or not loss was sustained from, or arose out of the results of, or use of, the data and/or information. The United States Government disclaims all warranties and liabilities regarding third party data and/or information, if present in the data and/or information generated and/or compiled by CCMC DONKI, and distributes it \"as is\".\n\nUse of data and/or information stored within the CCMC DONKI does not, in any manner, constitute an endorsement by NASA of any test results, resulting designs, hardware, or other matters. Use of data and/or information stored within the CCMC DONKI does not, in any manner, constitute the grant of a license to RECIPIENT under any NASA copyright, patent, patent application or other intellectual property.\n\nThe terms of this disclaimer shall be construed, and the legal relations between the parties hereto shall be determined, in accordance with United States federal law.\n\nNOAA's Space Weather Prediction Center is the United States Government official source for space weather forecasts. This \"Experimental Research Information\" consists of preliminary NASA research products and should be interp"
+  }
+ ],
+ "flr": [
+  {
+   "flrID": "2026-10-26T18:17:00-FLR-001",
+   "beginTime": "2026-10-26T18:17Z",
+   "peakTime": "2026-10-26T18:40Z",
+   "endTime": "2026-10-26T19:02Z",
+   "classType": "C2.8",
+   "sourceLocation": "S12W77",
+   "activeRegionNum": 14561,
+   "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/FLR/49278/-1",
+   "instruments": [
+    {
+     "displayName": "GOES-P: EXIS 1.0-8.0"
+    }
+   ],
+   "linkedEvents": [
+    {
+     "activityID": "2026-10-26T18:48:00-CME-001"
+    }
+   ]
+  },
+  {
+   "flrID": "2026-11-05T18:21:00-FLR-001",
+   "beginTime": "2026-11-05T18:21Z",
+   "peakTime": "2026-11-05T18:33Z",
+   "endTime": "2026-11-05T18:41Z",
+   "classType": "M3.5",
+   "sourceLocation": "S08E35",
+   "activeRegionNum": 14566,
+   "link": "https://ccmc.gsfc.nasa.gov/DONKI/view/FLR/49391/-1",
+   "instruments": [
+    {
+     "displayName": "GOES-P: EXIS 1.0-8.0"
+    }
+   ],
+   "linkedEvents": [
+    {
+     "activityID": "2026-11-05T20:00:00-CME-001"
+    }
+   ]
+  }
+ ]
+}

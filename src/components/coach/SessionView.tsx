@@ -4,7 +4,7 @@ import type { ReactNode } from 'react'
 import { EXERCISE_BY_ID } from '../../data/coach/exercises'
 import { COACH_RULES, COACH_SOURCES, ruleSource, type CoachRuleId } from '../../data/coach/sources'
 import type { PlannedExercise, PlannedSession, Substitution } from '../../lib/coach/types'
-import { Badge, cx, SourceLink } from '../ui'
+import { Badge, cx, ShowMore, SourceLink } from '../ui'
 import { doseText, shortDate } from './format'
 
 export function RuleCite({ ruleId, rule, className }: { ruleId?: string; rule?: boolean; className?: string }) {
@@ -25,7 +25,7 @@ function ExerciseItem({ item, swap }: { item: PlannedExercise; swap?: Substituti
   return (
     <li>
       <details className="group">
-        <summary className="flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-panel2 [&::-webkit-details-marker]:hidden">
+        <summary className="press flex min-h-14 cursor-pointer list-none items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-panel2 [&::-webkit-details-marker]:hidden">
           <span className="min-w-0 flex-1">
             <span className="block text-[15px] font-medium leading-snug text-ink">{ex.name}</span>
             <span className="mt-0.5 block text-sm leading-snug text-dim">{doseText(item)}</span>
@@ -85,10 +85,10 @@ export function SessionView({ session, subs, isToday, done, onHold, footer }: { 
         ) : null}
       </div>
       <div className="mt-3 max-w-prose">
-        <p className="text-soft">
+        <ShowMore lines={2} id="coach.session-why" className="text-soft">
           <span className="text-dim">Why this is in your plan: </span>
           {session.why}
-        </p>
+        </ShowMore>
         <RuleCite ruleId={session.whyRule ?? undefined} />
       </div>
       <div className={cx('mt-4 space-y-6', onHold && isToday && 'opacity-60')}>

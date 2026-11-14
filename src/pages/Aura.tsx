@@ -3,7 +3,7 @@ import AssessmentList from '../components/aura/PastAssessments'
 import Consultation, { type SaveHandler } from '../components/aura/Consultation'
 import ExplainReading from '../components/aura/ExplainReading'
 import ProfileEditor from '../components/aura/ProfileEditor'
-import { Badge, Notice, PageHeader, PageTransition, Skeleton, Tabs } from '../components/ui'
+import { Badge, Notice, PageHeader, PageTransition, ShowMore, Skeleton, Tabs } from '../components/ui'
 import type { HealthProfile } from '../data/conditions/profile'
 import { CONTEXTS } from '../data/contexts'
 import { MISSIONS } from '../data/missions'
@@ -76,7 +76,11 @@ export default function Aura({ crewId }: { crewId: number }) {
       <PageHeader
         eyebrow={self ? `Care contact: ${CONTEXTS[ctx].contact}` : `Viewing ${person?.name ?? 'crew member'} · read-only`}
         title="AURA consultation"
-        description="Offline, rule-based decision support. AURA compares what you report with a knowledge base built from NASA, NHS, CDC, WHO and ESA sources."
+        description={
+          <ShowMore id="aura.intro" short="Offline, rule-based decision support.">
+            Offline, rule-based decision support. AURA compares what you report with a knowledge base built from NASA, NHS, CDC, WHO and ESA sources.
+          </ShowMore>
+        }
         status={<Badge>Works offline · no AI</Badge>}
       />
       {!readable ? (

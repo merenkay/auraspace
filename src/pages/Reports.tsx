@@ -68,7 +68,7 @@ export default function Reports() {
                   onClick={() => setOpen(isOpen ? null : r.id)}
                   aria-expanded={isOpen}
                   aria-controls={panelId}
-                  className={cx('flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 py-3 text-left transition-colors hover:bg-panel2', isOpen && 'bg-panel2')}
+                  className={cx('press flex min-h-14 w-full flex-wrap items-center gap-x-3 gap-y-1 px-2 py-3 text-left transition-colors hover:bg-panel2', isOpen && 'bg-panel2')}
                 >
                   <StatusIcon status={r.summary.overall} size={18} />
                   <span className="sr-only">{statusLabel(r.summary.overall)}</span>
@@ -126,7 +126,7 @@ export default function Reports() {
                             }}
                           >
                             <Field label="Reply to the crew member" hint="Leave empty to send “Reviewed — continue monitoring.”" className="min-w-0 flex-1">
-                              <Input value={notes[r.id] ?? ''} onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))} placeholder="Reply to the crew member…" />
+                              <Input autoComplete="off" enterKeyHint="send" value={notes[r.id] ?? ''} onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))} placeholder="Reply to the crew member…" />
                             </Field>
                             <Button type="submit" variant="primary" icon={Send}>
                               Mark reviewed
