@@ -269,7 +269,7 @@ export default function AppShell() {
         </main>
 
         <footer className="mx-auto w-full max-w-[1500px] px-4 pb-28 sm:px-6 md:pb-8">
-          <p className="border-t border-line pt-4 text-xs leading-relaxed text-dim">Decision support, not a diagnosis. Crew data in this demo is simulated. Not affiliated with NASA.</p>
+          <p className="border-t border-line pt-4 text-xs leading-relaxed text-dim">Decision support, not a diagnosis. Crew data in this demo is simulated. Not affiliated with NASA. Health decisions use fixed rules, not SI; the software was built with SI coding assistants (Anthropic Claude via Claude Code).</p>
           <DemoEntry placement="footer" />
         </footer>
 
