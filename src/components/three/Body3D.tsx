@@ -1318,25 +1318,32 @@ function FrameCap({ fps }: { fps: number }) {
 // stall per tab switch. The canvas, its R3F root and the mounted scene are now kept for the page's lifetime and
 // moved into whichever viewer mounts next; while parked the render loop is stopped.
 // ---------------------------------------------------------------------------------------------------------
-type Slot = { canvas: HTMLCanvasElement; root: ReconcilerRoot<HTMLCanvasElement>; busy: boolean }
+type Slot = { canvas: HTMLCanvasElement; root: ReconcilerRoot<HTMLCanvasElement>; busy: boolean; w: number; h: number }
 const slots: Slot[] = []
 let sessions = 0
-/** contexts kept while no viewer shows them (a second, simultaneous viewer gets its own and gives it back) */
-const MAX_PARKED = 1
+/**
+ * Contexts kept while no viewer shows them. Two: Overview and Diagnostics show the viewer at different sizes, and
+ * resizing a context's drawing buffer is itself a stall (380 ms measured with software rendering), so each page
+ * size keeps "its" context.
+ */
+const MAX_PARKED = 2
 // MSAA is wasted on high-density screens: their pixel ratio already smooths edges. Fixed per context.
 const GL_PROPS = { antialias: typeof window === 'undefined' || (window.devicePixelRatio || 1) < 1.5, alpha: true, powerPreference: 'high-performance' as const }
 // <Canvas> registers the THREE namespace for JSX (<ambientLight> ...); a root made with createRoot needs it too
 extend(THREE as unknown as Parameters<typeof extend>[0])
 const CAMERA = { position: [0, 1, 3.4] as [number, number, number], fov: FOV, near: 0.05, far: 50 }
 
-function acquireSlot(): Slot {
-  let slot = slots.find((s) => !s.busy)
+function acquireSlot(w: number, h: number): Slot {
+  const free = slots.filter((s) => !s.busy)
+  let slot = free.find((s) => Math.abs(s.w - w) < 2 && Math.abs(s.h - h) < 2) ?? (slots.length < MAX_PARKED ? undefined : free[0])
   if (!slot) {
     const canvas = document.createElement('canvas')
     canvas.style.cssText = 'display:block;width:100%;height:100%'
-    slot = { canvas, root: createRoot(canvas), busy: false }
+    slot = { canvas, root: createRoot(canvas), busy: false, w, h }
     slots.push(slot)
   }
+  slot.w = w
+  slot.h = h
   slot.busy = true
   return slot
 }
@@ -1386,7 +1393,7 @@ export default function Body3D(props: Body3DProps) {
     const s = slot.current
     if (!s) return
     try {
-      s.root.configure({ gl: GL_PROPS, camera: CAMERA, size: size.current, dpr: pixelRatio, frameloop })
+      void s.root.configure({ gl: GL_PROPS, camera: CAMERA, size: size.current, dpr: pixelRatio, frameloop }).catch(() => undefined)
       s.root.render(
         <>
           <PerformanceMonitor onDecline={() => setDpr(1)} />
@@ -1414,7 +1421,8 @@ export default function Body3D(props: Body3DProps) {
   useLayoutEffect(() => {
     const el = wrap.current
     if (!el) return
-    const s = acquireSlot()
+    const box = el.getBoundingClientRect()
+    const s = acquireSlot(box.width, box.height)
     slot.current = s
     session.current = ++sessions
     el.appendChild(s.canvas)
@@ -1428,7 +1436,11 @@ export default function Body3D(props: Body3DProps) {
       ro = new ResizeObserver(() => {
         const before = size.current
         measure()
-        if (before.width !== size.current.width || before.height !== size.current.height) slot.current?.root.configure({ size: size.current })
+        if (before.width !== size.current.width || before.height !== size.current.height) {
+          s.w = size.current.width
+          s.h = size.current.height
+          slot.current?.root.configure({ size: size.current })
+        }
       })
       ro.observe(el)
     }

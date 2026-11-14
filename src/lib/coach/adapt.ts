@@ -20,9 +20,11 @@ export function classify(log: Pick<SessionLog, 'effort' | 'pain'>): 'regress' | 
   return 'progress'
 }
 
+let dayFmt: Intl.DateTimeFormat | null = null
 const fmt = (iso: string) => {
   const [y, m, d] = iso.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  dayFmt ??= new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', timeZone: 'UTC' })
+  return dayFmt.format(new Date(Date.UTC(y, m - 1, d)))
 }
 
 export type AdaptResult = Adapt & { painStreak: number; logged: number }

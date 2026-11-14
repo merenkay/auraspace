@@ -104,6 +104,58 @@ if (ttsSupported()) {
   window.speechSynthesis.addEventListener?.('voiceschanged', loadVoices)
 }
 
+/* ---------- guard: speech never outlives the page, and does not go on in a page nobody is looking at ---------- */
+
+/** a hidden page stops non-urgent speech after this long (emergency instructions are allowed to finish) */
+export const HIDDEN_SPEECH_MS = 3000
+
+type GuardTarget = { addEventListener: (type: string, fn: () => void) => void; removeEventListener: (type: string, fn: () => void) => void }
+
+/**
+ * Installs the page-lifecycle guard on `win` / `doc`:
+ *  - pagehide / beforeunload: everything queued is dropped and the engine is cancelled at once (the browser's
+ *    speech engine is shared and can otherwise go on talking after the tab is closed or navigated away);
+ *  - the page hidden for `hiddenMs`: non-urgent speech is cancelled; urgent speech may finish.
+ * `cancel` / `urgentNow` are injected for tests. Returns the uninstall function.
+ */
+export function installSpeechGuard(
+  win: GuardTarget,
+  doc: GuardTarget & { readonly hidden: boolean },
+  deps: { cancel: () => void; urgentNow: () => boolean; hiddenMs?: number } = { cancel: cancelSpeech, urgentNow: speakingUrgent },
+): () => void {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const leave = () => {
+    clearTimeout(timer)
+    deps.cancel()
+  }
+  const visibility = () => {
+    clearTimeout(timer)
+    if (!doc.hidden) return
+    timer = setTimeout(() => {
+      if (doc.hidden && !deps.urgentNow()) deps.cancel()
+    }, deps.hiddenMs ?? HIDDEN_SPEECH_MS)
+  }
+  win.addEventListener('pagehide', leave)
+  win.addEventListener('beforeunload', leave)
+  doc.addEventListener('visibilitychange', visibility)
+  return () => {
+    clearTimeout(timer)
+    win.removeEventListener('pagehide', leave)
+    win.removeEventListener('beforeunload', leave)
+    doc.removeEventListener('visibilitychange', visibility)
+  }
+}
+
+if (typeof window !== 'undefined' && typeof document !== 'undefined' && ttsSupported()) {
+  // a page that was closed while speaking (or reloaded) may have left the shared engine talking: silence it first
+  try {
+    window.speechSynthesis.cancel()
+  } catch {
+    /* nothing to cancel */
+  }
+  installSpeechGuard(window, document)
+}
+
 export function setRate(r: number) {
   rate = Math.min(1.3, Math.max(0.7, r))
 }
@@ -142,6 +194,11 @@ export function onSpeaking(fn: ((speaking: boolean) => void) | null) {
 
 export function isSpeaking(): boolean {
   return current !== null || queue.length > 0
+}
+
+/** urgent (emergency) speech is being said or waiting */
+export function speakingUrgent(): boolean {
+  return current?.priority === 'urgent' || queue.some((j) => j.priority === 'urgent')
 }
 
 function pump() {
@@ -215,6 +272,11 @@ export function speak(text: string, opts: { priority?: Priority; onEnd?: () => v
     return false
   }
   const priority = opts.priority ?? 'normal'
+  // nobody is looking at this page: only urgent speech may start (it is shown as a caption either way)
+  if (priority !== 'urgent' && typeof document !== 'undefined' && document.hidden) {
+    opts.onEnd?.()
+    return false
+  }
   if (priority === 'urgent') cancelSpeech()
   const chunks = prosody(text, { rate: rate * (opts.slower ?? 1), urgent: priority === 'urgent' })
   if (!chunks.length) {

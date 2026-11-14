@@ -70,6 +70,11 @@ export type TrackerStats = {
   dropped: number
   bench: { gpuMs: number | null; cpuMs: number | null } | null
   input: string
+  /** mean brightness 0..255 of the camera picture, measured in the worker (null: not measured there) */
+  light: number | null
+  /** one <-> two hand switches, and how long the last one took in the worker (ms) */
+  handSwitches: number
+  handSwitchMs: number
 }
 
 export type Tracker = {
@@ -128,7 +133,7 @@ function frames(video: HTMLVideoElement, onNew: (t: number) => void): () => void
 }
 
 function newStats(mode: 'worker' | 'main', delegate: 'GPU' | 'CPU'): TrackerStats {
-  return { mode, delegate, fps: 0, detectMs: 0, latencyMs: 0, frames: 0, dropped: 0, bench: null, input: '' }
+  return { mode, delegate, fps: 0, detectMs: 0, latencyMs: 0, frames: 0, dropped: 0, bench: null, input: '', light: null, handSwitches: 0, handSwitchMs: 0 }
 }
 
 /** detection-rate meter: results in the last second */
@@ -189,8 +194,12 @@ async function createWorkerTracker(): Promise<Tracker> {
           if (inFlight?.id === m.id) inFlight = null
           const now = performance.now()
           stats.delegate = m.delegate
+          if (m.light !== undefined) stats.light = m.light
           record(now, m.ms, now - m.t)
           onFrame({ t: m.t, aspect: size.aspect, hands: m.hands })
+        } else if (m.type === 'hands') {
+          stats.handSwitches++
+          stats.handSwitchMs = m.ms
         } else if (m.type === 'skip') {
           if (inFlight?.id === m.id) inFlight = null
         } else if (m.type === 'delegate') {

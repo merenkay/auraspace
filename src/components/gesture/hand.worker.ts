@@ -20,7 +20,10 @@ export type WorkerIn =
 export type WorkerHand = { landmarks: { x: number; y: number; z: number }[]; handedness: string | null }
 export type WorkerOut =
   | { type: 'ready'; delegate: Delegate }
-  | { type: 'result'; id: number; t: number; ms: number; hands: WorkerHand[]; delegate: Delegate }
+  /** light: mean brightness 0..255 of the picture, measured here about once a second (else absent) */
+  | { type: 'result'; id: number; t: number; ms: number; hands: WorkerHand[]; delegate: Delegate; light?: number }
+  /** the number of hands looked for changed; ms = how long reconfiguring the model took (in this worker) */
+  | { type: 'hands'; n: number; ms: number }
   /** the frame was not processed (switching delegates): the next one can be sent */
   | { type: 'skip'; id: number }
   | { type: 'delegate'; delegate: Delegate; gpuMs: number | null; cpuMs: number | null }
@@ -36,6 +39,27 @@ const scope = self as unknown as { postMessage: (m: WorkerOut) => void; onmessag
 ;(self as unknown as { import: (url: string) => Promise<void> }).import = async (url: string) => {
   const mod = (await import(/* @vite-ignore */ url)) as { default?: unknown }
   if (mod.default) (self as unknown as { ModuleFactory: unknown }).ModuleFactory = mod.default
+}
+
+// "Too dark" hint: the picture's brightness, sampled here instead of with getImageData on the main thread (which
+// waited for the GPU to hand over a video frame: up to 250 ms stalls measured on a software-rendered page)
+let lightAt = 0
+let lightCanvas: OffscreenCanvas | null = null
+function lightOf(bitmap: ImageBitmap, t: number): number | undefined {
+  if (t - lightAt < 1000 || typeof OffscreenCanvas === 'undefined') return undefined
+  lightAt = t
+  try {
+    lightCanvas ??= new OffscreenCanvas(24, 18)
+    const ctx = lightCanvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | null
+    if (!ctx) return undefined
+    ctx.drawImage(bitmap, 0, 0, 24, 18)
+    const d = ctx.getImageData(0, 0, 24, 18).data
+    let sum = 0
+    for (let i = 0; i < d.length; i += 4) sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]
+    return sum / (d.length / 4)
+  } catch {
+    return undefined
+  }
 }
 
 const WARMUP = 3
@@ -172,6 +196,7 @@ function detect(m: Extract<WorkerIn, { type: 'frame' }>) {
       throw e
     }
     const ms = performance.now() - t0
+    const light = lightOf(bitmap, t0)
     if (bench.phase !== 'done' && (bench.phase === 'gpu' || useCpu)) measure(ms)
     scope.postMessage({
       type: 'result',
@@ -179,6 +204,7 @@ function detect(m: Extract<WorkerIn, { type: 'frame' }>) {
       t: m.t,
       ms,
       delegate: useCpu ? 'CPU' : delegate,
+      light,
       hands: r.landmarks.map((points, i) => ({
         landmarks: points.map((p) => ({ x: p.x, y: p.y, z: p.z })),
         handedness: r.handedness[i]?.[0]?.categoryName ?? null,
@@ -200,7 +226,8 @@ scope.onmessage = (e) => {
   } else if (m.type === 'hands') {
     if (m.n === numHands) return
     numHands = m.n
-    for (const x of [lm, bench.cpu]) void x?.setOptions({ numHands }).catch(() => undefined)
+    const t0 = performance.now()
+    void Promise.all([lm, bench.cpu].map((x) => x?.setOptions({ numHands }).catch(() => undefined))).then(() => scope.postMessage({ type: 'hands', n: numHands, ms: performance.now() - t0 }))
   } else if (m.type === 'close') {
     closed = true
     shut(lm)

@@ -15,8 +15,11 @@ export function dateOfDay(day: number, today: number) {
   d.setDate(d.getDate() - (today - day))
   return d
 }
-export const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-export const fmtLong = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+// One formatter each, made once (toLocaleDateString with options builds a new one per call; charts call these per tick)
+const SHORT = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' })
+const LONG = new Intl.DateTimeFormat('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
+export const fmtShort = (d: Date) => SHORT.format(d)
+export const fmtLong = (d: Date) => LONG.format(d)
 
 /** Round y-axis bounds and ticks (about five) so the scale reads 4, 5, 6 instead of 4.25, 5.1, 5.95. */
 export function niceAxis(values: number[]): { domain: [number, number]; ticks: number[] } {

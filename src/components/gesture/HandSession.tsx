@@ -10,6 +10,7 @@ import { ChevronDown, ChevronUp, CircleHelp, Settings2, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { HAND_BONES } from '../../lib/gesture/classify'
+import { HandsProbe } from '../../lib/gesture/spread'
 import type { GestureState, RawFrame, RawHand } from '../../lib/gesture/machine'
 import type { SynthPose } from '../../lib/gesture/synth'
 import { DEV_HOOKS } from '../../lib/devHooks'
@@ -38,15 +39,16 @@ function savePrefs(p: Prefs) {
   }
 }
 
-type Picto = 'point' | 'pinch' | 'dwell' | 'drag' | 'slap' | 'fist'
+type Picto = 'point' | 'pinch' | 'dwell' | 'drag' | 'slap' | 'fist' | 'spread'
 /** The gesture set, shown in the explainer and the legend. */
-export const GESTURES: { picto: Picto; does: string; how: string; dwellOnly?: boolean }[] = [
+export const GESTURES: { picto: Picto; does: string; how: string; dwellOnly?: boolean; twoHand?: boolean }[] = [
   { picto: 'point', does: 'Move the cursor', how: 'Point with your index finger' },
   { picto: 'pinch', does: 'Click', how: 'Tap thumb and index finger together' },
   { picto: 'dwell', does: 'Click without pinching', how: 'Rest the cursor on a button until the ring fills', dwellOnly: true },
   { picto: 'drag', does: 'Scroll, or turn the 3D body', how: 'Pinch, then move your hand' },
   { picto: 'slap', does: 'Next or previous tab', how: 'Slap the air with your open hand, to the right or left' },
   { picto: 'fist', does: 'Close a dialog, reset the 3D view', how: 'Make a fist for a moment' },
+  { picto: 'spread', does: 'Talk to AURA (voice)', how: 'Put both open hands together, then pull them apart. Together again closes it', twoHand: true },
 ]
 
 const HIDDEN_OFF_MS = 60_000
@@ -131,7 +133,9 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
   const lastView = useRef<DriverView | null>(null)
   const aspectRef = useRef(4 / 3)
   // the model looks for a second hand only near the 3D body (two-hand zoom); one hand is much cheaper
-  const twoHands = useRef({ on: false, at: 0 })
+  const twoHands = useRef({ n: 1 as 1 | 2, probe: new HandsProbe() })
+  const expandEl = useRef<HTMLDivElement>(null)
+  const burstEl = useRef<HTMLDivElement>(null)
   const palette = useRef({ accent: '', soft: '', n: 0 })
   // cursor motion between detections: target, its velocity (px/ms) and the displayed position
   const motion = useRef({ tx: 0, ty: 0, vx: 0, vy: 0, t: 0, x: 0, y: 0, has: false, shown: false, dirty: false, skelAt: 0 })
@@ -165,6 +169,42 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
         ],
         { duration: 420, easing: 'cubic-bezier(0.3, 0, 0.2, 1)' },
       )
+    }
+  }, [])
+
+  /** the two-hand gesture fired: a frame expands from between the hands to the voice panel (or shrinks back) */
+  const playExpand = useCallback((kind: 'open' | 'close', at: { x: number; y: number }) => {
+    const el = expandEl.current
+    const burst = burstEl.current
+    if (!el?.animate) return
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    // where the voice panel is (or will be): see .vx-hud in voice.css
+    const hud = document.querySelector('.vx-hud')?.getBoundingClientRect()
+    const vw = window.innerWidth
+    const vh = window.innerHeight
+    const phone = vw < 768
+    const w = hud?.width || (phone ? vw - 16 : Math.min(480, vw - 32))
+    const h = hud?.height || 260
+    const left = hud ? hud.left : phone ? 8 : vw - 16 - w
+    const top = hud ? hud.top : vh - (phone ? 76 : 16) - h
+    // the element is panel-sized and placed on the panel; only transform and opacity animate (compositor only)
+    el.style.width = `${w}px`
+    el.style.height = `${h}px`
+    el.style.left = `${left}px`
+    el.style.top = `${top}px`
+    const dx = at.x - (left + w / 2)
+    const dy = at.y - (top + h / 2)
+    const small = `translate3d(${dx.toFixed(0)}px, ${dy.toFixed(0)}px, 0) scale(0.06, 0.1)`
+    const full = 'translate3d(0, 0, 0) scale(1)'
+    const frames =
+      kind === 'open'
+        ? [{ transform: small, opacity: 0.95 }, { transform: full, opacity: 0.9, offset: 0.75 }, { transform: full, opacity: 0 }]
+        : [{ transform: full, opacity: 0.8 }, { transform: small, opacity: 0.9, offset: 0.8 }, { transform: small, opacity: 0 }]
+    el.animate(reduce ? [{ opacity: 0.6 }, { opacity: 0 }] : frames, { duration: reduce ? 300 : 560, easing: 'cubic-bezier(0.2, 0.8, 0.2, 1)' })
+    if (burst?.animate && !reduce) {
+      burst.style.left = `${at.x}px`
+      burst.style.top = `${at.y}px`
+      burst.animate([{ transform: 'translate(-50%, -50%) scale(0.3)', opacity: 0.9 }, { transform: 'translate(-50%, -50%) scale(2.6)', opacity: 0 }], { duration: 480, easing: 'ease-out' })
     }
   }, [])
 
@@ -369,21 +409,24 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       m.t = now
     } else m.has = false
     m.dirty = true
+    // one hand is much cheaper to track than two: look for a second hand over the 3D body, while two are in
+    // view, and otherwise in short periodic probes while an open hand is up (for the two-hand voice gesture)
     const two = twoHands.current
     const tracker = res.current?.tracker
     if (tracker) {
-      if (v.target === 'viewer' || v.state.mode === 'zoom' || v.state.hands.length > 1) {
-        two.at = now
-        if (!two.on) {
-          two.on = true
-          tracker.setHands(2)
-        }
-      } else if (two.on && now - two.at > 2500) {
-        two.on = false
-        tracker.setHands(1)
+      const s = v.state
+      const want = two.probe.update(now, {
+        hands: s.hands.length,
+        openHand: s.hands.some((x) => x.pose === 'open'),
+        forced: v.target === 'viewer' || s.mode === 'zoom',
+        enabled: settingsRef.current.twoHand !== false,
+      })
+      if (want !== two.n) {
+        two.n = want
+        tracker.setHands(want)
       }
     }
-    const h = hintFor(v.state, dark.current, slow.current)
+    const h = d.pipeline.twoHandPhase === 'together' && v.state.present ? 'Hands together: now pull them apart to talk to AURA' : hintFor(v.state, dark.current, slow.current)
     if (h !== hintRef.current) {
       hintRef.current = h
       setHint(h)
@@ -397,7 +440,8 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
   useEffect(() => {
     if (phase !== 'running') return
     const r = res.current
-    const drv = new HandDriver({ notify: showNote, slap: playSlap }, settingsRef.current)
+    const drv = new HandDriver({ notify: showNote, slap: playSlap, expand: playExpand }, settingsRef.current)
+    twoHands.current = { n: 1, probe: new HandsProbe() }
     driver.current = drv
     let video: HTMLVideoElement | null = null
     let stop = () => {}
@@ -453,7 +497,8 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
 
     const sample = document.createElement('canvas')
     const light = setInterval(() => {
-      const b = video ? brightness(video, sample) : null
+      // the worker measures it from the frames it already has; only the main-thread fallback reads the video here
+      const b = tracker?.stats.mode === 'worker' ? tracker.stats.light : video ? brightness(video, sample) : null
       dark.current = b !== null && b < 40
     }, 1000)
     let hiddenTimer: ReturnType<typeof setTimeout> | undefined
@@ -470,7 +515,9 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       const hook = (w.__auraHand ??= {})
       hook.feed = (frame: RawFrame) => handle(frame)
       hook.events = () => drv.log.splice(0)
-      hook.stats = () => ({ ...(tracker?.stats ?? { mode: 'synthetic' }), video: video ? `${video.videoWidth}x${video.videoHeight}` : null })
+      hook.stats = () => ({ ...(tracker?.stats ?? { mode: 'synthetic' }), video: video ? `${video.videoWidth}x${video.videoHeight}` : null, hands: twoHands.current.n, probes: twoHands.current.probe.probes })
+      hook.setHands = (n: 1 | 2) => tracker?.setHands(n)
+      hook.expand = playExpand
       hook.settings = (patch?: Partial<HandSettings>) => {
         if (patch) setSettings((s) => ({ ...s, ...patch }))
         return settingsRef.current
@@ -539,12 +586,12 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       tracker?.close()
       res.current = null
       if (DEV_HOOKS && w.__auraHand) {
-        for (const k of ['feed', 'events', 'stats', 'play', 'view', 'settings']) delete w.__auraHand[k]
+        for (const k of ['feed', 'events', 'stats', 'play', 'view', 'settings', 'setHands', 'expand']) delete w.__auraHand[k]
       }
       emitUi('hud', { on: false, source: 'hand' })
       sfx('close')
     }
-  }, [phase, handle, render, showNote, playSlap])
+  }, [phase, handle, render, showNote, playSlap, playExpand])
 
   const begin = () => {
     savePrefs({ intro: true })
@@ -588,6 +635,8 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       <div className="hand-layer" aria-hidden="true">
         <div ref={slapBand} className="hand-slap-band" />
         <div ref={slapEdge} className="hand-slap-edge" data-dir="right" />
+        <div ref={expandEl} className="hand-expand" />
+        <div ref={burstEl} className="hand-expand-burst" />
         <svg ref={zoomSvg} className="hand-zoom" width="100%" height="100%" style={{ display: 'none' }}>
           <line />
           <circle r="10" />
@@ -639,6 +688,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
             <Segmented label="Speed" value={settings.speed} onChange={(speed) => change({ speed })} options={[['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']]} />
             <Segmented label="Hand" value={settings.hand} onChange={(hand) => change({ hand })} options={[['right', 'Right'], ['left', 'Left']]} />
             <Segmented label="Mirror" value={settings.mirror ? 'on' : 'off'} onChange={(m) => change({ mirror: m === 'on' })} options={[['on', 'On'], ['off', 'Off']]} />
+            <Segmented label="Two-hand voice" value={settings.twoHand !== false ? 'on' : 'off'} onChange={(m) => change({ twoHand: m === 'on' })} options={[['on', 'On'], ['off', 'Off']]} />
           </div>
         )}
         <p className="min-h-[18px] px-1 text-xs leading-snug text-soft" aria-live="polite">
@@ -653,7 +703,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
             <h2 className="text-[15px] font-semibold text-ink">Hand gestures</h2>
             <IconButton size="sm" icon={X} label="Hide hand gestures" className="-mr-2 -mt-1" onClick={() => toggleLegend(false)} />
           </div>
-          <GestureList compact dwell={settings.click !== 'pinch'} />
+          <GestureList compact dwell={settings.click !== 'pinch'} twoHand={settings.twoHand !== false} />
           <p className="mt-2 text-xs text-dim">On-device model; camera frames never leave this browser.</p>
         </aside>
       )}
@@ -684,10 +734,10 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
   )
 }
 
-function GestureList({ compact = false, dwell }: { compact?: boolean; dwell: boolean }) {
+function GestureList({ compact = false, dwell, twoHand = true }: { compact?: boolean; dwell: boolean; twoHand?: boolean }) {
   return (
     <ul className="divide-y divide-line border-y border-line">
-      {GESTURES.filter((g) => dwell || !g.dwellOnly).map((g) => (
+      {GESTURES.filter((g) => (dwell || !g.dwellOnly) && (twoHand || !g.twoHand)).map((g) => (
         <li key={g.picto} className={cx('flex items-center gap-3', compact ? 'py-1.5' : 'py-2')}>
           <Pictogram kind={g.picto} />
           <div className="min-w-0">
@@ -748,6 +798,21 @@ function Pictogram({ kind }: { kind: Picto }) {
             <path d="M17 11 V7 M20 11 V6 M23 11 V7" />
           </g>
           <path d="M6 33 H34 M30 30 l4 3 -4 3" className="pg-dim" />
+        </>
+      )
+      break
+    case 'spread':
+      body = (
+        <>
+          <g className="pg-spread-a">
+            <rect x="11" y="15" width="7" height="13" rx="3" />
+            <path d="M12.5 15 V11 M15 15 V10 M17 15 V11.5" />
+          </g>
+          <g className="pg-spread-b">
+            <rect x="22" y="15" width="7" height="13" rx="3" />
+            <path d="M23 15 V11.5 M25 15 V10 M27.5 15 V11" />
+          </g>
+          <path d="M5 33 H13 M35 33 H27 M8 30 l-3 3 3 3 M32 30 l3 3 -3 3" className="pg-dim" />
         </>
       )
       break

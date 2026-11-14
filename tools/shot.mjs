@@ -17,7 +17,7 @@
 // Use a private <outDir> per agent (it also holds the browser profile). Console errors/exceptions are printed at the end.
 // Example:
 //   node tools/shot.mjs "$TEMP/aura-shots-me" 1440 900 login:astronaut:1 goto:http://localhost:5173/ shot:overview+
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -34,10 +34,17 @@ if (!EDGE) {
 }
 const port = 9333 + Math.floor(Math.random() * 500)
 const proc = spawn(EDGE, [
-  '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${join(outDir, 'profile')}`,
+  '--headless=new', '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${join(outDir, 'profile')}`,
   `--window-size=${w},${h}`, '--hide-scrollbars', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', 'about:blank',
 ], { stdio: 'ignore' })
 
+// Edge's GPU/renderer processes outlive a plain kill() of the browser process on Windows: end the whole tree.
+process.on('exit', () => {
+  try {
+    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' })
+    else proc.kill('SIGKILL')
+  } catch {}
+})
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let wsUrl
 for (let i = 0; i < 60 && !wsUrl; i++) {

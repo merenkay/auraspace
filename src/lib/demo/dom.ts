@@ -22,14 +22,23 @@ function resolveOne(spec: TargetSpec, root: ParentNode): HTMLElement | null {
   } catch {
     return null
   }
-  let hits = list.filter(isUsable)
+  // the text test first: it needs no layout, while isUsable (getClientRects) forces one per element; polled
+  // every few hundred ms during the tour, that was a measurable share of its main-thread time
+  let hits = list
   if (s.text != null) {
     const want = norm(s.text)
-    hits = hits.filter((el) => (s.exact ? norm(el.textContent) === want : norm(el.textContent).includes(want)))
-    // Several nested elements can contain the text: the one with the least other text is the most specific.
-    hits.sort((a, b) => (a.textContent?.length ?? 0) - (b.textContent?.length ?? 0))
+    hits = hits.filter((el) => {
+      const raw = el.textContent ?? ''
+      if (raw.length < want.length) return false
+      return s.exact ? norm(raw) === want : norm(raw).includes(want)
+    })
   }
-  const el = hits[0]
+  const usable = hits.filter(isUsable)
+  if (s.text != null) {
+    // Several nested elements can contain the text: the one with the least other text is the most specific.
+    usable.sort((a, b) => (a.textContent?.length ?? 0) - (b.textContent?.length ?? 0))
+  }
+  const el = usable[0]
   if (!el) return null
   if (!s.closest) return el
   const up = el.closest(s.closest)

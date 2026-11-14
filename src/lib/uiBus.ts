@@ -9,6 +9,14 @@ export type UiEvents = {
   'hud': { on: boolean; source: 'voice' | 'hand' }
   /** Ask AURA to say something aloud (ignored when voice output is off). */
   'say': { text: string; priority?: 'normal' | 'urgent' }
+  /**
+   * Open, close or toggle the AURA voice panel. `listen`: also start listening (when opening, or when it is
+   * already open). A request from a hand gesture has no user activation, so the browser may refuse the
+   * microphone: the panel then opens and asks for a tap or the wake word instead.
+   */
+  'voice': { action: 'open' | 'close' | 'toggle'; listen?: boolean; source: 'hand' | 'key' | 'page' }
+  /** The voice panel opened or closed (state, for features that react to it, e.g. the hand "join" gesture). */
+  'voice-state': { open: boolean }
 }
 
 const target = new EventTarget()

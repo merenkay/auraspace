@@ -44,6 +44,10 @@ export function useVoiceAgent(crewId: number | null) {
   const [interim, setInterim] = useState('')
   const [captions, setCaptions] = useState<Caption[]>([])
   const [error, setError] = useState<RecError | null>(null)
+  /** a hint that replaces an error the person could not have avoided (the browser refused a gesture-started listen) */
+  const [notice, setNotice] = useState<string | null>(null)
+  /** the current listen was started by a hand gesture (no user activation: the browser may refuse the microphone) */
+  const gestureListen = useRef(false)
   const [recOk, setRecOk] = useState(() => recognitionSupported())
   const [win, setWin] = useState<ListenWindow | null>(null)
   const [voices, setVoices] = useState<VoiceOption[]>(() => availableVoices())
@@ -428,11 +432,13 @@ export function useVoiceAgent(crewId: number | null) {
   }
 
   /** Listen for one command. auto = ends after the silence window; hold = push-to-talk, ends on release. */
-  const startListen = (mode: 'auto' | 'hold' = 'auto') => {
+  const startListen = (mode: 'auto' | 'hold' = 'auto', source: 'hand' | 'key' | 'page' = 'key') => {
     const s = live.current.settings
     cancelSpeech()
     stopRec()
     setError(null)
+    setNotice(null)
+    gestureListen.current = source === 'hand'
     const my = recSeq.current
     const cur = () => my === recSeq.current
     const l = createListener({
@@ -449,7 +455,15 @@ export function useVoiceAgent(crewId: number | null) {
         sfx('done')
         void handle(alts)
       },
-      onError: (e) => cur() && setError(e),
+      onError: (e) => {
+        if (!cur()) return
+        if (e === 'denied' && gestureListen.current) {
+          // started by a hand gesture: the browser wants a tap (user activation) before it opens the microphone
+          setNotice(live.current.settings.wake ? 'To listen, the browser needs a tap first. Tap the microphone below, press Space, or say “hey AURA”. You can also type.' : 'To listen, the browser needs a tap first. Tap the microphone below or press Space. You can also type.')
+          return
+        }
+        setError(e)
+      },
       onEnd: () => {
         if (!cur()) return
         rec.current = null
@@ -564,6 +578,7 @@ export function useVoiceAgent(crewId: number | null) {
   const setOpen = (on: boolean) => {
     setOpenState(on)
     if (!on) {
+      setNotice(null)
       cancelSpeech()
       autoClose.current = false
       if (recMode.current === 'cmd') {
@@ -600,7 +615,29 @@ export function useVoiceAgent(crewId: number | null) {
 
   useEffect(() => {
     emitUi('hud', { on: open, source: 'voice' })
+    emitUi('voice-state', { open })
   }, [open])
+
+  // other features (hand gestures, pages) can open or close the panel and start listening
+  useEffect(
+    () =>
+      onUi('voice', (d) => {
+        if (!live.current.user) return
+        const isOpen = live.current.open
+        const action = d.action === 'toggle' ? (isOpen ? 'close' : 'open') : d.action
+        if (action === 'close') {
+          if (isOpen) setOpen(false)
+          return
+        }
+        if (d.listen && recognitionSupported()) {
+          // already listening for a command: nothing to do
+          if (isOpen && recMode.current === 'cmd') return
+          startListen('auto', d.source)
+        } else setOpenState(true)
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  )
 
   // other features can ask AURA to speak
   useEffect(
@@ -632,6 +669,26 @@ export function useVoiceAgent(crewId: number | null) {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  // leaving the page (closing the tab, navigating away, bfcache): stop listening and release the microphone, the
+  // wake word included; speech itself is cancelled by the guard in lib/voice/speech.ts. Back from the bfcache, the
+  // wake word resumes if it is switched on.
+  useEffect(() => {
+    const hide = () => {
+      cancelSpeech()
+      stopRec()
+    }
+    const show = (e: PageTransitionEvent) => {
+      if (e.persisted && live.current.settings.wake && live.current.user) (fns.current.startWake as () => void)()
+    }
+    window.addEventListener('pagehide', hide)
+    window.addEventListener('pageshow', show)
+    return () => {
+      window.removeEventListener('pagehide', hide)
+      window.removeEventListener('pageshow', show)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // keyboard: Alt+V opens or closes AURA voice; with it open, hold Space to talk (tap Space = listen until you pause); Escape closes
   useEffect(() => {
@@ -750,6 +807,7 @@ export function useVoiceAgent(crewId: number | null) {
     captions,
     interim,
     error,
+    notice,
     urgent,
     recOk: recOk && recognitionSupported(),
     ttsOk: ttsSupported(),

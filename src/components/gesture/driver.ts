@@ -6,6 +6,7 @@ import { GesturePipeline, type GestureEvent, type GestureOptions, type GestureSt
 import { Dwell, magnetRadius, pickTarget, snapPoint, type Cand } from '../../lib/gesture/target'
 import { DEV_HOOKS } from '../../lib/devHooks'
 import { sfx } from '../../lib/sfx'
+import { emitUi, onUi } from '../../lib/uiBus'
 import { viewerAtElement, type ViewerHandle } from './viewerBridge'
 
 const INTERACTIVE =
@@ -29,8 +30,9 @@ const ZOOM_DEADBAND = 0.004
 
 export type ClickMode = 'pinch' | 'dwell' | 'both'
 export type Speed = 'slow' | 'normal' | 'fast'
-export type HandSettings = { click: ClickMode; speed: Speed; hand: 'right' | 'left'; mirror: boolean }
-export const DEFAULT_SETTINGS: HandSettings = { click: 'both', speed: 'normal', hand: 'right', mirror: true }
+/** twoHand: the two-hand spread opens the voice panel (and bringing the hands together closes it) */
+export type HandSettings = { click: ClickMode; speed: Speed; hand: 'right' | 'left'; mirror: boolean; twoHand: boolean }
+export const DEFAULT_SETTINGS: HandSettings = { click: 'both', speed: 'normal', hand: 'right', mirror: true, twoHand: true }
 
 /** Sensitivity: how much of the camera picture maps onto the screen (smaller = less hand travel) and the dwell time. */
 export const SPEEDS: Record<Speed, { region: GestureOptions['region']; dwellMs: number }> = {
@@ -60,6 +62,8 @@ export type DriverHooks = {
   notify: (text: string) => void
   /** a slap was recognised; `moved` = a tab was switched */
   slap: (dir: 'left' | 'right', moved: boolean) => void
+  /** the two-hand gesture opened ('open') or closed ('close') the voice panel; `at` = between the hands, viewport px */
+  expand?: (kind: 'open' | 'close', at: XY) => void
 }
 
 type Hit = { raw: Element | null; el: HTMLElement | null; viewer: ViewerHandle | null; snap: XY | null }
@@ -140,15 +144,24 @@ export class HandDriver {
   private zoomY = 0
   private lastViewer: ViewerHandle | null = null
   private dwell = new Dwell<HTMLElement | string>({ ms: SPEEDS.normal.dwellMs })
+  /** the voice panel is open: bringing the open hands together closes it */
+  private voiceOpen = false
+  private offVoice: () => void
 
   constructor(hooks: DriverHooks, settings?: HandSettings) {
     this.hooks = hooks
     if (settings) this.configure(settings)
+    this.voiceOpen = !!document.querySelector('.vx-hud')
+    this.pipeline.wantJoin = this.voiceOpen
+    this.offVoice = onUi('voice-state', ({ open }) => {
+      this.voiceOpen = open
+      this.pipeline.wantJoin = open
+    })
   }
 
   configure(s: HandSettings) {
     this.settings = s
-    this.pipeline.configure({ mirror: s.mirror, primaryHand: s.hand, region: SPEEDS[s.speed].region })
+    this.pipeline.configure({ mirror: s.mirror, primaryHand: s.hand, region: SPEEDS[s.speed].region, twoHand: s.twoHand !== false })
     this.dwell.o.ms = SPEEDS[s.speed].dwellMs
   }
 
@@ -410,6 +423,22 @@ export class HandDriver {
         }
         return
       }
+      case 'spread': {
+        // both hands together, then apart: open AURA voice and listen (or listen again, if it is already open)
+        sfx('open')
+        this.hooks.expand?.('open', this.px(e))
+        emitUi('voice', { action: 'open', listen: true, source: 'hand' })
+        this.hooks.notify(this.voiceOpen ? 'Listening' : 'Voice opened')
+        return
+      }
+      case 'join': {
+        if (!this.voiceOpen) return
+        sfx('close')
+        this.hooks.expand?.('close', this.px(e))
+        emitUi('voice', { action: 'close', source: 'hand' })
+        this.hooks.notify('Voice closed')
+        return
+      }
       case 'idle':
         this.setHover(null, null, performance.now())
         this.dwell.reset()
@@ -473,6 +502,7 @@ export class HandDriver {
 
   /** Drop every hover mark and viewer highlight (hand control switched off). */
   dispose() {
+    this.offVoice()
     this.stopInertia()
     this.setHover(null, null, performance.now())
     this.lastViewer?.controls()?.hoverAt(null)

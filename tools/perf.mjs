@@ -10,10 +10,11 @@
 //   npx vite preview --outDir "$TEMP/aura-perf-dist" --port 4175 --strictPort &      # stop it afterwards
 //   node tools/perf.mjs --url http://localhost:4175 --throttle 4 --out "$TEMP/aura-perf" [--flows login,signin,...] [--profile] [--json file]
 //
-// Flows: login, signin, viewer, tabs, voice, hand-synth, hand-cam, combo, history, environment, roster.
+// Flows: login, signin, viewer, tabs, voice, hand-synth, hand-cam, combo, history, environment, roster, demo
+// (the guided tour at /?demo=1: its start, then every chapter change).
 // Numbers come from headless Edge with software WebGL (SwiftShader) on whatever machine runs this: compare runs
 // on the same machine, not absolute values. In the app, Alt+P shows a live HUD with the same counters.
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
@@ -26,7 +27,7 @@ const BASE = String(opt('url', 'http://localhost:4175')).replace(/\/$/, '')
 const THROTTLE = Number(opt('throttle', 1))
 const OUT = String(opt('out', join(process.env.TEMP || '.', 'aura-perf')))
 const PROFILE = !!opt('profile', false)
-const ALL = ['login', 'signin', 'viewer', 'tabs', 'voice', 'hand-synth', 'hand-cam', 'combo', 'history', 'environment', 'roster']
+const ALL = ['login', 'signin', 'viewer', 'tabs', 'voice', 'hand-synth', 'hand-cam', 'combo', 'history', 'environment', 'roster', 'demo']
 const FLOWS = String(opt('flows', ALL.join(','))).split(',')
 const W = 1440
 const H = 900
@@ -38,10 +39,20 @@ const EDGE = ['C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', 'C
 if (!EDGE) throw new Error('No Edge/Chrome found')
 const port = 9333 + Math.floor(Math.random() * 500)
 const proc = spawn(EDGE, [
-  '--headless=new', `--remote-debugging-port=${port}`, `--user-data-dir=${profileDir}`, `--window-size=${W},${H}`, '--hide-scrollbars',
+  '--headless=new', '--mute-audio', `--remote-debugging-port=${port}`, `--user-data-dir=${profileDir}`, `--window-size=${W},${H}`, '--hide-scrollbars',
   '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream',
   '--autoplay-policy=no-user-gesture-required', 'about:blank',
 ], { stdio: 'ignore' })
+// Edge's GPU/renderer processes outlive a plain kill() of the browser process on Windows (and keep burning CPU
+// with software rendering): always end the whole tree, also on Ctrl+C or a crash.
+const killTree = () => {
+  try {
+    if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(proc.pid), '/T', '/F'], { stdio: 'ignore' })
+    else proc.kill('SIGKILL')
+  } catch {}
+}
+process.on('exit', killTree)
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => process.exit(130))
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let wsUrl
 for (let i = 0; i < 60 && !wsUrl; i++) {
@@ -247,6 +258,18 @@ const flows = {
     await scrollThrough(8)
     await sleep(800)
   },
+  async demo() {
+    await goto('/?demo=1', 500)
+    await waitFor('!!(window.__auraDemo && window.__auraDemo.tour)', 20000)
+    await sleep(1500)
+    const n = await evaluate(`(()=>{const t=window.__auraDemo.tour;const st=t.state||{};if(!st.phase||st.phase==='idle')t.start&&t.start();return (t.chapters||[]).length})()`)
+    await sleep(5000)
+    for (let c = 1; c < Math.min(Number(n) || 0, 12); c++) {
+      await evaluate(`window.__auraDemo.tour.seekChapter(${c})`)
+      await sleep(3500)
+    }
+    return { chapters: n }
+  },
   async roster() {
     await signIn('surgeon')
     await goto('/crew', 5000)
@@ -305,5 +328,4 @@ const json = opt('json', null)
 writeFileSync(typeof json === 'string' ? json : join(OUT, `perf-${Date.now()}.json`), JSON.stringify({ base: BASE, throttle: THROTTLE, at: new Date().toISOString(), results }, null, 1))
 if (logs.length) console.log('PAGE LOGS:\n' + [...new Set(logs)].slice(0, 15).join('\n'))
 ws.close()
-proc.kill()
 process.exit(0)

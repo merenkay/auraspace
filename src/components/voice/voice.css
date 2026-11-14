@@ -11,9 +11,8 @@
   width: min(30rem, calc(100vw - 2rem));
   border: 1px solid var(--vx-line);
   border-radius: var(--radius-2xl);
-  background: color-mix(in srgb, var(--color-space) 94%, transparent);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  /* no backdrop-filter: blurring the live 3D view behind the panel cost a full-screen blur every frame */
+  background: color-mix(in srgb, var(--color-space) 97%, transparent);
   box-shadow: 0 24px 64px -16px rgb(0 0 0 / 0.7), 0 0 36px -14px var(--vx-glow);
   color: var(--color-ink);
   max-height: calc(100dvh - 6rem);

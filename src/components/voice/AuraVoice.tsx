@@ -219,6 +219,11 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                       {err}
                     </p>
                   )}
+                  {!err && v.notice && (
+                    <p role="status" className="mx-4 mt-3 rounded-lg border border-accent/50 px-3 py-2 text-sm leading-snug text-soft">
+                      {v.notice}
+                    </p>
+                  )}
 
                   <form onSubmit={submit} className="flex items-center gap-2 px-4 pt-3">
                     <span className="relative shrink-0">

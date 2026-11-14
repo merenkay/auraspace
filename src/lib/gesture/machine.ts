@@ -10,6 +10,7 @@
 import { classify, features, PinchCalibrator, pinchProgress, PoseDebouncer, POSE_TH, sideOf, type Features, type HandSide, type Pose, type PoseThresholds, type Pt } from './classify'
 import { OneEuro } from './oneEuro'
 import { SLAP_DEFAULTS, SlapDetector, type SlapOptions } from './slap'
+import { SPREAD_DEFAULTS, SpreadDetector, type SpreadHand, type SpreadOptions } from './spread'
 
 export type RawHand = { landmarks: Pt[]; handedness?: string | null; score?: number }
 export type RawFrame = {
@@ -39,6 +40,10 @@ export type GestureEvent =
   /** fast sideways movement of the open hand; `dir` is the direction on SCREEN (as seen in the mirrored preview) */
   | { type: 'slap'; dir: 'left' | 'right'; speed: number }
   | { type: 'fist'; x: number; y: number }
+  /** both open hands brought together, then pulled apart quickly; x, y = between the hands (screen-normalised) */
+  | { type: 'spread'; x: number; y: number }
+  /** both open hands brought together quickly from apart and held (reported only while `wantJoin` is set) */
+  | { type: 'join'; x: number; y: number }
   | { type: 'idle' }
   | { type: 'found' }
 
@@ -88,6 +93,9 @@ export type GestureOptions = {
   depthOn: number
   fistMs: number
   slap: SlapOptions
+  /** two-hand spread / join (see spread.ts); `twoHand` false switches it off */
+  spread: SpreadOptions
+  twoHand: boolean
   /** no hand for this long: idle */
   idleMs: number
   /** a hand missing for at most this long (a dropped detection) keeps its state */
@@ -120,6 +128,8 @@ export const DEFAULT_OPTIONS: GestureOptions = {
   depthOn: 1.18,
   fistMs: 700,
   slap: SLAP_DEFAULTS,
+  spread: SPREAD_DEFAULTS,
+  twoHand: true,
   idleMs: 2500,
   lostGraceMs: 200,
   debounceFrames: 2,
@@ -174,6 +184,9 @@ export class GesturePipeline {
   private suppressPinch = false
   private fistFired = false
   private slap: SlapDetector
+  private spread: SpreadDetector
+  /** report "join" too (set by the page side, e.g. while the voice panel is open) */
+  wantJoin = false
   private lastHandAt = -Infinity
   private idleSent = true
   private last: GestureState
@@ -181,11 +194,12 @@ export class GesturePipeline {
   constructor(opts: Partial<GestureOptions> = {}) {
     this.o = this.merge(DEFAULT_OPTIONS, opts)
     this.slap = new SlapDetector(this.o.slap)
+    this.spread = new SpreadDetector(this.o.spread)
     this.last = this.emptyState(0, 'no-hand')
   }
 
   private merge(base: GestureOptions, opts: Partial<GestureOptions>): GestureOptions {
-    return { ...base, ...opts, region: { ...base.region, ...opts.region }, pose: { ...base.pose, ...opts.pose }, slap: { ...base.slap, ...opts.slap }, filter: { ...base.filter, ...opts.filter } }
+    return { ...base, ...opts, region: { ...base.region, ...opts.region }, pose: { ...base.pose, ...opts.pose }, slap: { ...base.slap, ...opts.slap }, spread: { ...base.spread, ...opts.spread }, filter: { ...base.filter, ...opts.filter } }
   }
 
   /** Change options while running (settings panel): mirror, hand preference, region. */
@@ -206,8 +220,19 @@ export class GesturePipeline {
     this.suppressPinch = false
     this.fistFired = false
     this.slap.reset()
+    this.spread.reset()
     this.lastHandAt = -Infinity
     this.idleSent = true
+  }
+
+  /** a two-hand gesture (spread / join) is under way */
+  get twoHandBusy(): boolean {
+    return this.spread.engaged
+  }
+
+  /** 'together': both open hands are together and a pull apart would fire now */
+  get twoHandPhase(): 'free' | 'together' | 'cooling' {
+    return this.spread.phaseName
   }
 
   /** raw x -> x in screen orientation (before stretching over the region) */
@@ -317,6 +342,22 @@ export class GesturePipeline {
     const aspect = frame.aspect ?? 4 / 3
     const ev: GestureEvent[] = []
     const { fresh, lowConfidence } = this.updateTracks(frame, aspect)
+
+    // ---- two open hands: spread (and join) ---------------------------------------------------------------
+    // Fed with every frame, also while the cursor hand is briefly missing (the hands merge as they touch).
+    if (this.o.twoHand) {
+      const hands: SpreadHand[] = fresh.map((tr) => ({
+        key: tr.id,
+        side: tr.side,
+        x: tr.rawF.palm.x * aspect,
+        y: tr.rawF.palm.y,
+        scale: tr.rawF.scale,
+        open: tr.pose === 'open' || (tr.rawF.ext.filter((e) => e > 0.3).length >= 3 && tr.rawF.pinch > tr.th.pinchRelease),
+        pinch: tr.pose === 'pinch' || tr.raw === 'pinch' || pinchProgress(tr.f, tr.th) > 0.6,
+      }))
+      const sp = this.spread.push(t, hands, this.wantJoin)
+      if (sp) ev.push({ type: sp.type, ...this.toScreen({ x: sp.x / aspect, y: sp.y }) })
+    }
 
     let primary = fresh.find((tr) => tr.id === this.primaryId) ?? null
     if (!primary && this.primaryId !== null && this.tracks.some((tr) => tr.id === this.primaryId)) {
@@ -465,7 +506,8 @@ export class GesturePipeline {
     // zoom is in progress, just after one, or while the fingers are closing.
     const rf = primary.rawF
     const openish = rf.ext.filter((e) => e > 0.3).length >= 3 && rf.pinch > primary.th.pinchRelease
-    const blocked = !!this.press || !!this.zoom || mode === 'fist' || pinch > 0.5 || t - this.releasedAt < 350
+    // (with two hands in view the two-hand gestures take over: spreading them apart is fast and sideways too)
+    const blocked = !!this.press || !!this.zoom || mode === 'fist' || pinch > 0.5 || t - this.releasedAt < 350 || fresh.length > 1 || this.spread.engaged
     const slap = this.slap.push(t, this.sx(rf.palm.x), rf.palm.y, openish, blocked)
     if (slap) ev.push({ type: 'slap', dir: slap.dir, speed: slap.speed })
 

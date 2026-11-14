@@ -25,8 +25,10 @@ export function doseText(item: PlannedExercise): string {
   return bits.join(' · ')
 }
 
+let shortFmt: Intl.DateTimeFormat | null = null
 export function shortDate(iso: string) {
   const [y, m, d] = iso.split('-').map(Number)
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })
+  shortFmt ??= new Intl.DateTimeFormat(undefined, { weekday: 'long', day: 'numeric', month: 'short', timeZone: 'UTC' })
+  return shortFmt.format(new Date(Date.UTC(y, m - 1, d)))
 }
 export const dayNumber = (iso: string) => Number(iso.slice(8, 10))

@@ -49,8 +49,16 @@ export function ageText(ms: number | null): string {
   return `${Math.round(h / 24)} days ago`
 }
 
-export const clockTime = (ms: number, seconds = true) =>
-  new Date(ms).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', ...(seconds ? { second: '2-digit' } : {}) })
+// toLocaleTimeString with options builds a new Intl formatter on every call; the live charts call this for every
+// axis tick of every chart once a second, so the two formatters are made once and reused (same output).
+let clockFmt: [Intl.DateTimeFormat, Intl.DateTimeFormat] | null = null
+export const clockTime = (ms: number, seconds = true) => {
+  clockFmt ??= [
+    new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' }),
+    new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+  ]
+  return clockFmt[seconds ? 1 : 0].format(ms)
+}
 
 export const fmt = (v: number | null | undefined, digits: number) => (typeof v === 'number' ? v.toFixed(digits) : '—')
 

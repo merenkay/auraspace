@@ -399,6 +399,27 @@
   box-shadow: none;
 }
 
+/* ------------------------------------------- two-hand spread feedback (Web Animations: transform + opacity) */
+.hand-expand {
+  position: fixed;
+  opacity: 0;
+  border: 1.5px solid var(--color-accent);
+  border-radius: var(--radius-2xl);
+  background: color-mix(in oklab, var(--color-accent) 7%, transparent);
+  box-shadow: 0 0 28px -6px color-mix(in oklab, var(--color-accent) 55%, transparent);
+  transform-origin: center;
+  will-change: transform, opacity;
+}
+.hand-expand-burst {
+  position: fixed;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  opacity: 0;
+  border: 2px solid var(--color-accent);
+  will-change: transform, opacity;
+}
+
 /* ---------------------------------------------------------------- legend pictograms */
 .hand-picto {
   flex: none;
@@ -440,6 +461,12 @@
 .pg-slap {
   animation: pg-slap 1.8s cubic-bezier(0.5, 0, 0.2, 1) infinite;
 }
+.pg-spread-a {
+  animation: pg-spread-a 2.2s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
+.pg-spread-b {
+  animation: pg-spread-b 2.2s cubic-bezier(0.5, 0, 0.2, 1) infinite;
+}
 .pg-squeeze {
   transform-box: fill-box;
   transform-origin: center;
@@ -471,6 +498,16 @@
   48% { transform: translateX(9px); opacity: 1; }
   70% { transform: translateX(9px); opacity: 0; }
   100% { transform: translateX(-9px); opacity: 0; }
+}
+@keyframes pg-spread-a {
+  0%, 15% { transform: translateX(-4px); }
+  40%, 55% { transform: translateX(1.5px); }
+  75%, 100% { transform: translateX(-6px); }
+}
+@keyframes pg-spread-b {
+  0%, 15% { transform: translateX(4px); }
+  40%, 55% { transform: translateX(-1.5px); }
+  75%, 100% { transform: translateX(6px); }
 }
 @keyframes pg-squeeze {
   0%, 30%, 100% { transform: scale(1); }

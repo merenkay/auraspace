@@ -20,9 +20,13 @@ export default function DemoEntry({ placement }: { placement: 'login' | 'header'
     )
   if (placement === 'header')
     return (
-      <Button variant="quiet" size="sm" icon={Play} onClick={startDemo} title="Watch the 3-minute guided demo (simulated data, nothing is saved)" className="hidden xl:inline-flex">
-        Demo
-      </Button>
+      // The wrapper carries the breakpoint: Button's own display class would win over `hidden` on the button itself,
+      // and on a phone the header has no room for this entry (the footer link is always there).
+      <span className="hidden xl:inline-flex">
+        <Button variant="quiet" size="sm" icon={Play} onClick={startDemo} title="Watch the 3-minute guided demo (simulated data, nothing is saved)">
+          Demo
+        </Button>
+      </span>
     )
   return (
     <p className="mt-2 text-xs text-dim">
