@@ -3,6 +3,7 @@ import { useState } from 'react'
 import EnvStation from '../components/env/EnvStation'
 import { CabinSymptomPrompt } from '../components/cabinlink'
 import ScienceLibrary from '../components/ScienceLibrary'
+import SpaceWeather from '../components/spaceweather/SpaceWeather'
 import { Badge, Button, Card, Disclosure, DisclosureGroup, ExpandAll, List, Meter, Metric, PageHeader, Reveal, Section, ShowMore, Tabs } from '../components/ui'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { radiation } from '../lib/health'
@@ -134,6 +135,8 @@ export default function Environment() {
             </Reveal>
           </div>
         )}
+
+        <SpaceWeather context={ctx} />
 
         {space && (
           <Reveal>

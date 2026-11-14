@@ -59,6 +59,14 @@ describe('slap (page left / right)', () => {
     })
   }
 
+  it('accepts an even-speed stroke at 12 detections/s (only three frames of movement)', () => {
+    const r = run(12)
+    rest(r, 0.64, 600)
+    play(r, 250, (f) => [{ ...OPEN, x: 0.64 - 0.27 * f }])
+    rest(r, 0.37, 400)
+    expect(slaps(r)).toEqual(['right'])
+  })
+
   it('works whatever the phase of the frames against the stroke (12 fps, 10 offsets)', () => {
     for (let k = 0; k < 10; k++) {
       const r = run(12)

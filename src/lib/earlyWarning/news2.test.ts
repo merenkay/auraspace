@@ -115,3 +115,18 @@ describe('news2FromData', () => {
     expect(old.expiredCheckAt).not.toBeNull()
   })
 })
+
+describe('device-local full check validation', async () => {
+  const { validCheck } = await import('./fullCheck')
+  const ok: FullCheck = { at: '2026-11-14T11:00:00Z', rr: 16, o2: 'air', acvpu: 'A', pulse: 70, spo2: 97, temp: 36.8, sys: 120 }
+  it('accepts a well-formed check and rejects tampered or partial ones', () => {
+    expect(validCheck(ok)).toBe(true)
+    expect(validCheck({ ...ok, rr: 0 })).toBe(false)
+    expect(validCheck({ ...ok, acvpu: 'X' })).toBe(false)
+    expect(validCheck({ ...ok, o2: 'maybe' })).toBe(false)
+    expect(validCheck({ ...ok, at: 'yesterday' })).toBe(false)
+    const { rr: _rr, ...noRr } = ok
+    expect(validCheck(noRr)).toBe(false)
+    expect(validCheck(null)).toBe(false)
+  })
+})

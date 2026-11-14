@@ -95,7 +95,7 @@ function isObj(v: unknown): v is Record<string, unknown> {
 }
 
 export function safeUrl(v: unknown): string | null {
-  if (typeof v !== 'string' || v.length > 300) return null
+  if (typeof v !== 'string' || v.length > 300 || /[\s"<>\\]/.test(v)) return null
   try {
     const u = new URL(v)
     return u.protocol === 'https:' && ALLOWED_HOST.test(u.hostname) ? v : null
@@ -111,7 +111,7 @@ function pick(v: unknown, spec: Spec): unknown {
     case 'n':
       return typeof v === 'number' && Number.isFinite(v) ? v : null
     case 'i':
-      return typeof v === 'number' && Number.isInteger(v) ? v : null
+      return typeof v === 'number' && Number.isInteger(v) && Math.abs(v) < 2147483647 ? v : null
     case 'b':
       return typeof v === 'boolean' ? v : null
     case 'u':

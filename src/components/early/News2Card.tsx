@@ -58,7 +58,7 @@ export default function News2Card({ report, ctx, crewId, ownRecord }: { report: 
 
       {n.complete && trig ? (
         <div className="mt-3 space-y-3">
-          <Metric label="NEWS2 total" value={n.points} size="md" status={status} hint={`Full check ${timeAgo(n.checkAt ?? undefined)}`} />
+          <Metric label="NEWS2 total" value={n.points} size="md" status={status === 'ok' ? undefined : status} hint={`Full check ${timeAgo(n.checkAt ?? undefined)}`} />
           <div className="rounded-lg border border-line p-3 text-sm">
             <p className="label">Official NEWS2 trigger (RCP Chart 2, hospital wording)</p>
             <p className="mt-1 text-soft">
@@ -86,9 +86,9 @@ export default function News2Card({ report, ctx, crewId, ownRecord }: { report: 
 
       <ul className="mt-3 divide-y divide-line border-y border-line text-sm">
         {n.items.map((i) => (
-          <li key={i.param} className="flex items-center justify-between gap-3 py-2">
+          <li key={i.param} className="flex flex-wrap items-center justify-between gap-x-3 gap-y-0.5 py-2">
             <span className="min-w-0 text-soft">{NEWS2_LABEL[i.param]}</span>
-            <span className="flex shrink-0 items-center gap-2 text-right">
+            <span className="ml-auto flex items-center gap-2 text-right">
               {i.score == null ? (
                 <span className="text-dim">{i.note ?? 'Not measured'}</span>
               ) : (

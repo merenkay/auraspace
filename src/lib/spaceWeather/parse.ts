@@ -132,7 +132,7 @@ export function noticeSummary(body: string): string {
     .map((l) => l.trim())
     .filter((l) => l && !/^https?:\/\//i.test(l) && !l.startsWith('##'))
     .join(' ')
-  return text.length > 600 ? `${text.slice(0, 597)}…` : text
+  return text.length > 360 ? `${text.slice(0, 357).trimEnd()}…` : text
 }
 
 export function parseNotices(data: unknown): DonkiNotice[] {

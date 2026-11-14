@@ -35,7 +35,7 @@ const ALERTS: Target = '[aria-label="Alerts"]'
 const VIEWER: Target = or('[data-viewer="3d"]', '[data-demo="body"]', { css: 'a', text: 'BodyParts3D', closest: '.overflow-hidden' })
 
 /** Each chapter opens with a title card; the page behind it changes while the card is up. */
-function chapter(number: number, id: string, title: string, subtitle: string, scene: Scene, steps: Step[], cardMs = 2000): Chapter {
+function chapter(number: number, id: string, title: string, subtitle: string, scene: Scene, steps: Step[], cardMs = 2800): Chapter {
   const card: Step = { id: `${id}.title`, caption: subtitle, duration: cardMs, card: { kind: 'chapter', number, title, subtitle } }
   return { id, title, subtitle, scene, steps: [card, ...steps] }
 }
@@ -55,14 +55,14 @@ export const SCRIPT: Script = {
           id: 'problem.delay',
           card: { kind: 'delay' },
           caption: 'On the way to Mars, a radio signal needs between 3 and 22 minutes to reach Earth. The answer needs just as long to come back.',
-          duration: 9000,
+          duration: 8500,
           cue: 'open',
         },
         {
           id: 'problem.promise',
           card: { kind: 'promise' },
-          caption: 'So the first response has to work on board, with no connection. That is AURA: health monitoring built on fixed rules and published sources.',
-          duration: 8000,
+          caption: 'So the first response has to work on board, with no connection. AURA is health monitoring built on fixed rules and published sources.',
+          duration: 7000,
         },
         {
           id: 'problem.mission',
@@ -77,13 +77,13 @@ export const SCRIPT: Script = {
     },
 
     /* ------------------------------------------------------------------ 2 */
-    chapter(2, 'daily', 'The daily picture', 'One screen answers: how am I today, and does anything need me?', okafor(OVERVIEW), [
+    chapter(2, 'daily', 'The daily picture', 'How am I today, and does anything need me?', okafor(OVERVIEW), [
       {
         id: 'daily.score',
         target: or('[data-demo="score"]', { css: 'p', text: 'Health score', exact: true, closest: '.rounded-2xl' }),
         callout: { title: 'Health score', text: '100 minus fixed points for each reading out of range. Every point can be explained.' },
         caption: 'Commander Okafor starts her day. Her health score is plain arithmetic on her latest readings, not a guess.',
-        duration: 6500,
+        duration: 6000,
         cue: 'select',
       },
       {
@@ -91,7 +91,7 @@ export const SCRIPT: Script = {
         target: ALERTS,
         callout: { title: 'Alerts', text: 'They appear at once, each with the next step in plain words.' },
         caption: 'Two readings need attention: blood pressure and sleep. The screen stays quiet until something needs her.',
-        duration: 5500,
+        duration: 5000,
       },
       {
         id: 'daily.early',
@@ -106,7 +106,7 @@ export const SCRIPT: Script = {
         target: VIEWER,
         callout: { title: '3D body', text: 'A real anatomy model. A system takes a colour only when it needs attention.' },
         caption: 'The same status, organ system by organ system, on a 3D model she can turn and open.',
-        duration: 6000,
+        duration: 5500,
       },
       {
         id: 'daily.heart',
@@ -114,13 +114,13 @@ export const SCRIPT: Script = {
         target: or({ css: '[role="dialog"] div', text: 'reply from Earth', closest: '.rounded-xl' }, '[role="dialog"]'),
         callout: { title: 'Delay-aware advice', text: 'Mars transit: a reply from Earth takes at least 28 minutes.' },
         caption: 'She selects the heart. AURA tells her what to do first, and that she should not wait for Earth to answer.',
-        duration: 7500,
+        duration: 7000,
         cue: 'select',
       },
     ]),
 
     /* ------------------------------------------------------------------ 3 */
-    chapter(3, 'trend', 'Caught early', 'A slow rise in blood pressure, noticed weeks before it becomes dangerous.', okafor('/crew/:id/diagnostics'), [
+    chapter(3, 'trend', 'Caught early', 'A slow rise, noticed weeks before it is dangerous.', okafor('/crew/:id/diagnostics'), [
       {
         id: 'trend.xray',
         before: [{ type: 'select-system', system: 'heart' }],
@@ -161,7 +161,7 @@ export const SCRIPT: Script = {
       4,
       'emergency',
       'An emergency',
-      'Pilot Daniel Reyes has chest pain. Earth is 14 light-minutes away.',
+      'Chest pain, 14 light-minutes from Earth.',
       reyes('/crew/:id/aura'),
       [
         {
@@ -173,7 +173,7 @@ export const SCRIPT: Script = {
             { type: 'type', target: '#aura-compose', text: 'I have a tight pain in my chest', cps: 20, submit: true },
           ],
           caption: 'He describes it in his own words. AURA matches the text against known symptoms on the device: no language model, no connection.',
-          duration: 6000,
+          duration: 5500,
         },
         {
           id: 'emergency.question',
@@ -193,7 +193,7 @@ export const SCRIPT: Script = {
           rewind: false,
           target: '#main [role="alert"]',
           caption: 'Emergency. A fixed rule raised this alert the moment both signs were present, and the screen says so.',
-          duration: 5000,
+          duration: 4500,
           cue: 'alarm',
         },
         {
@@ -201,14 +201,14 @@ export const SCRIPT: Script = {
           target: or({ css: '#main ol > li', text: 'reply from Earth' }, '#main ol > li'),
           callout: { title: 'First step', text: 'Written for where he is: a reply from Earth takes at least 28 minutes.' },
           caption: 'The first step knows where he is: alert the crew, start the onboard procedure, and do not wait for Earth.',
-          duration: 6500,
+          duration: 6000,
         },
         {
           id: 'emergency.aspirin',
           target: or({ css: 'article', text: 'Aspirin' }),
           callout: { title: 'Checked against his profile', text: 'His record lists an aspirin allergy.' },
           caption: 'Before suggesting a medicine, AURA reads his health profile. He is allergic to aspirin, so the usual aspirin step is withheld.',
-          duration: 6500,
+          duration: 6000,
         },
         {
           id: 'emergency.air',
@@ -219,11 +219,10 @@ export const SCRIPT: Script = {
           duration: 5000,
         },
       ],
-      2400,
     ),
 
     /* ------------------------------------------------------------------ 5 */
-    chapter(5, 'air', 'The cabin is part of the patient', 'A small sensor station watches the air the crew breathes.', reyes('/environment'), [
+    chapter(5, 'air', 'The cabin is part of the patient', 'A sensor station watches the air the crew breathes.', reyes('/environment'), [
       {
         id: 'air.station',
         rewind: false,
@@ -321,14 +320,14 @@ export const SCRIPT: Script = {
     ]),
 
     /* ------------------------------------------------------------------ 8 */
-    chapter(8, 'trust', 'Why it can be trusted', 'No black box anywhere near a medical decision.', okafor('/crew/:id/coach'), [
+    chapter(8, 'trust', 'Why it can be trusted', 'No black box near a medical decision.', okafor('/crew/:id/coach'), [
       {
         id: 'trust.sources',
         before: [{ type: 'set', target: { css: 'button[aria-expanded]', text: 'How this plan was built' }, on: true }],
         target: or('[data-demo="source-quote"]', { css: '[data-open="true"] li', text: '“' }),
         callout: { title: 'Source and quote', text: 'The sentence the rule is based on, in the source’s own words.' },
         caption: 'Every rule is shown with its source and the sentence it rests on. AURA’s own modelling choices are labelled as such.',
-        duration: 7000,
+        duration: 6500,
       },
       {
         id: 'trust.no-ai',
@@ -336,16 +335,18 @@ export const SCRIPT: Script = {
         target: or({ css: 'h1', text: 'AURA consultation', closest: 'header' }),
         callout: { title: 'Works offline · no AI', text: 'The same input always gives the same answer.' },
         caption: 'No AI model decides anything medical. Alerts and plans come from deterministic rules that run offline, on the device.',
-        duration: 6500,
+        duration: 6000,
       },
       {
         id: 'trust.principles',
+        scene: okafor('/crew/:id/aura'),
         card: { kind: 'principles' },
         caption: 'Deterministic rules. A sourced knowledge base. Offline first. And each person’s data stays with that person.',
-        duration: 7000,
+        duration: 6500,
       },
       {
         id: 'trust.closing',
+        scene: okafor('/crew/:id/aura'),
         card: { kind: 'closing' },
         caption: 'AURA: your health, wherever help is far away.',
         duration: 4000,

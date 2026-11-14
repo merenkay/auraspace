@@ -152,7 +152,7 @@ export function createDriver(env: () => DriverEnv): Driver {
         case 'type': {
           const el = await waitFor(action.target, ACTION_TIMEOUT_MS, ctx)
           if (!(el instanceof HTMLInputElement) && !(el instanceof HTMLTextAreaElement)) return 'missing'
-          el.focus({ preventScroll: true })
+          // The field is filled without taking the keyboard focus, so Space and the arrow keys keep driving the tour.
           const per = 1000 / (action.cps ?? 22)
           for (let i = 1; i <= action.text.length; i++) {
             setFieldValue(el, action.text.slice(0, i))

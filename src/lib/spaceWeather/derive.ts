@@ -198,7 +198,8 @@ export function condition(m: Model, now: number, storm: RadiationStorm): Conditi
   else if ((storm.level ?? 0) >= 1 || (g ?? 0) >= 1) level = 'storm'
   else if (reasons.length) level = 'active'
   else level = 'quiet'
-  if ((storm.level ?? 0) >= 1 || storm.drill) reasons.unshift(`radiation storm ${scaleName('S', storm.level)}`)
+  if (storm.drill) reasons.unshift('simulated radiation storm S3 (drill, not real data)')
+  else if ((storm.level ?? 0) >= 1) reasons.unshift(`radiation storm ${scaleName('S', storm.level)}`)
   if ((g ?? 0) >= 1) reasons.unshift(`geomagnetic storm ${scaleName('G', g)}`)
 
   const label = { quiet: 'Quiet', active: 'Active', storm: 'Storm', unknown: 'No data' }[level]
