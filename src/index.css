@@ -1,7 +1,29 @@
 @import 'tailwindcss';
 
+@theme {
+  --color-space: #07111f;
+  --color-deep: #0b1a2c;
+  --color-panel: #102438;
+  --color-panel2: #162d42;
+  --color-line: #1e3a55;
+  --color-cyan: #53d7ff;
+  --color-ice: #a5e9ff;
+  --color-ok: #35d399;
+  --color-warn: #f6bd60;
+  --color-crit: #f06464;
+  --color-ink: #f0f7ff;
+  --color-soft: #c9d8e5;
+  --color-dim: #91a9bd;
+  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+}
+
 :root {
   color-scheme: dark;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
@@ -12,19 +34,53 @@ body,
 
 body {
   margin: 0;
-  background:
-    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(56, 189, 248, 0.12), transparent 70%),
-    #050b16;
-  color: #e2e8f0;
-  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  background: var(--color-space);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* ---------- body map ---------- */
+/* soft aurora behind every page */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 15% 0%, rgba(83, 215, 255, 0.1), transparent 70%),
+    radial-gradient(50% 40% at 90% 10%, rgba(180, 156, 255, 0.08), transparent 70%),
+    var(--color-space);
+}
+
+.glass {
+  background: linear-gradient(180deg, rgba(22, 45, 66, 0.72), rgba(16, 36, 56, 0.72));
+  border: 1px solid rgba(83, 215, 255, 0.12);
+  backdrop-filter: blur(14px);
+}
+
+.label {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-dim);
+  font-weight: 600;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e3a55;
+  border-radius: 10px;
+}
+
+/* ---------- SVG body map fallback ---------- */
 .organ {
   cursor: pointer;
   outline: none;
-  opacity: 0.8;
+  opacity: 0.82;
   transition: opacity 0.18s ease, filter 0.18s ease;
 }
 .organ .pop {
@@ -44,12 +100,11 @@ body {
   animation: crit-blink 1.1s ease-in-out infinite;
 }
 .body-shell {
-  filter: drop-shadow(0 0 6px rgba(56, 189, 248, 0.55));
+  filter: drop-shadow(0 0 6px rgba(83, 215, 255, 0.55));
 }
 .organ.is-active .body-shell {
   filter: drop-shadow(0 0 10px currentColor) brightness(1.5);
 }
-
 .heartbeat {
   animation: heartbeat 0.85s ease-in-out infinite;
   transform-box: fill-box;
@@ -57,6 +112,9 @@ body {
 }
 .scanline {
   animation: scan 4.5s linear infinite;
+}
+.live-dot {
+  animation: live-dot 1s ease-in-out infinite;
 }
 
 @keyframes heartbeat {
@@ -78,10 +136,8 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.25; }
 }
-.live-dot {
-  animation: live-dot 1s ease-in-out infinite;
-}
 
 @media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
   .heartbeat, .scanline, .organ.is-crit, .live-dot { animation: none; }
 }

@@ -22,6 +22,7 @@ const ANCHOR: Record<SystemId, { x: number; y: number }> = {
   heart: { x: 154, y: 156 },
   lungs: { x: 150, y: 152 },
   metabolism: { x: 150, y: 206 },
+  renal: { x: 150, y: 232 },
   immune: { x: 150, y: 100 },
   bones: { x: 150, y: 400 },
   radiation: { x: 150, y: 300 },

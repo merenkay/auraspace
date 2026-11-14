@@ -1,6 +1,6 @@
 import type { VitalKey } from './vitals'
 
-export type SystemId = 'brain' | 'eyes' | 'heart' | 'lungs' | 'metabolism' | 'immune' | 'bones' | 'radiation'
+export type SystemId = 'brain' | 'eyes' | 'heart' | 'lungs' | 'metabolism' | 'immune' | 'bones' | 'renal' | 'radiation'
 
 export type BodySystem = {
   id: SystemId
@@ -142,6 +142,24 @@ export const SYSTEMS: BodySystem[] = [
     ],
     sourceLabel: 'NASA HRP — Risk of spaceflight-induced bone changes',
     sourceUrl: 'https://www.nasa.gov/reference/risk-of-spaceflight-induced-bone-changes/',
+  },
+  {
+    id: 'renal',
+    name: 'Kidneys & Hydration',
+    icon: '💧',
+    vitals: ['water'],
+    hazard: 'Hostile / closed environment',
+    hint: 'NASA provides at least 2.5 L of water per crew member per day.',
+    fn: 'Filter the blood, balance fluids and salts, and remove waste.',
+    space:
+      'Fluid shifts and a weaker sense of thirst change hydration in flight. Dehydration can impair decision-making and concentration. NASA provides a minimum of 2.5 L of potable water per crew member per day.',
+    tips: [
+      'Drink a glass of water now and log it.',
+      'Spread drinks across the day; add 240 mL per hour during a suited spacewalk.',
+      'Report pain in the side or back, or changes in urine, to the crew medical officer.',
+    ],
+    sourceLabel: 'NASA OCHMO TB-027 — Water',
+    sourceUrl: 'https://www.nasa.gov/wp-content/uploads/2023/12/ochmo-tb-027-water.pdf',
   },
   {
     id: 'radiation',
