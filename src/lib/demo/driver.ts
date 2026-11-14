@@ -199,7 +199,7 @@ export function createDriver(env: () => DriverEnv): Driver {
           if (!backend || user?.crewId == null) return 'missing'
           if (applied.has(action.key)) return 'ok'
           applied.add(action.key)
-          await backend.addMeasurements(user.crewId, action.values, 'device', action.device)
+          await backend.addMeasurements(user.crewId, action.values, 'sim', action.device)
           window.dispatchEvent(new Event(DATA_CHANGED))
           return 'ok'
         }

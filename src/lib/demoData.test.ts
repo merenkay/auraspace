@@ -59,9 +59,9 @@ describe('generator', () => {
     }
   })
 
-  it('rounds to the metric precision and uses only known sources', () => {
+  it('rounds to the metric precision and marks every reading as simulated', () => {
     for (const m of all) {
-      expect(['device', 'manual']).toContain(m.source)
+      expect(m.source).toBe('sim') // generated crew readings are always labelled simulated
       if (['sys', 'dia', 'hr', 'spo2', 'glucose', 'mood', 'exercise', 'vision'].includes(m.metric)) expect(Number.isInteger(m.value)).toBe(true)
       else expect(Math.abs(m.value * 10 - Math.round(m.value * 10))).toBeLessThan(1e-6)
     }

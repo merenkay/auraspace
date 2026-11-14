@@ -164,7 +164,8 @@ export function generateMeasurements(now = new Date()): DemoMeasurement[] {
         v = Math.round(v * p) / p
         const at = new Date(start.getTime() + (day - 1) * 86400000 + m.hour * 3600000)
         if (at.getTime() > now.getTime()) continue
-        out.push({ crewId: c.id, metric: m.id, value: v, day, at: at.toISOString(), source: m.source, device: m.device })
+        // Every generated reading is marked simulated, so no card can pass invented values off as coming from a real device.
+        out.push({ crewId: c.id, metric: m.id, value: v, day, at: at.toISOString(), source: 'sim', device: m.device })
       }
     })
   }
