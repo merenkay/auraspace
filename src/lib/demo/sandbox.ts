@@ -27,6 +27,8 @@ export type Sandbox = {
   /** Requests to /api/ or to other sites that the app attempted during the tour. None of them was sent. */
   blocked: BlockedRequest[]
   storage: StorageOverlay
+  /** The running tour, for checks from the browser console and automated runs (window.__auraDemo.tour). */
+  tour?: unknown
   uninstall(): void
 }
 

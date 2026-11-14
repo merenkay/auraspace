@@ -70,7 +70,7 @@ export const SCRIPT: Script = {
           timeout: 2500,
           target: { css: 'dl', text: 'Earth delay' },
           callout: { title: 'Mission facts', text: 'Every piece of advice in the app takes this delay into account.' },
-          caption: 'This simulated crew is on day 142 of a Mars transit. A message to Earth takes 14 minutes each way.',
+          caption: 'The simulated crew is on day 142 of a Mars transit. Earth is 14 minutes away, each way.',
           duration: 5500,
         },
       ],
@@ -98,7 +98,7 @@ export const SCRIPT: Script = {
         optional: true,
         target: OPTIONAL_TARGETS.earlyWarning,
         callout: { title: 'Early warning', text: 'Compares each reading with her own baseline.' },
-        caption: 'An early-warning check looks at the trend behind the numbers, so a slow decline is noticed before a limit is crossed.',
+        caption: 'An early-warning check compares each reading with her own baseline, so a slow decline is noticed early.',
         duration: 5500,
       },
       {
@@ -172,7 +172,7 @@ export const SCRIPT: Script = {
             { type: 'wait', ms: 900 },
             { type: 'type', target: '#aura-compose', text: 'I have a tight pain in my chest', cps: 20, submit: true },
           ],
-          caption: 'He describes it in his own words. AURA matches the text against known symptoms on the device: no language model, no connection.',
+          caption: 'He types it in his own words. Keyword rules on the device find the symptom: no language model.',
           duration: 5500,
         },
         {
@@ -192,7 +192,7 @@ export const SCRIPT: Script = {
           id: 'emergency.alert',
           rewind: false,
           target: '#main [role="alert"]',
-          caption: 'Emergency. A fixed rule raised this alert the moment both signs were present, and the screen says so.',
+          caption: 'Emergency. A fixed rule raised this alert the moment both signs were present.',
           duration: 4500,
           cue: 'alarm',
         },
@@ -207,7 +207,7 @@ export const SCRIPT: Script = {
           id: 'emergency.aspirin',
           target: or({ css: 'article', text: 'Aspirin' }),
           callout: { title: 'Checked against his profile', text: 'His record lists an aspirin allergy.' },
-          caption: 'Before suggesting a medicine, AURA reads his health profile. He is allergic to aspirin, so the usual aspirin step is withheld.',
+          caption: 'Before suggesting a medicine, AURA reads his health profile. He is allergic to aspirin, so that step is withheld.',
           duration: 6000,
         },
         {
@@ -219,6 +219,7 @@ export const SCRIPT: Script = {
           duration: 5000,
         },
       ],
+      2400,
     ),
 
     /* ------------------------------------------------------------------ 5 */
@@ -282,7 +283,7 @@ export const SCRIPT: Script = {
       {
         id: 'coach.session',
         target: or('[data-demo="coach-session"]', { css: 'section', text: 'Today’s session' }, { css: 'section', text: 'Next session' }),
-        caption: 'Each session lists the exercises for the onboard machines, with the dose for each one and how to do it.',
+        caption: 'Each session lists the exercises for the onboard machines, with the dose and how to do each one.',
         duration: 5500,
       },
     ]),
@@ -292,7 +293,7 @@ export const SCRIPT: Script = {
       {
         id: 'earth.polar-fact',
         card: { kind: 'context', context: 'polar' },
-        caption: 'At Concordia station in Antarctica, crews are cut off from the outside world for almost nine months a year.',
+        caption: 'At Concordia station in Antarctica, crews are cut off for almost nine months a year.',
         duration: 5000,
       },
       {
@@ -306,7 +307,7 @@ export const SCRIPT: Script = {
         id: 'earth.home-fact',
         scene: { persona: 'home', route: OVERVIEW },
         card: { kind: 'context', context: 'home' },
-        caption: 'And at home: about 44 percent of adults with high blood pressure do not know they have it.',
+        caption: 'At home, an estimated 44 percent of adults with high blood pressure do not know it.',
         duration: 5000,
       },
       {

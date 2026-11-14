@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState, type ComponentType, type ReactElement } from 'react'
 import { Navigate, Route, Routes, useLocation, useParams } from 'react-router'
 import AppErrorBoundary from './components/AppErrorBoundary'
+import DemoHost from './components/demo/DemoHost'
 import { Skeleton, Spinner } from './components/ui'
 import { useSession } from './lib/session'
 import type { Role } from './lib/types'
@@ -111,6 +112,7 @@ export default function App() {
   }, [pathname])
   if (!ready) return <Splash />
   return (
+    <>
     <AppErrorBoundary resetKey={pathname}>
       <Routes>
         <Route path="/login" element={user ? <Navigate to="/" replace /> : <Late page={false}><Login /></Late>} />
@@ -138,5 +140,8 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AppErrorBoundary>
+    {/* Guided jury demo (src/components/demo): renders nothing unless the page was opened as the sandboxed tour. */}
+    <DemoHost />
+    </>
   )
 }

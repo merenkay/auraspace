@@ -44,7 +44,7 @@ export const GESTURES: { picto: Picto; does: string; how: string; dwellOnly?: bo
   { picto: 'pinch', does: 'Click', how: 'Tap thumb and index finger together' },
   { picto: 'dwell', does: 'Click without pinching', how: 'Rest the cursor on a button until the ring fills', dwellOnly: true },
   { picto: 'drag', does: 'Scroll, or turn the 3D body', how: 'Pinch, then move your hand' },
-  { picto: 'slap', does: 'Next or previous tab', how: 'Swipe your open hand quickly to the right or left' },
+  { picto: 'slap', does: 'Next or previous tab', how: 'Slap the air with your open hand, to the right or left' },
   { picto: 'fist', does: 'Close a dialog, reset the 3D view', how: 'Make a fist for a moment' },
 ]
 

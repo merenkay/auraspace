@@ -58,7 +58,9 @@ export default function DemoTour() {
 
   // Start (or resume after a reload) once, and stop when the tour is taken down.
   useEffect(() => {
-    engine.start(demoSandbox()?.chapter ?? 0)
+    const box = demoSandbox()
+    if (box) box.tour = engine
+    engine.start(box?.chapter ?? 0)
     return () => engine.stop()
   }, [engine])
 

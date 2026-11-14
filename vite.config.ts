@@ -74,13 +74,16 @@ export default defineConfig({
     chunkSizeWarningLimit: 1600,
     rollupOptions: {
       output: {
-        manualChunks(id) {
-          if (id.includes('node_modules/three') || id.includes('@react-three')) return 'three'
-          if (id.includes('node_modules/@mediapipe')) return 'mediapipe'
-          if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-') || id.includes('node_modules/victory-vendor')) return 'charts'
-          if (id.includes('node_modules/motion') || id.includes('node_modules/framer-motion')) return 'motion'
-          if (id.includes('node_modules/react-router') || id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/scheduler')) return 'react'
-          return undefined
+        // Prioritised groups: React must land in its own chunk (a plain manualChunks function let the charts rule
+        // pull React into the charts chunk, so the login page downloaded recharts).
+        advancedChunks: {
+          groups: [
+            { name: 'react', test: /node_modules[\/](react|react-dom|react-router|scheduler)[\/]/, priority: 50 },
+            { name: 'motion', test: /node_modules[\/](motion|framer-motion|motion-dom|motion-utils)[\/]/, priority: 40 },
+            { name: 'three', test: /node_modules[\/](three|@react-three)[\/]/, priority: 30 },
+            { name: 'mediapipe', test: /node_modules[\/]@mediapipe[\/]/, priority: 30 },
+            { name: 'charts', test: /node_modules[\/](recharts|d3-[^\/]+|victory-vendor)[\/]/, priority: 10 },
+          ],
         },
       },
     },
