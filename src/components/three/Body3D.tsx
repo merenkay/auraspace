@@ -476,6 +476,7 @@ function Model(props: Body3DProps) {
     hoverDirty: false,
     hover: null as HoverHit | null,
     cycle: null as { x: number; y: number; list: SystemId[]; index: number } | null,
+    tap: null as { x: number; y: number; type: string; at: number } | null,
     bvhReady: false,
     frames: 0,
     time: 0,
@@ -653,6 +654,7 @@ function Model(props: Body3DProps) {
         st.gesture.pinchDist = st.goal.dist
         st.gesture.midY = s.midY
       }
+      st.tap = null
       st.pointer = null
       st.hoverDirty = false
       setHover(null)
@@ -714,16 +716,22 @@ function Model(props: Body3DProps) {
       } catch {
         /* not captured */
       }
-      if (g && g.id === e.pointerId && !g.moved && !g.multi && st.pointers.size === 0 && e.button === 0) {
-        const p = local(e)
-        const hit = resolve(p.x, p.y, g.type)
-        st.cycle = hit ? { x: hit.cycling && st.cycle ? st.cycle.x : p.x, y: hit.cycling && st.cycle ? st.cycle.y : p.y, list: hit.list, index: hit.index } : null
-        if (hit) live.current.onSelect(hit.id)
-      }
+      // A press that never moved is a tap. The selection itself happens on the browser's own click event (below):
+      // selecting here would let that click land on whatever the page opens in response (a sheet backdrop on phones).
+      st.tap = g && g.id === e.pointerId && !g.moved && !g.multi && st.pointers.size === 0 && e.button === 0 ? { ...local(e), type: g.type, at: performance.now() } : null
       if (st.pointers.size === 0) {
         st.gesture = null
         touchIdle()
       }
+    }
+
+    const onClick = () => {
+      const tap = st.tap
+      st.tap = null
+      if (!tap || performance.now() - tap.at > 1000) return // a drag, a pinch, or a click that is not ours
+      const hit = resolve(tap.x, tap.y, tap.type)
+      st.cycle = hit ? { x: hit.cycling && st.cycle ? st.cycle.x : tap.x, y: hit.cycling && st.cycle ? st.cycle.y : tap.y, list: hit.list, index: hit.index } : null
+      if (hit) live.current.onSelect(hit.id)
     }
 
     const onCancel = (e: PointerEvent) => {
@@ -782,6 +790,7 @@ function Model(props: Body3DProps) {
     el.addEventListener('pointerdown', onDown)
     el.addEventListener('pointermove', onMove)
     el.addEventListener('pointerup', onUp)
+    el.addEventListener('click', onClick)
     el.addEventListener('pointercancel', onCancel)
     el.addEventListener('pointerenter', onEnter)
     el.addEventListener('pointerleave', onLeave)
@@ -796,6 +805,7 @@ function Model(props: Body3DProps) {
       el.removeEventListener('pointerdown', onDown)
       el.removeEventListener('pointermove', onMove)
       el.removeEventListener('pointerup', onUp)
+      el.removeEventListener('click', onClick)
       el.removeEventListener('pointercancel', onCancel)
       el.removeEventListener('pointerenter', onEnter)
       el.removeEventListener('pointerleave', onLeave)

@@ -112,7 +112,14 @@ export function evaluate(rows: Measurement[], mission: EvalInput, hidePrivate = 
   const score = Math.max(0, 100 - penalty)
   const overall: Status = worst(systems.map((s) => systemStatus[s.id]))
 
-  return { context: ctx, values, meta, vitals, defByKey, vitalStatus, systemStatus, systems, alerts, score, overall, rad, showRad }
+  // "ok" above also covers "nothing measured". These two let the UI say "no data yet" instead of "normal":
+  // hasData is false until at least one vital has a reading; systemMeasured is per body system.
+  const hasData = vitals.length > 0
+  const systemMeasured = Object.fromEntries(
+    SYSTEMS.map((s) => [s.id, s.id === 'radiation' ? showRad : s.vitals.some((k) => vitalStatus[k] !== undefined)]),
+  ) as Record<SystemId, boolean>
+
+  return { context: ctx, values, meta, vitals, defByKey, vitalStatus, systemStatus, systemMeasured, hasData, systems, alerts, score, overall, rad, showRad }
 }
 
 export type Evaluation = ReturnType<typeof evaluate>

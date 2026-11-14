@@ -1,9 +1,10 @@
-import { Activity, Dumbbell, Plus } from 'lucide-react'
+import { Activity, Check, Dumbbell, Pause, Plus } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
-import { Badge, Button, Card, chart, ChartTooltip, EmptyState, Meter, Metric, Notice, PageHeader, Section, Skeleton, SourceLink } from '../components/ui'
+import { Badge, Button, Card, chart, ChartTooltip, EmptyState, List, Meter, Metric, Notice, PageHeader, Row, Section, Skeleton, SourceLink, Stagger, StaggerItem } from '../components/ui'
 import type { HealthProfile } from '../data/conditions/profile'
 import { CONTEXTS, THRESHOLD_SOURCES, vitalFor } from '../data/contexts'
+import Disclosure from '../components/aura/Disclosure'
 import { STATUS_COLOR } from '../data/vitals'
 import { latestAssessment, loadProfile, type SavedAssessment } from '../lib/clinic'
 import { buildCoachPlan, type Adaptation } from '../lib/coachPlan'
@@ -83,7 +84,7 @@ export default function Coach({ crewId }: { crewId: number }) {
       <div className="space-y-10">
         <Section title="Before you train" description={plan.basis.length ? `Based on: ${plan.basis.join(', ')}.` : 'No profile, assessment or readings yet — add them to personalise this.'}>
           {plan.items.length ? (
-            <div className="space-y-3">{plan.items.map((a) => <AdaptationNotice key={a.id} a={a} />)}</div>
+            <div className="max-w-3xl space-y-3">{plan.items.map((a) => <AdaptationNotice key={a.id} a={a} />)}</div>
           ) : (
             <Notice tone="ok" title="No restrictions found">Nothing in your profile, latest assessment or readings changes today’s plan.</Notice>
           )}
@@ -94,34 +95,14 @@ export default function Coach({ crewId }: { crewId: number }) {
           )}
         </Section>
 
-        {plan.focus && (
-          <Section title={plan.focus.title} description="Prevention and lifestyle advice from the sources behind that assessment.">
-            <ul className="divide-y divide-line">
-              {plan.focus.items.map((p) => (
-                <li key={p.q} className="py-3">
-                  <p className="text-[15px]">{p.t}</p>
-                  <SourceLink className="mt-1" href={p.src.url} org={p.src.org} title={p.src.title} />
-                </li>
-              ))}
-            </ul>
-          </Section>
-        )}
-
         {space ? (
-          <Section title="Today’s approved session" description="Prescription approved by the flight surgeon · AURA never raises loads on its own" action={onHold ? <Badge tone="crit">On hold</Badge> : <Badge tone="ok">Restrictions checked</Badge>}>
-            <div className={`grid gap-4 md:grid-cols-3 ${onHold ? 'opacity-50' : ''}`}>
+          <Section title="Today’s approved session" description="Prescription approved by the flight surgeon · AURA never raises loads on its own">
+            <div className="mb-3">{onHold ? <Badge tone="crit" icon={Pause}>On hold</Badge> : <Badge tone="ok" icon={Check}>Restrictions checked</Badge>}</div>
+            <List className={onHold ? 'opacity-60' : undefined}>
               {SESSION.map((b) => (
-                <Card key={b.eq} className="flex items-center gap-4">
-                  <Dumbbell className="h-5 w-5 text-dim" aria-hidden="true" />
-                  <div className="flex-1">
-                    <div className="font-semibold">{b.name}</div>
-                    <div className="text-sm text-dim">
-                      {b.eq} · {b.min} min
-                    </div>
-                  </div>
-                </Card>
+                <Row key={b.eq} leading={<Dumbbell className="h-5 w-5" aria-hidden="true" />} title={b.name} description={b.eq} trailing={<span className="meta">{b.min} min</span>} />
               ))}
-            </div>
+            </List>
             {onHold && <p className="mt-3 text-sm text-soft">The session is on hold because of a restriction above.</p>}
           </Section>
         ) : (
@@ -137,65 +118,83 @@ export default function Coach({ crewId }: { crewId: number }) {
           </Section>
         )}
 
-        {!ev ? (
-          <EmptyState icon={Activity} title="No measurements yet" description="Log exercise, sleep and water on the Overview tab and your weekly picture appears here." />
-        ) : (
-          <div className="grid gap-6 lg:grid-cols-3">
-            <Card>
-              <h3 className="font-semibold">Exercise · last 7 days</h3>
-              {week.length ? (
-                <div className="mt-3 h-44 rounded-xl border border-line bg-deep p-2">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={week} margin={chart.margin}>
-                      <XAxis dataKey="day" tickFormatter={(d) => `D${d}`} {...chart.xAxis} />
-                      <Tooltip {...chart.tooltip} content={<ChartTooltip unit="min" formatLabel={(d) => `Day ${d}`} />} />
-                      <ReferenceLine y={exTarget} {...chart.refLine()} />
-                      <Bar dataKey="value" name="Minutes" {...chart.bar}>
-                        {week.map((w) => {
-                          const st = exDef.evaluate({ ...ev.values, exercise: w.value })
-                          return <Cell key={w.day} fill={st === 'ok' ? 'var(--color-soft)' : STATUS_COLOR[st]} />
-                        })}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <p className="mt-3 text-sm text-dim">No exercise logged this week.</p>
-              )}
-              <p className="mt-2 text-sm text-dim">{space ? 'Dashed line: 90 min/day target. NASA reports ISS crews training 1.5–2 h a day.' : `Dashed line: about ${exTarget} min/day (≈ 150 min per week, WHO).`}</p>
-            </Card>
-
-            <Card>
-              <Metric label="Sleep · 7-night average" value={sleepAvg} decimals={1} unit="h / night" status={sleepAvg == null ? null : sleepDef.evaluate({ ...ev.values, sleep: sleepAvg })} />
-              <p className="mt-3 text-sm text-soft">{space ? 'NASA recommends 7–9 h; astronauts average about 6 h in flight.' : ctx === 'home' ? THRESHOLD_SOURCES.sleepOlder.text : 'Fixed bedtimes helped Concordia crews sleep through the polar night (ESA).'}</p>
-            </Card>
-
-            <Card>
-              <Metric label="Water today" value={water} decimals={1} unit={`of ${waterTarget} L`} status={water == null ? null : waterDef.evaluate(ev.values)} />
-              {water != null && <Meter className="mt-4" value={water} max={waterTarget} label="Water against today's target" />}
-              {canEdit && (
-                <Button className="mt-4" full icon={Plus} onClick={() => void data.add({ water: Math.round(((water ?? 0) + 0.25) * 10) / 10 }, 'manual', 'Drink log')}>
-                  250 mL
-                </Button>
-              )}
-              <p className="mt-2 text-sm text-dim">{space ? 'Minimum 2.5 L/day per crew member (NASA OCHMO TB-027).' : waterDef.source}</p>
-            </Card>
-          </div>
+        {plan.focus && (
+          <Disclosure title={plan.focus.title} meta={`${plan.focus.items.length} tips`}>
+            <p className="mb-2 text-sm text-dim">Prevention and lifestyle advice from the sources behind that assessment.</p>
+            <ul className="divide-y divide-line">
+              {plan.focus.items.map((p) => (
+                <li key={p.q} className="py-3">
+                  <p className="text-[15px]">{p.t}</p>
+                  <SourceLink className="mt-1" href={p.src.url} org={p.src.org} title={p.src.title} />
+                </li>
+              ))}
+            </ul>
+          </Disclosure>
         )}
 
-        {space && (
-          <Section title="Onboard equipment">
-            <div className="grid gap-4 md:grid-cols-3">
-              {EQUIPMENT.map((q) => (
-                <Card key={q.id}>
-                  <div className="text-heading">{q.id}</div>
-                  <div className="text-sm text-dim">{q.name}</div>
-                  <div className="mt-3 text-sm text-soft">{q.spec}</div>
+        <Section title="Your week" description="Last 7 days of your own entries">
+          {!ev ? (
+            <EmptyState icon={Activity} title="No measurements yet" description="Log exercise, sleep and water on the Overview tab and your weekly picture appears here." />
+          ) : (
+            <Stagger className="grid gap-4 lg:grid-cols-3 lg:gap-6">
+              <StaggerItem>
+                <Card className="h-full">
+                  <h3 className="label">Exercise · last 7 days</h3>
+                  {week.length ? (
+                    <div className="mt-3 h-44 rounded-xl border border-line bg-deep p-3">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={week} margin={chart.margin}>
+                          <XAxis dataKey="day" tickFormatter={(d) => `D${d}`} {...chart.xAxis} />
+                          <Tooltip {...chart.tooltip} content={<ChartTooltip unit="min" formatLabel={(d) => `Day ${d}`} />} />
+                          <ReferenceLine y={exTarget} {...chart.refLine()} />
+                          <Bar dataKey="value" name="Minutes" {...chart.bar}>
+                            {week.map((w) => {
+                              const st = exDef.evaluate({ ...ev.values, exercise: w.value })
+                              return <Cell key={w.day} fill={st === 'ok' ? 'var(--color-soft)' : STATUS_COLOR[st]} />
+                            })}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-sm text-dim">No exercise logged this week.</p>
+                  )}
+                  <p className="mt-2 text-sm text-dim">{space ? 'Dashed line: 90 min/day target. Coloured bars need attention. NASA reports ISS crews training 1.5–2 h a day.' : `Dashed line: about ${exTarget} min/day (≈ 150 min per week, WHO). Coloured bars need attention.`}</p>
                 </Card>
+              </StaggerItem>
+
+              <StaggerItem>
+                <Card className="h-full">
+                  <Metric label="Sleep · 7-night average" value={sleepAvg} decimals={1} unit="h / night" status={sleepAvg == null ? null : sleepDef.evaluate({ ...ev.values, sleep: sleepAvg })} />
+                  <p className="mt-3 text-sm text-soft">{space ? 'NASA recommends 7–9 h; astronauts average about 6 h in flight.' : ctx === 'home' ? THRESHOLD_SOURCES.sleepOlder.text : 'Fixed bedtimes helped Concordia crews sleep through the polar night (ESA).'}</p>
+                </Card>
+              </StaggerItem>
+
+              <StaggerItem>
+                <Card className="h-full">
+                  <Metric label="Water today" value={water} decimals={1} unit={`of ${waterTarget} L`} status={water == null ? null : waterDef.evaluate(ev.values)} />
+                  {water != null && <Meter className="mt-4" value={water} max={waterTarget} label="Water against today's target" />}
+                  {canEdit && (
+                    <Button className="mt-4" full icon={Plus} onClick={() => void data.add({ water: Math.round(((water ?? 0) + 0.25) * 10) / 10 }, 'manual', 'Drink log')}>
+                      250 mL
+                    </Button>
+                  )}
+                  <p className="mt-3 text-sm text-dim">{space ? 'Minimum 2.5 L/day per crew member (NASA OCHMO TB-027).' : waterDef.source}</p>
+                </Card>
+              </StaggerItem>
+            </Stagger>
+          )}
+        </Section>
+
+        {space && (
+          <Disclosure title="Onboard equipment" meta="3 devices">
+            <List>
+              {EQUIPMENT.map((q) => (
+                <Row key={q.id} title={`${q.id} · ${q.name}`} description={q.spec} />
               ))}
-            </div>
+            </List>
             <SourceLink className="mt-3" href="https://www.nasa.gov/ochmo-tb-031-exercise-overview-2/" org="NASA OCHMO" title="TB-031 Exercise overview" />
-          </Section>
+          </Disclosure>
         )}
       </div>
     </div>

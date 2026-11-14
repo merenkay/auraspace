@@ -1,12 +1,14 @@
 // The consultation thread: AURA asks, the person answers with quick replies or free text, AURA asks focused
 // follow-ups, then shows the assessment. All logic is the deterministic engine in src/lib/doctor.
 import { RotateCcw, Save, Send } from 'lucide-react'
+import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { HealthProfile } from '../../data/conditions/profile'
 import type { Context } from '../../data/contexts'
 import { assess, FINDING_BY_ID, parseFindings, STARTER_FINDINGS, type Answer, type Answers, type Assessment, type Readings } from '../../lib/doctor'
-import { Button, Field, Logo, Notice, Textarea } from '../ui'
+import { Button, DUR, EASE, Logo, Meter, Notice, Textarea } from '../ui'
 import AssessmentView from './AssessmentView'
+import Disclosure from './Disclosure'
 
 type Turn = { id: number; who: 'aura' | 'me'; text: string; sub?: string }
 
@@ -16,15 +18,28 @@ const REPLY: Record<Answer, string> = { yes: 'Yes', no: 'No', unsure: 'Not sure'
 let seq = 0
 const turn = (who: Turn['who'], text: string, sub?: string): Turn => ({ id: ++seq, who, text, sub })
 
-function AuraSays({ t }: { t: Turn }) {
+/** One message. Enters with a short fade and 8 px rise; reduced motion removes the movement globally. */
+function Message({ t, first }: { t: Turn; first: boolean }) {
+  const enter = { initial: { opacity: 0, y: 8 }, animate: { opacity: 1, y: 0 }, transition: { duration: DUR.base, ease: EASE.out } }
+  if (t.who === 'me')
+    return (
+      <motion.div {...enter} className="flex justify-end pt-1">
+        <p className="w-fit max-w-[85%] rounded-2xl bg-panel2 px-4 py-3 text-[15px] leading-relaxed">
+          <span className="sr-only">You: </span>
+          {t.text}
+        </p>
+      </motion.div>
+    )
   return (
-    <div>
-      <p className="mb-1 flex items-center gap-2 text-sm text-dim">
-        <Logo size={20} /> AURA
-      </p>
-      <p className="text-[15px] leading-relaxed">{t.text}</p>
-      {t.sub && <p className="mt-1 text-sm text-dim">{t.sub}</p>}
-    </div>
+    <motion.div {...enter}>
+      {first && (
+        <p className="mb-1.5 flex items-center gap-2 text-sm font-medium text-dim">
+          <Logo size={20} /> AURA
+        </p>
+      )}
+      <p className="text-base leading-relaxed text-ink">{t.text}</p>
+      {t.sub && <p className="mt-1.5 text-sm leading-relaxed text-dim">{t.sub}</p>}
+    </motion.div>
   )
 }
 
@@ -40,12 +55,16 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   const [text, setText] = useState('')
   const [saved, setSaved] = useState<'idle' | 'busy' | 'ok' | 'error'>('idle')
   const endRef = useRef<HTMLDivElement>(null)
+  const resultRef = useRef<HTMLDivElement>(null)
+  const reduce = useReducedMotion()
 
   const a = useMemo(() => assess({ answers, context: ctx, readings, profile }), [answers, ctx, readings, profile])
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }, [turns.length, done])
+    const behavior = reduce ? 'auto' : 'smooth'
+    if (done) resultRef.current?.scrollIntoView({ behavior, block: 'start' })
+    else if (turns.length > 1) endRef.current?.scrollIntoView({ behavior, block: 'nearest' })
+  }, [turns.length, done, reduce])
 
   /** After every answer: stop at once on an emergency, otherwise ask the most useful next question. */
   const advance = (next: Answers, askedNow: string[], notes: Turn[]) => {
@@ -118,44 +137,81 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
 
   const unpicked = STARTER_FINDINGS.filter((id) => !answers[id])
 
+  const thread = (
+    <div role="log" aria-label="Conversation with AURA" aria-live="polite" className="space-y-5">
+      {turns.map((t, i) => (
+        <Message key={t.id} t={t} first={t.who === 'aura' && turns[i - 1]?.who !== 'aura'} />
+      ))}
+    </div>
+  )
+
   return (
     <div className="space-y-10">
-      <div className="max-w-2xl space-y-6" aria-live="polite">
-        {turns.map((t) =>
-          t.who === 'me' ? (
-            <p key={t.id} className="ml-auto w-fit max-w-[85%] rounded-2xl bg-panel2 px-4 py-3 text-[15px]">
-              {t.text}
-            </p>
-          ) : (
-            <AuraSays key={t.id} t={t} />
-          ),
-        )}
+      {done ? (
+        <Disclosure size="row" title={`Conversation (${turns.length} messages)`} className="max-w-2xl border-b border-line">
+          {thread}
+          <div className="h-4" />
+        </Disclosure>
+      ) : (
+        <div className="max-w-2xl space-y-6">
+          {asked.length > 0 && (
+            <div className="flex items-center gap-3 text-sm text-dim">
+              <span className="shrink-0">
+                Question {asked.length} of at most {MAX_QUESTIONS}
+              </span>
+              <Meter className="w-24" value={asked.length} max={MAX_QUESTIONS} label={`Question ${asked.length} of at most ${MAX_QUESTIONS}`} />
+            </div>
+          )}
+          {thread}
 
-        {!done && pending && (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Answer">
-            {(['yes', 'no', 'unsure'] as Answer[]).map((ans) => (
-              <Button key={ans} size="sm" onClick={() => reply(ans)}>
-                {REPLY[ans]}
-              </Button>
-            ))}
-          </div>
-        )}
+          {pending && (
+            <div className="grid grid-cols-3 gap-2 sm:flex sm:max-w-sm" role="group" aria-label="Answer">
+              {(['yes', 'no', 'unsure'] as Answer[]).map((ans) => (
+                <Button key={ans} className="sm:flex-1" onClick={() => reply(ans)}>
+                  {REPLY[ans]}
+                </Button>
+              ))}
+            </div>
+          )}
 
-        {!done && !pending && unpicked.length > 0 && (
-          <div className="flex flex-wrap gap-2" role="group" aria-label="Common symptoms">
-            {unpicked.map((id) => (
-              <Button key={id} size="sm" onClick={() => pick(id)}>
-                {FINDING_BY_ID[id].label}
-              </Button>
-            ))}
-          </div>
-        )}
+          {!pending && unpicked.length > 0 && (
+            <div>
+              <p className="mb-2 text-sm text-dim">Common symptoms</p>
+              <div className="flex flex-wrap gap-2" role="group" aria-label="Common symptoms">
+                {unpicked.map((id) => (
+                  <Button key={id} size="sm" onClick={() => pick(id)}>
+                    {FINDING_BY_ID[id].label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          )}
 
-        {!done && (
-          <form onSubmit={submit} className="space-y-3">
-            <Field label={pending ? 'Or describe it in your own words' : 'Describe how you feel'} hint="English or Turkish, e.g. “my chest hurts and my left arm is numb”.">
+          {a.yesCount > 0 && (
+            <Button
+              variant="quiet"
+              onClick={() => {
+                setPending(null)
+                setDone(true)
+                setTurns((t) => [...t, turn('aura', 'Here is my assessment so far.')])
+              }}
+            >
+              Show my assessment now
+            </Button>
+          )}
+          <div ref={endRef} />
+
+          {/* Pinned above the phone bottom bar; flows normally from md up. */}
+          <form onSubmit={submit} className="sticky bottom-16 z-10 -mx-4 border-t border-line bg-space px-4 pb-3 pt-3 sm:-mx-6 sm:px-6 md:static md:mx-0 md:border-0 md:px-0 md:pb-0 md:pt-2">
+            <label htmlFor="aura-compose" className="sr-only">
+              {pending ? 'Or describe it in your own words' : 'Describe how you feel'}
+            </label>
+            <div className="flex items-end gap-2">
               <Textarea
-                rows={2}
+                id="aura-compose"
+                rows={1}
+                className="min-h-11 flex-1 resize-none"
+                placeholder={pending ? 'Or describe it' : 'Describe how you feel'}
                 value={text}
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => {
@@ -165,43 +221,44 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
                   }
                 }}
               />
-            </Field>
-            <div className="flex flex-wrap gap-2">
-              <Button type="submit" variant="primary" icon={Send}>
+              <Button type="submit" variant="primary" icon={Send} disabled={!text.trim()}>
                 Send
               </Button>
-              {a.yesCount > 0 && (
-                <Button variant="quiet" onClick={() => { setPending(null); setDone(true); setTurns((t) => [...t, turn('aura', 'Here is my assessment so far.')]) }}>
-                  Show my assessment now
-                </Button>
-              )}
             </div>
+            <p className="mt-1.5 text-xs text-dim">English or Turkish, e.g. “my chest hurts and my left arm is numb”. Enter sends, Shift+Enter adds a line.</p>
           </form>
-        )}
-        <div ref={endRef} />
-      </div>
+        </div>
+      )}
 
       {done && (
-        <AssessmentView
-          a={a}
-          ctx={ctx}
-          profile={profile}
-          delaySec={delaySec}
-          footer={
-            <div className="flex flex-wrap items-center gap-3 border-t border-line pt-6">
-              {onSave && (
-                <Button variant="primary" icon={Save} loading={saved === 'busy'} disabled={saved === 'ok'} onClick={() => void save()}>
-                  {saved === 'ok' ? 'Saved to your record' : 'Save to my record'}
-                </Button>
-              )}
-              <Button icon={RotateCcw} onClick={restart}>
-                Start a new consultation
-              </Button>
-              {saved === 'error' && <Notice tone="crit" role="alert">Could not save. Please try again.</Notice>}
-              <p className="w-full text-sm text-dim">AURA is decision support built from a fixed knowledge base. It cannot examine you and it can be wrong — when in doubt, contact your care team.</p>
-            </div>
-          }
-        />
+        <div ref={resultRef} className="scroll-mt-24">
+          <AssessmentView
+            a={a}
+            ctx={ctx}
+            profile={profile}
+            delaySec={delaySec}
+            footer={
+              <div className="space-y-4 border-t border-line pt-6">
+                <div className="flex flex-wrap items-center gap-3">
+                  {onSave && (
+                    <Button variant="primary" icon={Save} loading={saved === 'busy'} disabled={saved === 'ok'} onClick={() => void save()}>
+                      {saved === 'ok' ? 'Saved to your record' : 'Save to my record'}
+                    </Button>
+                  )}
+                  <Button icon={RotateCcw} onClick={restart}>
+                    Start a new consultation
+                  </Button>
+                </div>
+                {saved === 'error' && (
+                  <Notice tone="crit" role="alert">
+                    Could not save. Please try again.
+                  </Notice>
+                )}
+                <p className="max-w-2xl text-sm text-dim">AURA is decision support built from a fixed knowledge base. It cannot examine you and it can be wrong — when in doubt, contact your care team.</p>
+              </div>
+            }
+          />
+        </div>
       )}
     </div>
   )

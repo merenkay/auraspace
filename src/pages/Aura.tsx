@@ -3,7 +3,7 @@ import AssessmentList from '../components/aura/PastAssessments'
 import Consultation, { type SaveHandler } from '../components/aura/Consultation'
 import ExplainReading from '../components/aura/ExplainReading'
 import ProfileEditor from '../components/aura/ProfileEditor'
-import { Badge, Notice, PageHeader, Skeleton, Tabs } from '../components/ui'
+import { Badge, Notice, PageHeader, PageTransition, Skeleton, Tabs } from '../components/ui'
 import type { HealthProfile } from '../data/conditions/profile'
 import { CONTEXTS } from '../data/contexts'
 import { MISSIONS } from '../data/missions'
@@ -68,28 +68,36 @@ export default function Aura({ crewId }: { crewId: number }) {
       <PageHeader
         eyebrow={self ? `Care contact: ${CONTEXTS[ctx].contact}` : `Viewing ${person?.name ?? 'crew member'} · read-only`}
         title="AURA consultation"
-        description="Offline, rule-based decision support. AURA compares what you report with a knowledge base of known conditions built from NASA, NHS, CDC, WHO and ESA sources."
+        description="Offline, rule-based decision support. AURA compares what you report with a knowledge base built from NASA, NHS, CDC, WHO and ESA sources."
         status={<Badge>Works offline · no AI</Badge>}
       />
       {!readable ? (
         <Notice tone="info" title="Not available for your role">Health profiles and consultations are private to the person and their flight surgeon.</Notice>
       ) : (
-        <div className="space-y-10">
-          <Tabs label="AURA sections" variant="line" value={view} onChange={setView} options={options} />
+        <div className="space-y-6">
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <Tabs label="AURA sections" variant="line" value={view} onChange={setView} options={options} />
+          </div>
           {error && <Notice tone="crit" role="alert">{error}</Notice>}
-          {view === 'consult' &&
-            (data.loading && !ev ? (
-              <Skeleton className="h-40 max-w-2xl" />
-            ) : (
-              <>
-                {!self && <Notice tone="info">Staff walk-through: you can run a consultation for {person?.name ?? 'this crew member'}, but only they can save it to their record.</Notice>}
-                <Consultation ctx={ctx} readings={readings} profile={profile} delaySec={delaySec} firstName={firstName} onSave={self ? onSave : undefined} />
-              </>
-            ))}
-          {view === 'explain' &&
-            (ev ? <ExplainReading ev={ev} rows={data.rows} today={mission?.day ?? 142} /> : <Notice tone="info" title="No measurements yet">Log a measurement first, then AURA can explain it.</Notice>)}
-          {view === 'profile' && (profile === null && history === null && !error ? <Skeleton className="h-40" /> : <ProfileEditor profile={profile} editable={self} onSave={async (p) => setProfile(await saveProfile(user, crewId, p))} />)}
-          {view === 'history' && <AssessmentList items={history} error={error} />}
+          <PageTransition routeKey={view}>
+            {view === 'consult' &&
+              (data.loading && !ev ? (
+                <Skeleton className="h-40 max-w-2xl" />
+              ) : (
+                <div className="space-y-6">
+                  {!self && (
+                    <Notice tone="info" title="Read-only walk-through">
+                      You can run a consultation for {person?.name ?? 'this crew member'} to see how AURA reasons, but only they can save it to their record.
+                    </Notice>
+                  )}
+                  <Consultation ctx={ctx} readings={readings} profile={profile} delaySec={delaySec} firstName={firstName} onSave={self ? onSave : undefined} />
+                </div>
+              ))}
+            {view === 'explain' &&
+              (ev ? <ExplainReading ev={ev} rows={data.rows} today={mission?.day ?? 142} /> : <Notice tone="info" title="No measurements yet">Log a measurement first, then AURA can explain it.</Notice>)}
+            {view === 'profile' && (profile === null && history === null && !error ? <Skeleton className="h-40" /> : <ProfileEditor profile={profile} editable={self} onSave={async (p) => setProfile(await saveProfile(user, crewId, p))} />)}
+            {view === 'history' && <AssessmentList items={history} error={error} />}
+          </PageTransition>
         </div>
       )}
     </div>

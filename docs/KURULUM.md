@@ -229,12 +229,26 @@ Email: NOT configured — sign-up codes cannot be sent until mail_from/SMTP are 
 
 - `<sayı>` birkaç bindir ve günün saatine göre değişir (henüz "gelmemiş" saatlerin ölçümleri yüklenmez).
 - E-posta ayarlıysa son satır: `Email: configured (smtp.hostinger.com)`.
-- Yeni özelliklerin kendi tabloları varsa `Tables ready.`'den önce `Module ready: <ad>` satırları da görünür.
+- Özelliklerin kendi tabloları için `Tables ready.`'den önce `Module ready: <ad>` satırları da görünür. Şu an üç tane
+  olmalı (alfabetik sırayla):
+
+  ```
+  Module ready: clinic
+  Module ready: env
+  Module ready: import
+  ```
+
+  `clinic` = sağlık profili ve kaydedilen AURA danışma sonuçları (`clinic_profiles`, `clinic_assessments` tabloları),
+  `env` = Arduino ortam sensörü okumaları (`env_readings`), `import` = Samsung Health içe aktarma kayıtları (`import_keys`).
+  Bunlardan biri eksikse o dosya sunucuya yüklenmemiştir (GitHub Actions + hPanel Git'e bak).
   Eski bir veritabanında `Upgraded: users.email` gibi satırlar da çıkabilir. Hepsi normal.
 
 **İkinci ve sonraki açışlarda** (bu da başarıdır):
 
 ```
+Module ready: clinic
+Module ready: env
+Module ready: import
 Tables ready.
 Demo data already present — nothing else changed. Add &reset=1 to reload the demo crew.
 ```
@@ -370,7 +384,10 @@ Açmazsan o özellik `Feature tables are not installed yet — re-run the instal
 **Nasıl?** Aynı kurulum adresini **`&reset=1` olmadan** aç. Beklenen:
 
 ```
-Module ready: <özellik-adı>
+Module ready: clinic
+Module ready: env
+Module ready: import
+Module ready: <yeni-özellik-adı>
 Tables ready.
 Demo data already present — nothing else changed. Add &reset=1 to reload the demo crew.
 ```

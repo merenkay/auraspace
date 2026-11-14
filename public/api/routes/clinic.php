@@ -43,15 +43,21 @@ return (function (): array {
         }
     };
 
+    // A missing table/column (install.php not re-run after a deploy) answers with the same 503 as the rest of the API.
     $guard = function (Closure $fn): void {
         try {
             $fn();
         } catch (PDOException $e) {
-            if ((string) $e->getCode() === '42S02') {
-                fail('Clinic storage is not set up on the server yet (run install.php).', 503);
+            if (in_array(sqlstate($e), ['42S02', '42S22'], true)) {
+                error_log('AURA clinic: ' . $e->getMessage());
+                fail('Feature tables are not installed yet — re-run the installer (api/install.php).', 503);
             }
             throw $e;
         }
+    };
+
+    $encode = function (array $data): string {
+        return (string) json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE);
     };
 
     $ids = function ($list, array $ok): array {
@@ -112,7 +118,7 @@ return (function (): array {
             });
         },
 
-        'POST clinic/profile' => function () use ($selfOnly, $guard, $ids, $allowed, $profileJson): void {
+        'POST clinic/profile' => function () use ($selfOnly, $guard, $ids, $allowed, $profileJson, $encode): void {
             $u = require_user();
             $b = body();
             $crewId = (int) ($b['crewId'] ?? 0);
@@ -126,10 +132,12 @@ return (function (): array {
                 'medicines' => $ids($p['medicines'] ?? null, $allowed['medicines']),
                 'notes' => mb_substr(trim((string) ($p['notes'] ?? '')), 0, 300),
             ];
-            $guard(function () use ($u, $crewId, $data, $profileJson): void {
+            $guard(function () use ($u, $crewId, $data, $profileJson, $encode): void {
+                // Upsert without VALUES() (deprecated in MySQL 8.0.20+): the new values are bound a second time.
+                $json = $encode($data);
                 db()->prepare('INSERT INTO clinic_profiles (crew_id, data, updated_at, updated_by) VALUES (?, ?, UTC_TIMESTAMP(), ?)
-                    ON DUPLICATE KEY UPDATE data = VALUES(data), updated_at = VALUES(updated_at), updated_by = VALUES(updated_by)')
-                    ->execute([$crewId, json_encode($data, JSON_UNESCAPED_UNICODE), $u['id']]);
+                    ON DUPLICATE KEY UPDATE data = ?, updated_at = UTC_TIMESTAMP(), updated_by = ?')
+                    ->execute([$crewId, $json, $u['id'], $json, $u['id']]);
                 audit($u['id'], 'clinic_profile');
                 $st = db()->prepare('SELECT data, updated_at FROM clinic_profiles WHERE crew_id = ?');
                 $st->execute([$crewId]);
@@ -150,7 +158,7 @@ return (function (): array {
             });
         },
 
-        'POST clinic/assessments' => function () use ($selfOnly, $guard, $urgencies, $strengths, $answers, $assessmentJson): void {
+        'POST clinic/assessments' => function () use ($selfOnly, $guard, $urgencies, $strengths, $answers, $assessmentJson, $encode): void {
             $u = require_user();
             $b = body();
             $crewId = (int) ($b['crewId'] ?? 0);
@@ -183,7 +191,7 @@ return (function (): array {
                 'findings' => $findings,
                 'note' => mb_substr(trim((string) ($a['note'] ?? '')), 0, 500),
             ];
-            $guard(function () use ($u, $crewId, $context, $urgency, $cid, $data, $assessmentJson): void {
+            $guard(function () use ($u, $crewId, $context, $urgency, $cid, $data, $assessmentJson, $encode): void {
                 $pdo = db();
                 $st = $pdo->prepare('SELECT COUNT(*) FROM clinic_assessments WHERE crew_id = ? AND created_at > (UTC_TIMESTAMP() - INTERVAL 1 HOUR)');
                 $st->execute([$crewId]);
@@ -191,7 +199,7 @@ return (function (): array {
                     fail('Too many saved assessments in the last hour. Try again later.', 429);
                 }
                 $pdo->prepare('INSERT INTO clinic_assessments (crew_id, created_at, context, urgency, condition_id, data, created_by) VALUES (?, UTC_TIMESTAMP(), ?, ?, ?, ?, ?)')
-                    ->execute([$crewId, $context, $urgency, $cid, json_encode($data, JSON_UNESCAPED_UNICODE), $u['id']]);
+                    ->execute([$crewId, $context, $urgency, $cid, $encode($data), $u['id']]);
                 $id = (int) $pdo->lastInsertId();
                 audit($u['id'], 'clinic_assessment', "assessment $id");
                 $st = $pdo->prepare('SELECT * FROM clinic_assessments WHERE id = ?');

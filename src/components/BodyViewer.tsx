@@ -232,7 +232,8 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
   const tip = hover ? SYSTEM_BY_ID[hover.id] : null
   const sel = selected ? SYSTEM_BY_ID[selected] : null
   const noLayers = !Object.values(layers).some(Boolean) && !selected
-  const toggle = (on: boolean) => cx('bg-space/80', on ? 'border-soft bg-panel2 text-ink' : 'border-line text-dim')
+  // a pressed toggle is a bordered plate, an unpressed one is quiet text (same footprint, so nothing shifts)
+  const toggle = (on: boolean) => ({ variant: on ? ('secondary' as const) : ('quiet' as const), className: on ? 'bg-panel2' : 'border border-transparent bg-space/70' })
 
   return (
     <div ref={wrapRef} className="relative h-full w-full overflow-hidden" data-viewer="3d">
@@ -282,14 +283,14 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
         </div>
         <div className="pointer-events-auto ml-auto flex flex-wrap justify-end gap-2">
           {showRadiation && (
-            <Button size="sm" onClick={() => onSelect('radiation')} aria-pressed={selected === 'radiation'} className={toggle(selected === 'radiation')}>
+            <Button size="sm" onClick={() => onSelect('radiation')} aria-pressed={selected === 'radiation'} {...toggle(selected === 'radiation')}>
               Whole body
             </Button>
           )}
-          <Button size="sm" icon={Scan} onClick={() => setXray((v) => !v)} aria-pressed={xray} title="Fade the other layers so the selected system stays visible" className={toggle(xray)}>
+          <Button size="sm" icon={Scan} onClick={() => setXray((v) => !v)} aria-pressed={xray} title="Fade the other layers so the selected system stays visible" {...toggle(xray)}>
             X-ray
           </Button>
-          <Button size="sm" icon={spinning ? Pause : Play} onClick={() => setSpin(spinning ? 'off' : 'on')} aria-pressed={spinning} className={toggle(spinning)}>
+          <Button size="sm" icon={spinning ? Pause : Play} onClick={() => setSpin(spinning ? 'off' : 'on')} aria-pressed={spinning} {...toggle(spinning)}>
             {spinning ? 'Pause' : 'Rotate'}
           </Button>
         </div>
@@ -334,9 +335,9 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
 
       <div ref={bottomRef} className="pointer-events-none absolute inset-x-2 bottom-1 flex flex-col items-center gap-1">
         {!compact && (
-          <div className="pointer-events-auto flex flex-wrap justify-center gap-2" role="group" aria-label="Visible layers">
+          <div className="pointer-events-auto flex max-w-full gap-2 overflow-x-auto sm:flex-wrap sm:justify-center sm:overflow-visible" role="group" aria-label="Visible layers">
             {LAYERS.map((l) => (
-              <Button key={l.id} size="sm" aria-pressed={layers[l.id]} onClick={() => setLayers((cur) => ({ ...cur, [l.id]: !cur[l.id] }))} className={toggle(layers[l.id])}>
+              <Button key={l.id} size="sm" aria-pressed={layers[l.id]} onClick={() => setLayers((cur) => ({ ...cur, [l.id]: !cur[l.id] }))} {...toggle(layers[l.id])}>
                 <span className={cx('h-2 w-2 rounded-full', !layers[l.id] && 'opacity-30')} style={{ background: l.color }} />
                 {l.label}
               </Button>

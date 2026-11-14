@@ -506,6 +506,30 @@ const demo: Backend = {
 
 let chosen: Promise<Backend> | null = null
 
+// Once this browser has talked to a working server, a failed health check (bad signal, server restart) must not
+// drop the person into the in-browser demo store: their real records would seem to have vanished and anything
+// they typed would stay on this device only. We remember the server's flags and keep using the server backend;
+// its calls then fail with a visible network error until the connection is back.
+const SEEN_KEY = 'aura.server.v1'
+type Seen = { mail: boolean; signup?: boolean; demo: boolean }
+
+function readSeen(): Seen | null {
+  try {
+    const raw = localStorage.getItem(SEEN_KEY)
+    return raw ? (JSON.parse(raw) as Seen) : null
+  } catch {
+    return null
+  }
+}
+
+function writeSeen(s: Seen) {
+  try {
+    localStorage.setItem(SEEN_KEY, JSON.stringify(s))
+  } catch {
+    /* storage blocked: we only lose the memory */
+  }
+}
+
 export function getBackend(): Promise<Backend> {
   if (!chosen) {
     chosen = (async () => {
@@ -515,9 +539,19 @@ export function getBackend(): Promise<Backend> {
         const res = await fetch('/api/index.php?r=health', { signal: ctrl.signal, credentials: 'same-origin' })
         clearTimeout(t)
         const data = await res.json()
-        if (res.ok && data?.ok && data?.db) return makeServer(!!data.mail, typeof data.signup === 'boolean' ? data.signup : undefined, data.demo !== false)
+        if (res.ok && data?.ok && data?.db) {
+          const seen: Seen = { mail: !!data.mail, signup: typeof data.signup === 'boolean' ? data.signup : undefined, demo: data.demo !== false }
+          writeSeen(seen)
+          return makeServer(seen.mail, seen.signup, seen.demo)
+        }
       } catch {
         /* no API reachable */
+      }
+      const seen = readSeen()
+      if (seen) {
+        // Check again on the next call once the browser reports a connection.
+        if (typeof window !== 'undefined') window.addEventListener('online', () => (chosen = null), { once: true })
+        return makeServer(seen.mail, seen.signup, seen.demo)
       }
       return demo
     })()

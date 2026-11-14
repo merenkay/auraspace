@@ -31,7 +31,7 @@ return [
                 $pdo->prepare("DELETE FROM $table WHERE crew_id = ?")->execute([$crewId]);
             } catch (PDOException $e) {
                 // Table not created yet (install.php not re-run): nothing to purge. Anything else is a real error.
-                if ((string) $e->getCode() !== '42S02') {
+                if (!in_array(sqlstate($e), ['42S02', '42S22'], true)) {
                     throw $e;
                 }
             }

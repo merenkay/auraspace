@@ -47,7 +47,7 @@ export default function ExplainReading({ ev, rows, today }: { ev: Evaluation; ro
         ))}
       </div>
       {hint && <p className="mt-3 text-sm text-warn">{hint}</p>}
-      <div className="mt-6 space-y-8">
+      <div className="mt-8 max-w-3xl space-y-8">
         {turns.map((t) => (
           <article key={t.id} className="space-y-4">
             <p className="ml-auto w-fit max-w-[85%] rounded-2xl bg-panel2 px-4 py-3 text-[15px]">{t.a.question}</p>

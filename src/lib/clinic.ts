@@ -67,12 +67,16 @@ function deny(): never {
 export async function loadProfile(user: User | null, crewId: number): Promise<HealthProfile | null> {
   if (!canReadClinic(user, crewId)) deny()
   const b = await getBackend()
-  if (b.mode === 'server') return apiCall<{ profile: HealthProfile | null }>('clinic/profile', { query: { crew: crewId } }).then((d) => (d.profile ? cleanProfile(d.profile) : null))
-  const s = read()
-  const own = s.profiles[String(crewId)]
-  if (own) return cleanProfile(own)
+  // The simulated crew start with the same labelled starter record in both modes: the server stores nothing
+  // for them until someone saves a profile, and a saved profile always wins.
   const seed = DEMO_PROFILES[crewId]
-  return seed ? cleanProfile({ ...seed, simulated: true, updatedAt: '2026-11-01T00:00:00.000Z' }) : null
+  const starter = () => (seed ? cleanProfile({ ...seed, simulated: true, updatedAt: '2026-11-01T00:00:00.000Z' }) : null)
+  if (b.mode === 'server') {
+    const d = await apiCall<{ profile: HealthProfile | null }>('clinic/profile', { query: { crew: crewId } })
+    return d.profile ? cleanProfile(d.profile) : starter()
+  }
+  const own = read().profiles[String(crewId)]
+  return own ? cleanProfile(own) : starter()
 }
 
 export async function saveProfile(user: User | null, crewId: number, p: HealthProfile): Promise<HealthProfile> {

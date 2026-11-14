@@ -8,7 +8,7 @@ type ListKey = 'conditions' | 'allergies' | 'medicines'
 function Group({ title, choices, value, onToggle }: { title: string; choices: Choice[]; value: string[]; onToggle: (id: string) => void }) {
   return (
     <fieldset>
-      <legend className="mb-1 font-semibold">{title}</legend>
+      <legend className="mb-1 text-[15px] font-semibold text-ink">{title}</legend>
       <div className="grid gap-x-6 sm:grid-cols-2">
         {choices.map((c) => (
           <Checkbox key={c.id} label={c.label} checked={value.includes(c.id)} onChange={() => onToggle(c.id)} />
@@ -25,10 +25,10 @@ function ReadOnly({ p }: { p: HealthProfile }) {
     ['Current medicines', p.medicines],
   ]
   return (
-    <dl className="grid gap-4 sm:grid-cols-2">
+    <dl className="grid max-w-3xl gap-x-6 gap-y-5 sm:grid-cols-2">
       <div>
         <dt className="text-sm text-dim">Age band</dt>
-        <dd className="mt-1">{p.ageBand ? CHOICE_LABEL[p.ageBand] : 'Not recorded'}</dd>
+        <dd className="mt-1 text-[15px]">{p.ageBand ? CHOICE_LABEL[p.ageBand] : 'Not recorded'}</dd>
       </div>
       {groups.map(([k, v]) => (
         <div key={k}>
@@ -64,13 +64,13 @@ export default function ProfileEditor({ profile, editable, onSave }: { profile: 
     <Section
       title="Health profile"
       description="AURA uses this to weigh possible causes and to check first-aid medicines against your allergies and medicines. Only you and your care team can see it."
-      action={profile?.simulated ? <Badge>Simulated record</Badge> : undefined}
     >
+      {profile?.simulated && <div className="mb-4"><Badge>Simulated record</Badge></div>}
       {!profile && <Notice tone="warn" className="mb-6" title="No profile yet">Without it AURA cannot check medicines against your allergies, so it will ask you to check the cautions yourself.</Notice>}
       {!editable ? (
         profile ? <ReadOnly p={profile} /> : <p className="text-soft">This person has not recorded a health profile.</p>
       ) : (
-        <div className="space-y-8">
+        <div className="max-w-3xl space-y-6 [&>fieldset]:border-t [&>fieldset]:border-line [&>fieldset]:pt-6">
           <Field label="Age band" className="max-w-xs">
             <Select value={draft.ageBand ?? ''} onChange={(e) => setDraft({ ...draft, ageBand: (e.target.value || null) as HealthProfile['ageBand'] })}>
               <option value="">Prefer not to say</option>
