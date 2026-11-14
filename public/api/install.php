@@ -109,6 +109,18 @@ $pdo->exec('ALTER TABLE crew MODIFY id INT NOT NULL AUTO_INCREMENT');
 // keep registered accounts clear of the fixed demo ids
 $pdo->exec('ALTER TABLE users AUTO_INCREMENT = 1000');
 $pdo->exec('ALTER TABLE crew AUTO_INCREMENT = 1000');
+
+// Feature modules (schema/*.php): run their idempotent table steps.
+foreach (schema_modules() as $moduleName => $module) {
+    foreach (($module['tables'] ?? []) as $step) {
+        if ($step instanceof Closure) {
+            $step($pdo);
+        } else {
+            $pdo->exec((string) $step);
+        }
+    }
+    echo "Module ready: $moduleName\n";
+}
 echo "Tables ready.\n";
 
 $hasDemo = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role <> 'member'")->fetchColumn() > 0;
@@ -122,6 +134,9 @@ if ($demoCrew) {
     $in = implode(',', array_map('intval', $demoCrew));
     foreach (['measurements', 'task_done', 'reports'] as $t) {
         $pdo->exec("DELETE FROM $t WHERE crew_id IN ($in)");
+    }
+    foreach ($demoCrew as $demoId) {
+        purge_modules($pdo, (int) $demoId, (int) $demoId); // demo users share their crew id
     }
     $pdo->exec("DELETE FROM crew WHERE id IN ($in)");
 }

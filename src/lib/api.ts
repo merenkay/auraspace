@@ -61,6 +61,9 @@ async function call<T>(route: string, opts: { method?: string; body?: unknown; q
   return data as T
 }
 
+/** Low-level call to /api/index.php?r=<route> for feature modules (throws ApiError). Only use when getBackend().mode === 'server'. */
+export const apiCall = call
+
 const normUser = (u: User): User => ({ ...u, context: contextOf(u.context) })
 
 function makeServer(mailReady: boolean): Backend {

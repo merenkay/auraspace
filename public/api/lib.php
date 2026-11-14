@@ -287,6 +287,36 @@ function day_for_crew(array $u, int $crewId): int
     return mission_for($u)['day'];
 }
 
+/* --------------------------------------------------------- feature modules */
+
+/**
+ * Schema modules live in schema/*.php. Each returns:
+ *   ['tables' => [ 'CREATE TABLE IF NOT EXISTS ...', function (PDO $pdo): void {...}, ... ],
+ *    'purge'  => function (PDO $pdo, int $crewId, int $userId): void {...}   // optional: delete one person's rows
+ *   ]
+ * install.php runs 'tables' (idempotent); account deletion and demo reset call 'purge'.
+ */
+function schema_modules(): array
+{
+    $mods = [];
+    foreach (glob(__DIR__ . '/schema/*.php') ?: [] as $file) {
+        $m = require $file;
+        if (is_array($m)) {
+            $mods[basename($file, '.php')] = $m;
+        }
+    }
+    return $mods;
+}
+
+function purge_modules(PDO $pdo, int $crewId, int $userId): void
+{
+    foreach (schema_modules() as $m) {
+        if (isset($m['purge']) && $m['purge'] instanceof Closure) {
+            $m['purge']($pdo, $crewId, $userId);
+        }
+    }
+}
+
 /* ------------------------------------------------------------- email codes */
 
 function code_hash(string $email, string $purpose, string $code): string

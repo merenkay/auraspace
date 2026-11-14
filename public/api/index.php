@@ -179,6 +179,7 @@ try {
             foreach (['measurements', 'task_done', 'reports'] as $t) {
                 $pdo->prepare("DELETE FROM $t WHERE crew_id = ?")->execute([$u['crewId']]);
             }
+            purge_modules($pdo, (int) $u['crewId'], (int) $u['id']);
             $pdo->prepare('DELETE FROM crew WHERE id = ?')->execute([$u['crewId']]);
             $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$u['id']]);
             $pdo->commit();
@@ -340,6 +341,15 @@ try {
                 fail('Report not found', 404);
             }
             json_out(['report' => report_json($r)]);
+        }
+    }
+
+    // Feature modules: every file in routes/ returns ['METHOD route' => Closure].
+    foreach (glob(__DIR__ . '/routes/*.php') ?: [] as $moduleFile) {
+        $handlers = require $moduleFile;
+        if (is_array($handlers) && isset($handlers["$method $route"]) && $handlers["$method $route"] instanceof Closure) {
+            $handlers["$method $route"]();
+            fail('Handler returned no response', 500);
         }
     }
 

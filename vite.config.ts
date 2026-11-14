@@ -2,17 +2,15 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// In local development, /api is forwarded to the live Hostinger site so the PHP API
-// and MySQL database can be used without running PHP locally.
-const API_ORIGIN = process.env.AURA_API_ORIGIN ?? 'https://lightseagreen-badger-727436.hostingersite.com'
+// Local development runs in demo mode (in-browser data) by default. To use a real PHP API and
+// MySQL database from the dev server, start it with AURA_API_ORIGIN=https://your-site.example
+const API_ORIGIN = process.env.AURA_API_ORIGIN
 
 export default defineConfig({
   base: '/',
   plugins: [react(), tailwindcss()],
   server: {
-    proxy: {
-      '/api': { target: API_ORIGIN, changeOrigin: true, secure: true },
-    },
+    proxy: API_ORIGIN ? { '/api': { target: API_ORIGIN, changeOrigin: true, secure: true } } : undefined,
   },
   build: {
     chunkSizeWarningLimit: 1600,
