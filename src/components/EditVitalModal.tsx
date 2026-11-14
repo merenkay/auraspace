@@ -10,7 +10,7 @@ type Props = {
   onClose: () => void
 }
 
-// The data layer carries emoji for the 1-5 mood scale; the UI draws these faces instead (same order).
+// The data layer carries plain-text labels for the 1-5 mood scale; the UI draws these faces (same order).
 const MOOD_FACES: LucideIcon[] = [Angry, Frown, Meh, Smile, Laugh]
 
 export default function EditVitalModal({ def, values, onSave, onClose }: Props) {

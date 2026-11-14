@@ -94,10 +94,15 @@ export default function Overview({ crewId }: { crewId: number }) {
     />
   )
 
-  if (!ev || ev.vitals.length === 0) {
+  if (!ev || !ev.hasData) {
     return (
       <>
         <Welcome name={user?.name ?? ''} ctx={ctx} onLog={canEdit ? setEditing : undefined} />
+        {user?.role === 'member' && (
+          <div className="mt-10">
+            <DeleteAccount />
+          </div>
+        )}
         {editModal}
       </>
     )
@@ -109,7 +114,7 @@ export default function Overview({ crewId }: { crewId: number }) {
   const shownAlerts = ev.alerts.slice(0, 3)
   const shownSystems = new Set(shownAlerts.map((a) => a.system))
   // Systems that need a look but are not already covered by one of the alerts above.
-  const otherSystems = ev.systems.filter((s) => ev.systemStatus[s.id] !== 'ok' && !shownSystems.has(s.id)).slice(0, 4)
+  const otherSystems = ev.systems.filter((s) => ev.systemMeasured[s.id] && ev.systemStatus[s.id] !== 'ok' && !shownSystems.has(s.id)).slice(0, 4)
 
   const sendReport = async () => {
     if (!backend) return
@@ -207,7 +212,7 @@ export default function Overview({ crewId }: { crewId: number }) {
           </div>
 
           <Card pad="none" className="relative h-[460px] overflow-hidden sm:h-[540px] lg:col-span-7 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-[660px]">
-            <BodyViewer statuses={ev.systemStatus} summaries={summaries} selected={selected} onSelect={setSelected} heartRate={ev.values.hr} showRadiation={ev.showRad} />
+            <BodyViewer statuses={ev.systemStatus} measured={ev.systemMeasured} summaries={summaries} selected={selected} onSelect={setSelected} heartRate={ev.values.hr} showRadiation={ev.showRad} />
           </Card>
 
           <div className="lg:col-span-5 lg:col-start-8 lg:row-start-2">
@@ -273,7 +278,7 @@ export default function Overview({ crewId }: { crewId: number }) {
         <SystemPanel
           open={!editing}
           system={SYSTEM_BY_ID[selected]}
-          status={ev.systemStatus[selected]}
+          status={ev.systemMeasured[selected] ? ev.systemStatus[selected] : null}
           values={ev.values}
           available={ev.vitals.map((d) => d.key)}
           context={ctx}
@@ -464,7 +469,7 @@ function PrintableReport({ ev, name, ctx, day, onClose }: { ev: Evaluation; name
         </>
       }
     >
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-deep p-4 font-mono text-[13px] leading-relaxed text-soft">{text}</pre>
+      <pre data-print-report className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-deep p-4 font-mono text-[13px] leading-relaxed text-soft">{text}</pre>
     </Dialog>
   )
 }

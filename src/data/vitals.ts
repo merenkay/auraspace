@@ -44,14 +44,15 @@ export type VitalDef = {
   private?: boolean // hidden from ground crew
 }
 
-const MOOD = ['😞', '🙁', '😐', '🙂', '😄']
+// Plain-text labels; the entry dialog draws a lucide face for each step (EditVitalModal).
+const MOOD = ['Very low', 'Low', 'Okay', 'Good', 'Great']
 
 // Single source of truth for thresholds. Triage is rule-based and works offline;
 // AURA explains these results but never sets them.
 export const VITALS: VitalDef[] = [
   {
     key: 'bp',
-    label: 'Blood Pressure',
+    label: 'Blood pressure',
     short: 'BP',
     unit: 'mmHg',
     primary: 'sys',
@@ -68,7 +69,7 @@ export const VITALS: VitalDef[] = [
   },
   {
     key: 'hr',
-    label: 'Heart Rate',
+    label: 'Heart rate',
     short: 'HR',
     unit: 'bpm',
     primary: 'hr',
@@ -81,7 +82,7 @@ export const VITALS: VitalDef[] = [
   },
   {
     key: 'spo2',
-    label: 'Blood Oxygen',
+    label: 'Blood oxygen',
     short: 'SpO₂',
     unit: '%',
     primary: 'spo2',
@@ -94,7 +95,7 @@ export const VITALS: VitalDef[] = [
   },
   {
     key: 'temp',
-    label: 'Body Temperature',
+    label: 'Body temperature',
     short: 'Temp',
     unit: '°C',
     primary: 'temp',
@@ -107,7 +108,7 @@ export const VITALS: VitalDef[] = [
   },
   {
     key: 'glucose',
-    label: 'Blood Sugar',
+    label: 'Blood sugar',
     short: 'Glucose',
     unit: 'mg/dL',
     primary: 'glucose',
@@ -161,7 +162,7 @@ export const VITALS: VitalDef[] = [
   },
   {
     key: 'vision',
-    label: 'Vision Check',
+    label: 'Vision check',
     short: 'Vision',
     unit: '/ 5',
     primary: 'vision',
@@ -174,7 +175,7 @@ export const VITALS: VitalDef[] = [
   },
   {
     key: 'water',
-    label: 'Water Intake',
+    label: 'Water intake',
     short: 'Water',
     unit: 'L',
     primary: 'water',
@@ -190,7 +191,7 @@ export const VITALS: VitalDef[] = [
 export const VITAL_BY_KEY = Object.fromEntries(VITALS.map((d) => [d.key, d])) as Record<VitalKey, VitalDef>
 
 export const STATUS_COLOR: Record<Status, string> = { ok: '#4DC588', warn: '#FAC547', crit: '#F75D59' }
-export const STATUS_LABEL: Record<Status, string> = { ok: 'NORMAL', warn: 'ATTENTION', crit: 'URGENT' }
+export const STATUS_LABEL: Record<Status, string> = { ok: 'Normal', warn: 'Attention', crit: 'Urgent' }
 export const STATUS_RANK: Record<Status, number> = { ok: 0, warn: 1, crit: 2 }
 
 export function worst(list: Status[]): Status {

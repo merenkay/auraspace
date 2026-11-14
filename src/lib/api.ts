@@ -1,7 +1,7 @@
 // Data access. Uses the PHP/MySQL API on Hostinger when it answers; otherwise falls back to an
 // in-browser demo store (same simulated crew) so the app always works — including offline.
 import { contextOf, type Context } from '../data/contexts'
-import type { FieldId } from '../data/vitals'
+import { VITALS, type FieldId } from '../data/vitals'
 import { CREW, MISSION, STAFF, TASKS_BY_CONTEXT, generateMeasurements } from './demoData'
 import { IMPORT_DEVICES } from './samsungHealth'
 import type { CodeTicket, CrewMember, ImportResult, ImportRow, Measurement, Mission, Report, ReportSummary, Role, Task, User } from './types'
@@ -349,7 +349,7 @@ const demo: Backend = {
     if (!p.payload) throw new ApiError('Registration expired. Please sign up again.', 410)
     // Never reuse an id: after an account is deleted, members.length would hand out a live member's id again.
     const id = Math.max(1000, ...st.members.map((x) => x.id + 1))
-    const colors = ['#53D7FF', '#B49CFF', '#35D399', '#F6BD60', '#FF8FA3']
+    const colors = ['#92C1FD', '#B9DAFF', '#C7C4BD', '#9B9891', '#716E69']
     const m: DemoMember = { id, crewId: id, email: e, name: p.payload.name, pass: p.payload.pass, context: p.payload.context, createdAt: new Date().toISOString(), color: colors[id % colors.length] }
     const user = memberUser(m)
     writeStore({ ...st, members: [...st.members, m], user })
@@ -416,10 +416,18 @@ const demo: Backend = {
   addMeasurements: async (crewId, values, source, device) => {
     const st = readStore()
     guardOwn(st, crewId)
+    // same checks as the server: known metric, finite number, inside the field's min/max; nothing is saved if one fails
+    const entries = Object.entries(values)
+    if (!entries.length || entries.length > 12) throw new ApiError('No values', 400)
+    for (const [metric, value] of entries) {
+      const field = VITALS.flatMap((v) => v.fields).find((f) => f.id === metric)
+      if (!field) throw new ApiError('Invalid metric: ' + metric.slice(0, 20), 400)
+      if (typeof value !== 'number' || !Number.isFinite(value) || value < field.min || value > field.max) throw new ApiError('Value out of range for ' + metric, 400)
+    }
     const now = new Date().toISOString()
     const day = dayFor(st, crewId)
     let id = Math.max(1_000_000, ...st.extra.map((m) => m.id + 1))
-    const rows: Measurement[] = Object.entries(values).map(([metric, value]) => ({ id: id++, crewId, metric: metric as FieldId, value: value as number, day, at: now, source, device }))
+    const rows: Measurement[] = entries.map(([metric, value]) => ({ id: id++, crewId, metric: metric as FieldId, value: value as number, day, at: now, source, device }))
     writeStore({ ...st, extra: [...st.extra, ...rows] })
     return delay(rows)
   },

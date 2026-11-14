@@ -431,8 +431,9 @@ export type Body3DProps = {
   controlsRef?: RefObject<ViewerControls | null>
 }
 
-const CYAN = '#53D7FF'
-const GHOST_TINT = new THREE.Color('#86b4d6')
+// neutral highlight (the ink token); status colours come from STATUS_COLOR
+const NEUTRAL_GLOW = '#F3F0EA'
+const GHOST_TINT = new THREE.Color('#a39f97')
 const FOV = 38
 const POLAR_HOME = 1.5
 const POLAR_MIN = 0.5
@@ -979,7 +980,7 @@ function Model(props: Body3DProps) {
       const status = p.statuses[rec.system] ?? 'ok'
       const dim = rec.shell ? 0.6 : PRIMARY_NODE[rec.system] === rec.name ? 1 : 0.45
       if (rec.system === p.selected) {
-        m.emissive.set(status === 'ok' ? CYAN : STATUS_COLOR[status])
+        m.emissive.set(status === 'ok' ? NEUTRAL_GLOW : STATUS_COLOR[status])
         m.emissiveIntensity = (0.42 + 0.3 * pulse) * dim
       } else if (rec.system === hoverId) {
         m.emissive.set(STATUS_COLOR[status])
@@ -1000,39 +1001,6 @@ function Model(props: Body3DProps) {
   return <primitive object={inst.root} />
 }
 
-function ScanRing({ still }: { still?: boolean }) {
-  const ref = useRef<THREE.Mesh>(null)
-  const time = useRef(0)
-  useFrame((_, dt) => {
-    if (!ref.current) return
-    if (!still) time.current += Math.min(dt, 0.1)
-    const t = time.current
-    ref.current.position.y = 0.05 + ((Math.sin(t * 0.6) + 1) / 2) * 1.7
-    ;(ref.current.material as THREE.MeshBasicMaterial).opacity = 0.18 + 0.12 * Math.sin(t * 1.2)
-  })
-  return (
-    <mesh ref={ref} rotation={[-Math.PI / 2, 0, 0]} raycast={() => {}}>
-      <ringGeometry args={[0.42, 0.45, 96]} />
-      <meshBasicMaterial color={CYAN} transparent opacity={0.25} side={THREE.DoubleSide} depthWrite={false} />
-    </mesh>
-  )
-}
-
-function Platform() {
-  return (
-    <group position={[0, 0, 0]}>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => {}}>
-        <ringGeometry args={[0.55, 0.57, 96]} />
-        <meshBasicMaterial color={CYAN} transparent opacity={0.5} depthWrite={false} />
-      </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} raycast={() => {}}>
-        <circleGeometry args={[0.55, 64]} />
-        <meshBasicMaterial color={CYAN} transparent opacity={0.06} depthWrite={false} />
-      </mesh>
-      <gridHelper args={[3, 30, '#1E3A55', '#12263A']} position={[0, -0.001, 0]} />
-    </group>
-  )
-}
 
 // If the GPU drops the WebGL context and does not give it back, tell the parent so it can show the SVG fallback.
 function ContextWatch({ onLost }: { onLost?: () => void }) {
@@ -1084,15 +1052,13 @@ export default function Body3D(props: Body3DProps) {
         <PerformanceMonitor onDecline={() => setDpr(1)} />
         <ContextWatch onLost={props.onLost} />
         <ambientLight intensity={0.55} />
-        <hemisphereLight args={['#bfe9ff', '#0b1a2c', 0.7]} />
+        <hemisphereLight args={['#f1ede6', '#12110F', 0.7]} />
         <directionalLight position={[2.5, 4, 3]} intensity={1.6} />
-        <directionalLight position={[-3, 2, -2]} intensity={0.7} color={CYAN} />
-        <pointLight position={[0, 1.2, 1.5]} intensity={0.6} color="#A5E9FF" />
+        <directionalLight position={[-3, 2, -2]} intensity={0.7} />
+        <pointLight position={[0, 1.2, 1.5]} intensity={0.6} />
         <Suspense fallback={null}>
           <Model {...props} />
         </Suspense>
-        <ScanRing still={props.reducedMotion} />
-        <Platform />
       </Canvas>
     </div>
   )

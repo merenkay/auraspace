@@ -290,6 +290,10 @@ body {
   opacity: 1;
   filter: brightness(1.25) saturate(1.1);
 }
+/* another system is selected: step back, unless this one is hovered or focused */
+.organ.is-dimmed:not(.is-active) {
+  opacity: 0.4;
+}
 .organ.is-active .pop {
   transform: scale(1.06);
 }
@@ -357,5 +361,42 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+/* ---------- Print: only the report dialog, no app chrome ---------- */
+@media print {
+  #root,
+  [data-overlay-part="scrim"],
+  [data-overlay-part="close"],
+  [data-overlay-part="footer"] {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  [data-overlay] {
+    position: static !important;
+    display: block !important;
+    padding: 0 !important;
+  }
+  [data-overlay] [role="dialog"] {
+    max-height: none !important;
+    max-width: none !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+  [data-overlay] [role="dialog"] * {
+    color: #000 !important;
+    overflow: visible !important;
+  }
+  [data-print-report] {
+    max-height: none !important;
+    border: 0 !important;
+    background: #fff !important;
+    font-size: 12pt !important;
   }
 }

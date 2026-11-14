@@ -37,7 +37,7 @@ type PartProps = {
   id: SystemId
   children: ReactNode
   pop?: boolean
-  status: Status
+  status: Status | null
   hovered: boolean
   selected: boolean
   /** another system is selected: step back so the selection stands out */
@@ -49,12 +49,12 @@ type PartProps = {
 function Part({ id, children, pop = true, status, hovered, selected, dimmed, setHovered, onSelect }: PartProps) {
   return (
     <g
-      className={`organ ${hovered || selected ? 'is-active' : ''} ${status === 'crit' ? 'is-crit' : ''}`}
-      style={{ color: STATUS_COLOR[status], opacity: dimmed && !hovered ? 0.4 : undefined }}
+      className={`organ ${hovered || selected ? 'is-active' : ''} ${dimmed ? 'is-dimmed' : ''} ${status === 'crit' ? 'is-crit' : ''}`}
+      style={{ color: status === null ? 'var(--color-dim)' : status === 'ok' ? 'var(--color-soft)' : STATUS_COLOR[status] }}
       role="button"
       tabIndex={0}
       aria-pressed={selected}
-      aria-label={`${SYSTEM_BY_ID[id].name}: ${STATUS_LABEL[status]}`}
+      aria-label={`${SYSTEM_BY_ID[id].name}: ${status ? STATUS_LABEL[status] : 'Not measured yet'}`}
       data-system={id}
       onPointerEnter={() => setHovered(() => id)}
       onPointerLeave={() => setHovered((h) => (h === id ? null : h))}
@@ -79,6 +79,7 @@ function Part({ id, children, pop = true, status, hovered, selected, dimmed, set
 
 type Props = {
   statuses: Record<SystemId, Status>
+  measured?: Record<SystemId, boolean>
   summaries: Record<SystemId, string>
   selected: SystemId | null
   onSelect: (id: SystemId) => void
@@ -87,7 +88,8 @@ type Props = {
   showRadiation?: boolean
 }
 
-export default function BodyMap({ statuses, summaries, selected, onSelect, heartRate, showRadiation = true }: Props) {
+export default function BodyMap({ statuses, measured, summaries, selected, onSelect, heartRate, showRadiation = true }: Props) {
+  const shown = (id: SystemId): Status | null => (measured && measured[id] === false ? null : statuses[id])
   const [hovered, setHovered] = useState<SystemId | null>(null)
   const boxRef = useRef<HTMLDivElement>(null)
   const svgRef = useRef<SVGSVGElement>(null)
@@ -97,7 +99,7 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
   const focus = selected && selected !== 'radiation' ? selected : null
   const p = (id: SystemId) => ({
     id,
-    status: statuses[id],
+    status: shown(id),
     hovered: hovered === id,
     selected: selected === id,
     dimmed: focus !== null && focus !== id,
@@ -138,9 +140,8 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
       <svg ref={svgRef} viewBox={`0 0 ${VB_W} ${VB_H}`} className="h-full w-full overflow-visible" role="group" aria-label="Interactive body map">
         <defs>
           <linearGradient id="skin" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#7dd3fc" stopOpacity="0.42" />
-            <stop offset="0.55" stopColor="#38bdf8" stopOpacity="0.22" />
-            <stop offset="1" stopColor="#0ea5e9" stopOpacity="0.12" />
+            <stop offset="0" stopColor="var(--color-soft)" stopOpacity="0.22" />
+            <stop offset="1" stopColor="var(--color-soft)" stopOpacity="0.08" />
           </linearGradient>
           <radialGradient id="aura" cx="0.5" cy="0.45" r="0.6">
             <stop offset="0" stopColor="currentColor" stopOpacity="0.1" />
@@ -151,16 +152,7 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
             <path d={HALF_BODY} transform={`translate(${VB_W} 0) scale(-1 1)`} />
             <ellipse cx="150" cy="58" rx="26" ry="32" />
           </clipPath>
-          <linearGradient id="scan" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stopColor="#7dd3fc" stopOpacity="0" />
-            <stop offset="0.5" stopColor="#bae6fd" stopOpacity="0.5" />
-            <stop offset="1" stopColor="#7dd3fc" stopOpacity="0" />
-          </linearGradient>
         </defs>
-
-        {/* platform ring */}
-        <ellipse cx="150" cy="562" rx="92" ry="11" fill="none" stroke="#38bdf8" strokeOpacity="0.35" />
-        <ellipse cx="150" cy="562" rx="62" ry="7" fill="#38bdf8" fillOpacity="0.08" />
 
         {/* whole body = radiation exposure (only a backdrop where radiation is not tracked) */}
         {showRadiation ? (
@@ -173,9 +165,9 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
           </g>
         )}
 
-        {/* anatomy hints + scan sweep (decorative) */}
+        {/* anatomy hints (decorative) */}
         <g clipPath="url(#bodyClip)" pointerEvents="none">
-          <g fill="none" stroke="#bae6fd" strokeOpacity="0.28" strokeWidth="1">
+          <g fill="none" stroke="var(--color-soft)" strokeOpacity="0.25" strokeWidth="1">
             <path d="M150,104 V284" strokeDasharray="3 4" />
             <path d="M150,112 C136,110 122,112 108,120 M150,112 C164,110 178,112 192,120" />
             <path d="M150,130 C132,132 116,140 108,152 M150,130 C168,132 184,140 192,152" />
@@ -185,7 +177,6 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
             <path d="M112,250 C124,266 138,276 150,280 C162,276 176,266 188,250" />
             <path d="M118,250 C130,244 142,246 150,256 C158,246 170,244 182,250" />
           </g>
-          <rect className="scanline" x="0" y="0" width={VB_W} height="46" fill="url(#scan)" />
         </g>
 
         {/* bones & muscles: arms and legs */}
@@ -263,7 +254,7 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
             style={{ animationDuration: `${(60 / Math.max(30, Math.min(200, heartRate || 60))).toFixed(2)}s` }}
             d="M154,169 C141,159 139,149 145,145 C149,142 153,145 154,149 C155,145 159,142 163,145 C169,149 167,159 154,169 Z"
             fill="currentColor"
-            stroke="#050b16"
+            stroke="var(--color-deep)"
             strokeWidth="1.2"
           />
         </Part>
@@ -277,7 +268,7 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
           />
           <path
             d="M150,35 V64 M138,40 C142,44 142,50 137,54 M162,40 C158,44 158,50 163,54 M133,48 C137,48 140,46 141,43 M167,48 C163,48 160,46 159,43"
-            stroke="#050b16"
+            stroke="var(--color-deep)"
             strokeOpacity="0.55"
             strokeWidth="1.3"
             fill="none"
@@ -290,8 +281,8 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
           <rect x="127" y="66" width="46" height="15" rx="7" fill="transparent" />
           <ellipse cx="140" cy="73" rx="6" ry="3.6" fill="currentColor" />
           <ellipse cx="160" cy="73" rx="6" ry="3.6" fill="currentColor" />
-          <circle cx="140" cy="73" r="1.7" fill="#050b16" />
-          <circle cx="160" cy="73" r="1.7" fill="#050b16" />
+          <circle cx="140" cy="73" r="1.7" fill="var(--color-deep)" />
+          <circle cx="160" cy="73" r="1.7" fill="var(--color-deep)" />
         </Part>
       </svg>
 
@@ -299,9 +290,9 @@ export default function BodyMap({ statuses, summaries, selected, onSelect, heart
         <div ref={tipRef} data-viewer-tip={tip.id} className="pointer-events-none absolute left-1/2 z-20 w-60 max-w-[92%] -translate-x-1/2 rounded-2xl border border-line bg-panel2 p-3 text-left shadow-overlay">
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold text-ink">{tip.name}</span>
-            <StatusText status={statuses[tip.id]} className="text-xs" />
+            <StatusText status={shown(tip.id)} className="text-xs" />
           </div>
-          <div className="mt-1 text-base font-semibold" style={{ color: statuses[tip.id] === 'ok' ? undefined : STATUS_COLOR[statuses[tip.id]] }}>
+          <div className="mt-1 text-base font-semibold" style={{ color: shown(tip.id) === 'warn' || shown(tip.id) === 'crit' ? STATUS_COLOR[statuses[tip.id]] : undefined }}>
             {summaries[tip.id]}
           </div>
           <p className="mt-1 text-xs leading-snug text-soft">{tip.hint}</p>

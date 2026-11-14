@@ -54,7 +54,6 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { Link } from 'react-router'
-import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceDot, ReferenceLine, ResponsiveContainer, Tooltip as RTooltip, XAxis, YAxis } from 'recharts'
 import type { SystemId } from '../data/systems'
 import { STATUS_COLOR, type Status, type VitalKey } from '../data/vitals'
 
@@ -365,9 +364,10 @@ export function Field({ label, hint, error, optional = false, children, classNam
   )
 }
 
-export function Input({ className, trailing, ...rest }: InputHTMLAttributes<HTMLInputElement> & { trailing?: ReactNode }) {
+export function Input({ className, trailing, id, ...rest }: InputHTMLAttributes<HTMLInputElement> & { trailing?: ReactNode }) {
   const f = useContext(FieldCtx)
-  const el = <input id={f?.id} aria-describedby={f?.describedBy} aria-invalid={f?.invalid || undefined} {...rest} className={cx(controlCls, 'h-11', trailing ? 'pr-12' : '', className)} />
+  // an explicit id wins (e.g. a hand-written <label htmlFor>); inside <Field> the Field supplies it
+  const el = <input id={id ?? f?.id} aria-describedby={f?.describedBy} aria-invalid={f?.invalid || undefined} {...rest} className={cx(controlCls, 'h-11', trailing ? 'pr-12' : '', className)} />
   if (!trailing) return el
   return (
     <div className="relative">
@@ -383,11 +383,11 @@ export function PasswordInput(props: Omit<InputHTMLAttributes<HTMLInputElement>,
   return <Input {...props} type={show ? 'text' : 'password'} trailing={<IconButton icon={show ? EyeOff : Eye} label={show ? 'Hide password' : 'Show password'} size="sm" onClick={() => setShow((s) => !s)} />} />
 }
 
-export function Select({ className, children, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
+export function Select({ className, children, id, ...rest }: SelectHTMLAttributes<HTMLSelectElement>) {
   const f = useContext(FieldCtx)
   return (
     <div className="relative">
-      <select id={f?.id} aria-describedby={f?.describedBy} aria-invalid={f?.invalid || undefined} {...rest} className={cx(controlCls, 'h-11 appearance-none pr-10', className)}>
+      <select id={id ?? f?.id} aria-describedby={f?.describedBy} aria-invalid={f?.invalid || undefined} {...rest} className={cx(controlCls, 'h-11 appearance-none pr-10', className)}>
         {children}
       </select>
       <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-dim" aria-hidden="true" />
@@ -395,9 +395,9 @@ export function Select({ className, children, ...rest }: SelectHTMLAttributes<HT
   )
 }
 
-export function Textarea({ className, rows = 3, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+export function Textarea({ className, rows = 3, id, ...rest }: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   const f = useContext(FieldCtx)
-  return <textarea id={f?.id} aria-describedby={f?.describedBy} aria-invalid={f?.invalid || undefined} rows={rows} {...rest} className={cx(controlCls, 'py-2.5 leading-normal', className)} />
+  return <textarea id={id ?? f?.id} aria-describedby={f?.describedBy} aria-invalid={f?.invalid || undefined} rows={rows} {...rest} className={cx(controlCls, 'py-2.5 leading-normal', className)} />
 }
 
 export function Checkbox({ label, className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'className'> & { label: ReactNode; className?: string }) {
@@ -706,7 +706,7 @@ export function Meter({ value, min = 0, max = 100, marks = [], status, label, cl
   return (
     <div role="meter" aria-label={label} aria-valuemin={min} aria-valuemax={max} aria-valuenow={Math.round(value * 100) / 100} className={cx('relative h-1.5', className)}>
       <div className="absolute inset-x-0 top-1/2 h-0.5 -translate-y-1/2 overflow-hidden rounded-full bg-line">
-        <motion.div className="h-full origin-left rounded-full" style={{ width: `${pct(value)}%`, background: status ? STATUS_COLOR[status] : 'var(--color-ink)' }} initial={{ scaleX: 0 }} animate={{ scaleX: 1 }} transition={{ duration: DUR.draw, ease: EASE.out }} />
+        <motion.div className="h-full rounded-full" style={{ background: status ? STATUS_COLOR[status] : 'var(--color-ink)' }} initial={{ width: 0 }} animate={{ width: `${pct(value)}%` }} transition={{ duration: DUR.draw, ease: EASE.out }} />
       </div>
       {marks.map((m) => (
         <span key={m.at} aria-hidden="true" className="absolute top-0 h-full w-px" style={{ left: `${pct(m.at)}%`, background: m.status ? STATUS_COLOR[m.status] : 'var(--color-edge)' }} />
@@ -745,29 +745,6 @@ export function ScoreRing({ score, status, size = 168 }: { score: number; status
         </span>
         <span className="mt-1.5 text-sm text-dim">of 100</span>
       </div>
-    </div>
-  )
-}
-
-/** A trend at a glance: straight segments between real measurements, a dot on the latest one. No fill, no smoothing. */
-export function Sparkline({ data, color, height = 44 }: { data: { day: number; value: number }[]; color: string; height?: number }) {
-  if (data.length < 2)
-    return (
-      <div style={{ height }} className="flex items-end text-xs text-dim">
-        Not enough data for a trend
-      </div>
-    )
-  const last = data[data.length - 1]
-  return (
-    <div style={{ height }} aria-hidden="true">
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={data} margin={{ top: 5, right: 5, bottom: 5, left: 1 }}>
-          <XAxis hide type="number" dataKey="day" domain={['dataMin', 'dataMax']} />
-          <YAxis hide domain={['dataMin', 'dataMax']} />
-          <Line type="linear" dataKey="value" stroke={color} strokeWidth={1.5} dot={false} activeDot={false} animationDuration={DUR.draw * 1000} animationEasing="ease-out" />
-          <ReferenceDot x={last.day} y={last.value} r={2.5} fill={color} stroke="none" ifOverflow="visible" />
-        </LineChart>
-      </ResponsiveContainer>
     </div>
   )
 }
@@ -825,6 +802,22 @@ export function ChartTooltip({ active, payload, label, unit, formatLabel, format
   )
 }
 
+/** A collapsed-by-default group: heading + hairline like <Section>, opens in place. Native <details>, so keyboard and screen readers work without extra code. */
+export function Disclosure({ title, meta, defaultOpen = false, size = 'section', children, className }: { title: ReactNode; meta?: ReactNode; defaultOpen?: boolean; size?: 'section' | 'row'; children: ReactNode; className?: string }) {
+  return (
+    <details open={defaultOpen} className={cx('group', className)}>
+      <summary className={cx('flex min-h-11 cursor-pointer list-none items-center justify-between gap-4 rounded-lg [&::-webkit-details-marker]:hidden', size === 'section' ? 'border-b border-line pb-3 pt-1 group-open:mb-4' : 'py-2 text-sm text-soft hover:text-ink group-open:mb-2')}>
+        <span className="min-w-0">
+          <span className={size === 'section' ? 'text-heading text-ink' : 'font-medium'}>{title}</span>
+          {meta && <span className="ml-3 text-sm text-dim">{meta}</span>}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-dim transition-transform group-open:rotate-180" aria-hidden="true" />
+      </summary>
+      {children}
+    </details>
+  )
+}
+
 /* ================================================================== */
 /* Tabs / segmented control                                            */
 /* ================================================================== */
@@ -853,8 +846,24 @@ export function Tabs<T extends string>({ value, onChange, options, variant = 'pi
     }
   }
   const pill = variant === 'pill'
+  const scroller = useRef<HTMLDivElement>(null)
+  const [fade, setFade] = useState({ left: false, right: false })
+  useEffect(() => {
+    const el = scroller.current
+    if (!el) return
+    const update = () => setFade({ left: el.scrollLeft > 4, right: el.scrollLeft + el.clientWidth < el.scrollWidth - 4 })
+    update()
+    el.addEventListener('scroll', update, { passive: true })
+    const ro = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(update)
+    ro?.observe(el)
+    return () => {
+      el.removeEventListener('scroll', update)
+      ro?.disconnect()
+    }
+  }, [options.length])
   return (
-    <div role="tablist" aria-label={label} className={cx('no-scrollbar max-w-full overflow-x-auto', pill ? 'rounded-[10px] border border-line bg-deep p-1' : 'border-b border-line', full ? 'flex' : 'inline-flex', pill ? 'gap-1' : 'gap-6', className)}>
+    <div className={cx('relative max-w-full', full ? 'flex' : 'inline-flex', className)}>
+    <div ref={scroller} role="tablist" aria-label={label} className={cx('no-scrollbar min-w-0 max-w-full overflow-x-auto', pill ? 'rounded-[10px] border border-line bg-deep p-1' : 'border-b border-line', full ? 'flex w-full' : 'inline-flex', pill ? 'gap-1' : 'gap-6')}>
       {options.map((o, i) => {
         const on = o.value === value
         return (
@@ -886,6 +895,9 @@ export function Tabs<T extends string>({ value, onChange, options, variant = 'pi
           </button>
         )
       })}
+    </div>
+      {fade.left && <span aria-hidden="true" className={cx("pointer-events-none absolute inset-y-0 left-0 w-6 bg-gradient-to-r to-transparent", pill ? "from-deep rounded-l-[10px]" : "from-space")} />}
+      {fade.right && <span aria-hidden="true" className={cx("pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l to-transparent", pill ? "from-deep rounded-r-[10px]" : "from-space")} />}
     </div>
   )
 }
@@ -972,8 +984,8 @@ function Overlay({ open, onClose, title, description, children, footer, kind, wi
   return createPortal(
     <AnimatePresence>
       {open && (
-        <motion.div key="overlay" initial="closed" animate="open" exit="closed" className={cx('fixed inset-0 z-50 flex', mode === 'bottom' ? 'items-end' : mode === 'right' ? 'justify-end' : 'items-center justify-center p-6')}>
-          <motion.div variants={{ closed: { opacity: 0 }, open: { opacity: 1 } }} transition={{ duration: DUR.fast }} className="absolute inset-0 bg-black/65" onClick={onClose} aria-hidden="true" />
+        <motion.div key="overlay" data-overlay initial="closed" animate="open" exit="closed" className={cx('fixed inset-0 z-50 flex', mode === 'bottom' ? 'items-end' : mode === 'right' ? 'justify-end' : 'items-center justify-center p-6')}>
+          <motion.div variants={{ closed: { opacity: 0 }, open: { opacity: 1 } }} transition={{ duration: DUR.fast }} className="absolute inset-0 bg-black/65" data-overlay-part="scrim" onClick={onClose} aria-hidden="true" />
           <motion.div
             ref={panel}
             role="dialog"
@@ -995,10 +1007,10 @@ function Overlay({ open, onClose, title, description, children, footer, kind, wi
                 </h2>
                 {description && <p className="mt-1 text-sm text-dim">{description}</p>}
               </div>
-              <IconButton icon={X} label="Close" onClick={onClose} className="-mr-2" />
+              <IconButton icon={X} label="Close" onClick={onClose} className="-mr-2" data-overlay-part="close" />
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">{children}</div>
-            {footer && <div className="flex flex-col-reverse gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end sm:gap-3">{footer}</div>}
+            {footer && <div data-overlay-part="footer" className="flex flex-col-reverse gap-2 border-t border-line px-5 py-4 sm:flex-row sm:justify-end sm:gap-3">{footer}</div>}
           </motion.div>
         </motion.div>
       )}
@@ -1097,261 +1109,5 @@ export function SourceLink({ href, org, title, className }: { href: string; org:
       <ArrowUpRight className="h-3.5 w-3.5 shrink-0 translate-y-0.5" aria-hidden="true" />
       <span className="sr-only">(opens in a new tab)</span>
     </a>
-  )
-}
-
-/* ================================================================== */
-/* Living reference (development only): http://localhost:5173/login?kit */
-/* ================================================================== */
-
-const KIT_TREND = [118, 117, 121, 119, 122, 120, 124, 126, 125, 129, 131, 130, 134, 133, 138].map((value, i) => ({ day: 128 + i, value }))
-
-/** Every primitive on one page, in every state. Open /login?kit in the dev server. Only reachable in development. */
-export function UiKit() {
-  const [tab, setTab] = useState<'bp' | 'hr' | 'spo2' | 'sleep'>('bp')
-  const [range, setRange] = useState<'7' | '30' | 'all'>('30')
-  const [dialog, setDialog] = useState(false)
-  const [sheet, setSheet] = useState(false)
-  const [status, setStatus] = useState<Status>('warn')
-  const [value, setValue] = useState(138)
-  const [loading, setLoading] = useState(false)
-  const next: Record<Status, Status> = { ok: 'warn', warn: 'crit', crit: 'ok' }
-  const fakeSave = () => {
-    setLoading(true)
-    window.setTimeout(() => setLoading(false), 1400)
-  }
-  return (
-    <MotionRoot>
-      <div className="mx-auto max-w-[1100px] space-y-12 px-4 py-10 sm:px-6">
-        <PageHeader
-          eyebrow="docs/DESIGN.md"
-          title="AURA primitives"
-          description="Every shared component in every state. If a page needs something that is not here, ask for it instead of hand-rolling it."
-          status={<StatusPill status={status} announce />}
-          actions={<Button onClick={() => setStatus(next[status])}>Change status</Button>}
-        />
-
-        <Section title="Type" description="IBM Plex Sans for everything a person reads; IBM Plex Mono for machine-written metadata.">
-          <div className="space-y-3">
-            <p className="text-display">Display 44 — auth headline</p>
-            <p className="text-title">Title 28 — one per page</p>
-            <p className="text-heading">Heading 18 — section headings</p>
-            <p>Body 16 — Rest 5 minutes and re-measure. Tell your flight surgeon if it stays at or above 130/80.</p>
-            <p className="text-sm text-soft">Small 14 — secondary text in the soft colour.</p>
-            <p className="label">Label 13 — field labels and captions, sentence case</p>
-            <p className="meta">meta 12 mono — D142 · 08:30 · Omron BP monitor</p>
-          </div>
-        </Section>
-
-        <Section title="Buttons" description="One primary per view. Everything else is secondary or quiet.">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button variant="primary" loading={loading} onClick={fakeSave}>
-              Save measurement
-            </Button>
-            <Button>Secondary</Button>
-            <Button variant="quiet">Quiet</Button>
-            <Button variant="danger">Delete account</Button>
-            <Button variant="primary" disabled>
-              Disabled
-            </Button>
-            <Button size="sm" icon={Info}>
-              Small
-            </Button>
-            <Button size="lg" iconRight={ChevronRight}>
-              Large
-            </Button>
-            <Tooltip label="Icon buttons always carry a label">
-              <IconButton icon={X} label="Close" variant="secondary" />
-            </Tooltip>
-          </div>
-        </Section>
-
-        <Section title="Forms">
-          <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
-            <Field label="Systolic" hint="Upper number, in mmHg.">
-              <Input inputMode="numeric" placeholder="120" />
-            </Field>
-            <Field label="Diastolic" error="Enter a value between 30 and 150.">
-              <Input inputMode="numeric" defaultValue="300" />
-            </Field>
-            <Field label="Source">
-              <Select defaultValue="device">
-                <option value="device">Omron BP monitor</option>
-                <option value="manual">Typed in by hand</option>
-              </Select>
-            </Field>
-            <Field label="Password">
-              <PasswordInput defaultValue="correct horse" />
-            </Field>
-            <Field label="Note" optional className="sm:col-span-2">
-              <Textarea placeholder="Anything your flight surgeon should know" />
-            </Field>
-            <Checkbox className="sm:col-span-2" label="Share this reading with my flight surgeon" defaultChecked />
-          </div>
-        </Section>
-
-        <Section title="Status" description="Icon shape + word + colour. Normal stays quiet; colour appears only when a reading needs you.">
-          <div className="flex flex-wrap items-center gap-3">
-            <StatusPill status="ok" />
-            <StatusPill status="warn" />
-            <StatusPill status="crit" />
-            <StatusPill status={null} />
-            <StatusPill status="warn" small />
-            <StatusText status="ok">within your range</StatusText>
-            <StatusText status="crit">below 5 h</StatusText>
-            <Badge>Device</Badge>
-            <Badge tone="accent">Simulated</Badge>
-            <LiveDot />
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2">
-            <Notice tone="warn" title="Blood pressure 138/86 mmHg" action={<Button size="sm">Re-measure</Button>}>
-              Rest 5 minutes and re-measure. Tell your care contact if it stays at or above 130/80.
-            </Notice>
-            <Notice tone="crit" title="Sleep 4.4 h">
-              Keep a fixed sleep window and dim the lights an hour before sleep.
-            </Notice>
-            <Notice tone="info">Simulated data. Thresholds marked “demo” are our own choices, not clinical limits.</Notice>
-            <Notice tone="ok" title="Report delivered">
-              Dr. Arslan will see it after the 14-minute signal delay.
-            </Notice>
-          </div>
-        </Section>
-
-        <Section
-          title="Numbers"
-          description="Numbers never count up from zero. They tween only when the value changes."
-          action={
-            <Button size="sm" onClick={() => setValue((v) => (v === 138 ? 121 : 138))}>
-              Change value
-            </Button>
-          }
-        >
-          <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
-            <Metric size="xl" label="Systolic" value={value} unit="mmHg" status={value > 130 ? 'warn' : 'ok'} hint={value > 130 ? 'above 130' : 'in range'} />
-            <Metric label="Heart rate" value={67} unit="bpm" status="ok" />
-            <Metric label="Body temperature" value={36.8} decimals={1} unit="°C" hint="today 08:42" />
-            <Metric label="Blood sugar" value={null} unit="mg/dL" status={null} hint="log a first reading" />
-          </div>
-          <div className="mt-8 grid items-center gap-8 sm:grid-cols-[auto_1fr]">
-            <ScoreRing score={status === 'ok' ? 96 : status === 'warn' ? 82 : 56} status={status} size={132} />
-            <div className="max-w-md space-y-4">
-              <div>
-                <div className="mb-2 flex justify-between text-sm">
-                  <span className="text-dim">Radiation dose</span>
-                  <span className="text-ink">
-                    256 mSv <span className="text-dim">of 600</span>
-                  </span>
-                </div>
-                <Meter
-                  value={43}
-                  marks={[
-                    { at: 50, status: 'warn' },
-                    { at: 80, status: 'crit' },
-                  ]}
-                  label="Radiation dose, 43% of the career limit"
-                />
-              </div>
-              <Sparkline data={KIT_TREND} color={STATUS_COLOR[status]} />
-            </div>
-          </div>
-        </Section>
-
-        <Section
-          title="Chart"
-          description="Ink line, hairline grid, mono ticks, a tinted reference band. Straight segments between real measurements."
-          action={
-            <Tabs
-              label="Range"
-              value={range}
-              onChange={setRange}
-              options={[
-                { value: '7', label: '7 days' },
-                { value: '30', label: '30 days' },
-                { value: 'all', label: 'All' },
-              ]}
-            />
-          }
-        >
-          <Tabs
-            label="Measurement"
-            variant="line"
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: 'bp', label: 'Blood pressure', status: 'warn' },
-              { value: 'hr', label: 'Heart rate' },
-              { value: 'spo2', label: 'Blood oxygen' },
-              { value: 'sleep', label: 'Sleep', status: 'crit' },
-            ]}
-          />
-          <div className="mt-4 h-64 rounded-xl border border-line bg-deep p-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={KIT_TREND} margin={chart.margin}>
-                <CartesianGrid {...chart.grid} />
-                <XAxis dataKey="day" type="number" domain={['dataMin', 'dataMax']} tickFormatter={(d) => `D${d}`} {...chart.xAxis} />
-                <YAxis domain={[110, 145]} {...chart.yAxis} />
-                <ReferenceArea y1={110} y2={130} {...chart.band('ok')} />
-                <ReferenceLine y={130} {...chart.refLine('warn')} />
-                <ReferenceLine y={118} {...chart.refLine()} />
-                <RTooltip {...chart.tooltip} content={<ChartTooltip unit="mmHg" formatLabel={(l) => `Day ${String(l)}`} />} />
-                <Line dataKey="value" name="Systolic" {...chart.line} />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="mt-2 text-sm text-dim">Green band: normal range. Dashed amber: attention threshold. Dashed grey: your baseline.</p>
-        </Section>
-
-        <Section title="Surfaces and lists" description="Group with space and hairlines first. A Card is for a discrete object; never nest cards.">
-          <div className="grid gap-6 lg:grid-cols-2">
-            <List className="self-start">
-              <Row leading={<Avatar name="Mira Okafor" text="CDR" />} title="Mira Okafor" description="Commander" trailing={<StatusPill status="warn" small />} to="/login?kit" />
-              <Row leading={<Avatar name="Aiko Tanaka" text="MS1" />} title="Aiko Tanaka" description="Mission Specialist" trailing={<StatusPill status="ok" small />} to="/login?kit" />
-              <Row title="Morning blood pressure" description="Omron BP monitor" trailing={<span className="meta">08:30</span>} />
-            </List>
-            <div className="space-y-4">
-              <Card>
-                <Metric size="md" label="Water today" value={1.6} decimals={1} unit="L" status="warn" hint="target 2.5 L" />
-              </Card>
-              <EmptyState icon={Info} title="No readings yet" description="Log your first blood pressure reading and AURA will start your baseline." action={<Button size="sm">Log a measurement</Button>} />
-              <div className="space-y-2">
-                <Skeleton className="h-4 w-32" />
-                <Skeleton className="h-9 w-24" />
-                <Spinner label="Loading health data" />
-              </div>
-            </div>
-          </div>
-        </Section>
-
-        <Section title="Overlays and sources">
-          <div className="flex flex-wrap gap-3">
-            <Button onClick={() => setDialog(true)}>Open dialog</Button>
-            <Button onClick={() => setSheet(true)}>Open sheet</Button>
-          </div>
-          <p className="mt-4 text-sm text-dim">
-            Source: <SourceLink href="https://www.who.int/news-room/fact-sheets/detail/hypertension" org="WHO" title="Hypertension" />
-          </p>
-        </Section>
-      </div>
-
-      <Dialog
-        open={dialog}
-        onClose={() => setDialog(false)}
-        title="Send report to flight surgeon?"
-        description="It arrives after the 14-minute signal delay."
-        footer={
-          <>
-            <Button onClick={() => setDialog(false)}>Cancel</Button>
-            <Button variant="primary" onClick={() => setDialog(false)} data-autofocus>
-              Send report
-            </Button>
-          </>
-        }
-      >
-        <p className="text-soft">The report contains today’s readings, open alerts and your 7-day trends.</p>
-      </Dialog>
-      <Sheet open={sheet} onClose={() => setSheet(false)} title="Blood pressure" description="How to measure">
-        <p className="text-soft">Rest 5 minutes. Cuff on the upper arm at heart level, stay still and silent, then start.</p>
-      </Sheet>
-    </MotionRoot>
   )
 }

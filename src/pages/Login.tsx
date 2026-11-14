@@ -1,8 +1,8 @@
 import { ArrowRight, RadioTower, Stethoscope, type LucideIcon } from 'lucide-react'
-import { useState, type FormEvent } from 'react'
+import { lazy, Suspense, useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
 import { AuthLayout } from '../components/AuthLayout'
-import { Avatar, Button, Field, Input, List, Notice, PasswordInput, Row, SourceLink, Stagger, StaggerItem, UiKit, CONTEXT_ICON } from '../components/ui'
+import { Avatar, Button, Field, Input, List, Notice, PasswordInput, Row, SourceLink, Stagger, StaggerItem, CONTEXT_ICON } from '../components/ui'
 import { contextFacts, type Context } from '../data/contexts'
 import { ENV_VALUES } from '../data/kb'
 import { CREW, MISSION, STAFF } from '../lib/demoData'
@@ -44,15 +44,25 @@ function premises(): Premise[] {
   return out
 }
 
+const UiKit = lazy(() => import('../components/UiKit'))
+
 // Development only: /login?kit shows every shared primitive in every state (see docs/DESIGN.md).
 const SHOW_KIT = import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('kit')
 
 export default function Login() {
-  return SHOW_KIT ? <UiKit /> : <SignIn />
+  return SHOW_KIT ? (
+    <Suspense fallback={null}>
+      <UiKit />
+    </Suspense>
+  ) : (
+    <SignIn />
+  )
 }
 
 function SignIn() {
-  const { login, demoLogin } = useSession()
+  const { login, demoLogin, backend } = useSession()
+  const signupOpen = backend?.signupOpen !== false
+  const demoOpen = backend?.demoOpen !== false
   const nav = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
@@ -131,15 +141,24 @@ function SignIn() {
           Sign in
         </Button>
         <div className="flex items-center justify-between text-sm">
-          <Link to="/register" className="link -my-3 py-3">
-            Create an account
-          </Link>
+          {signupOpen ? (
+            <Link to="/register" className="link -my-3 py-3">
+              Create an account
+            </Link>
+          ) : (
+            <span className="text-dim">Sign-up is closed on this server</span>
+          )}
           <Link to="/forgot" className="link -my-3 py-3">
             Forgot password?
           </Link>
         </div>
       </form>
 
+      {!demoOpen ? (
+        <Notice className="mt-9" title="The demo is switched off on this server">
+          Sign in with your own account above.
+        </Notice>
+      ) : (
       <section className="mt-9" aria-labelledby="demo-h">
         <div className="border-b border-line pb-3">
           <h2 id="demo-h" className="text-heading text-ink">
@@ -181,6 +200,7 @@ function SignIn() {
           })}
         </List>
       </section>
+      )}
     </AuthLayout>
   )
 }

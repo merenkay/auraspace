@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Context } from '../data/contexts'
 import { useSession } from '../lib/session'
+import OfflineBadge from './OfflineBadge'
 import { Button, Logo, MotionRoot, Notice, Stagger, StaggerItem, controlCls, cx, useContextAccent } from './ui'
 
 /**
@@ -21,6 +22,8 @@ export function AuthLayout({ title, lead, eyebrow, aside, children, context, her
           <Link to="/login" aria-label="AURA — sign in" className="-ml-1 flex h-11 items-center rounded-lg px-1">
             <Logo wordmark size={28} />
           </Link>
+          <div className="flex items-center gap-3">
+          <OfflineBadge />
           <p className="flex items-center gap-2 text-right text-xs text-dim">
             <Mode className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
             {server ? (
@@ -31,6 +34,7 @@ export function AuthLayout({ title, lead, eyebrow, aside, children, context, her
               </span>
             )}
           </p>
+          </div>
         </header>
 
         <main className="mx-auto grid w-full max-w-[1200px] flex-1 content-start gap-x-16 gap-y-8 px-5 pb-12 pt-6 sm:px-8 lg:grid-cols-[minmax(0,1fr)_26rem] lg:grid-rows-[auto_1fr] lg:pt-12">

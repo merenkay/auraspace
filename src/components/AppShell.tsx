@@ -2,6 +2,7 @@ import { ChartLine, ChevronDown, ChevronLeft, CloudSun, Dumbbell, Ellipsis, File
 import { motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
+import OfflineBadge from './OfflineBadge'
 import { CONTEXTS, type Context } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { radiation } from '../lib/health'
@@ -150,33 +151,36 @@ export default function AppShell() {
               })}
             </nav>
 
-            <div className="ml-auto hidden items-center gap-3 md:flex">
-              <div className="hidden text-right leading-tight lg:block">
-                <div className="text-sm font-medium text-ink">{user?.name}</div>
-                <div className="text-xs text-dim">{user?.title}</div>
+            <div className="ml-auto flex items-center gap-3">
+              <OfflineBadge />
+              <div className="hidden items-center gap-3 md:flex">
+                <div className="hidden text-right leading-tight lg:block">
+                  <div className="text-sm font-medium text-ink">{user?.name}</div>
+                  <div className="text-xs text-dim">{user?.title}</div>
+                </div>
+                <Avatar name={user?.name ?? ''} size={32} className="lg:hidden" />
+                <Button variant="quiet" size="sm" icon={LogOut} onClick={signOut} aria-label="Sign out">
+                  <span className="hidden lg:inline">Sign out</span>
+                </Button>
               </div>
-              <Avatar name={user?.name ?? ''} size={32} className="lg:hidden" />
-              <Button variant="quiet" size="sm" icon={LogOut} onClick={signOut} aria-label="Sign out">
-                <span className="hidden lg:inline">Sign out</span>
-              </Button>
-            </div>
 
-            {/* Phone: the one fact that orients you; tap for everything else */}
-            <button type="button" onClick={() => setMoreOpen(true)} aria-label="Mission details and account" className="-mr-2 ml-auto flex h-11 items-center gap-1.5 rounded-lg px-2 text-sm md:hidden">
-              {ctx === 'space' ? (
-                <>
-                  <span className="text-dim">Day</span>
-                  <span className="font-medium text-ink">{day}</span>
-                  {total && <span className="text-dim">/ {total}</span>}
-                </>
-              ) : (
-                <>
-                  <ContextIcon className="h-4 w-4 text-accent" aria-hidden="true" />
-                  <span className="font-medium text-ink">Day {day}</span>
-                </>
-              )}
-              <ChevronDown className="h-4 w-4 text-dim" aria-hidden="true" />
-            </button>
+              {/* Phone: the one fact that orients you; tap for everything else */}
+              <button type="button" onClick={() => setMoreOpen(true)} aria-label="Mission details and account" className="-mr-2 flex h-11 items-center gap-1.5 rounded-lg px-2 text-sm md:hidden">
+                {ctx === 'space' ? (
+                  <>
+                    <span className="text-dim">Day</span>
+                    <span className="font-medium text-ink">{day}</span>
+                    {total && <span className="text-dim">/ {total}</span>}
+                  </>
+                ) : (
+                  <>
+                    <ContextIcon className="h-4 w-4 text-accent" aria-hidden="true" />
+                    <span className="font-medium text-ink">Day {day}</span>
+                  </>
+                )}
+                <ChevronDown className="h-4 w-4 text-dim" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </header>
 
@@ -238,7 +242,7 @@ export default function AppShell() {
             {barItems.map((t) => (
               <BarLink key={t.to} item={t} active={isActive(t, path)} />
             ))}
-            <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors', overflowActive ? 'text-ink' : 'text-dim')}>
+            <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors', overflowActive ? 'text-ink' : 'text-dim')}>
               {overflowActive && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
               {overflow.length ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : <UserRound className="h-5 w-5" aria-hidden="true" />}
               <span>{overflow.length ? 'More' : 'Account'}</span>
@@ -281,7 +285,7 @@ export default function AppShell() {
 
 function BarLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
-    <Link to={item.to} aria-current={active ? 'page' : undefined} className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors', active ? 'text-ink' : 'text-dim')}>
+    <Link to={item.to} aria-current={active ? 'page' : undefined} className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-xs font-medium transition-colors', active ? 'text-ink' : 'text-dim')}>
       {active && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
       <item.icon className="h-5 w-5" aria-hidden="true" />
       <span className="max-w-full truncate px-1">{item.label}</span>

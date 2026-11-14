@@ -20,7 +20,7 @@ export default function Aura({ crewId }: { crewId: number }) {
   const ctx = ev?.context ?? mission?.context ?? 'space'
   const self = canWriteClinic(user, crewId)
   const readable = canReadClinic(user, crewId)
-  const [view, setView] = useState<View>(self ? 'consult' : 'profile')
+  const [view, setView] = useState<View>('consult')
   const [profile, setProfile] = useState<HealthProfile | null>(null)
   const [history, setHistory] = useState<SavedAssessment[] | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -75,7 +75,7 @@ export default function Aura({ crewId }: { crewId: number }) {
         <Notice tone="info" title="Not available for your role">Health profiles and consultations are private to the person and their flight surgeon.</Notice>
       ) : (
         <div className="space-y-6">
-          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <div>
             <Tabs label="AURA sections" variant="line" value={view} onChange={setView} options={options} />
           </div>
           {error && <Notice tone="crit" role="alert">{error}</Notice>}

@@ -8,7 +8,8 @@ import { List, Notice, Row, Sheet, SourceLink, StatusText, SYSTEM_ICON, VITAL_IC
 
 type Props = {
   system: BodySystem
-  status: Status
+  /** null: this system has no reading yet */
+  status: Status | null
   values: Values
   available: VitalKey[] // vitals with data for this person
   action: string // context- and delay-aware triage instruction
@@ -40,7 +41,12 @@ export default function SystemPanel({ system, status, values, available, action,
       description={context === 'space' ? `Hazard · ${system.hazard}` : undefined}
     >
       <div className="space-y-6">
-        {status === 'ok' ? (
+        {status === null ? (
+          <div>
+            <StatusText status={null} />
+            <p className="mt-2 text-[15px] leading-relaxed text-soft">Not measured yet, so AURA cannot say whether this system is normal. Log a reading to see its status.</p>
+          </div>
+        ) : status === 'ok' ? (
           <div>
             <StatusText status={status} />
             <p className="mt-2 text-[15px] leading-relaxed text-soft">{action}</p>

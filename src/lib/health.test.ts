@@ -103,6 +103,21 @@ describe('radiation', () => {
   })
 })
 
+describe('evaluate: no data is not normal', () => {
+  it('has no data and no measured systems before the first reading', () => {
+    const e = evaluate([], mission('home'))
+    expect(e.hasData).toBe(false)
+    expect(Object.values(e.systemMeasured).some(Boolean)).toBe(false)
+  })
+  it('marks only the systems that have a reading', () => {
+    const e = evaluate([row('hr', 70, 142)], mission('home'))
+    expect(e.hasData).toBe(true)
+    expect(e.systemMeasured.heart).toBe(true)
+    expect(e.systemMeasured.lungs).toBe(false)
+    expect(evaluate([], mission('space')).systemMeasured.radiation).toBe(true)
+  })
+})
+
 describe('evaluate: statuses and score', () => {
   it('all normal gives score 100 and no alerts', () => {
     const e = evaluate(snapshot(), mission())
@@ -160,7 +175,7 @@ describe('evaluate: alerts', () => {
   it('carry title, action text, timestamp and system', () => {
     const e = evaluate(snapshot({ sys: 150, dia: 95 }), mission())
     const a = e.alerts.find((x) => x.key === 'bp')!
-    expect(a.title).toBe('Blood Pressure 150/95 mmHg')
+    expect(a.title).toBe('Blood pressure 150/95 mmHg')
     expect(a.detail).toMatch(/Rest 5 minutes/)
     expect(a.system).toBe('heart')
     expect(a.at).toBeTruthy()
@@ -228,7 +243,7 @@ describe('summaryOf', () => {
     expect(s.overall).toBe('crit')
     expect(s.score).toBe(e.score)
     expect(s.alerts).toEqual(e.alerts.map((a) => ({ title: a.title, level: a.level })))
-    expect(s.vitals).toContainEqual({ label: 'Blood Pressure', value: '150/95 mmHg', status: 'crit' })
+    expect(s.vitals).toContainEqual({ label: 'Blood pressure', value: '150/95 mmHg', status: 'crit' })
     expect(s.vitals).toContainEqual({ label: 'Sleep', value: '6.0 h', status: 'warn' })
     expect(s.vitals).toHaveLength(e.vitals.length)
   })

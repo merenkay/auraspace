@@ -2,7 +2,8 @@
 // Parsing happens in this browser (a Web Worker); only the daily values the user confirms are saved.
 import { ChevronDown, ChevronLeft, Download, EllipsisVertical, FileArchive, FileSpreadsheet, FlaskConical, FolderOpen, Laptop, ShieldCheck, Smartphone, Upload, type LucideIcon } from 'lucide-react'
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
-import { Badge, Button, Card, Checkbox, Dialog, Field, Input, List, Meter, Notice, PageTransition, SourceLink, Sparkline, Tabs, cx } from '../ui'
+import { Badge, Button, Card, Checkbox, Dialog, Field, Input, List, Meter, Notice, PageTransition, SourceLink, Tabs, cx } from '../ui'
+import Sparkline from '../Sparkline'
 import {
   DEVICE_LABEL,
   METRIC_INFO,

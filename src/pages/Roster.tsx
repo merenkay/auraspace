@@ -79,10 +79,10 @@ export default function Roster() {
                   {ev ? (
                     <>
                       <div className="mt-5 flex justify-center">
-                        <ScoreRing score={ev.score} status={ev.overall} size={116} />
+                        {ev.hasData ? <ScoreRing score={ev.score} status={ev.overall} size={116} /> : <p className="flex h-[116px] items-center text-sm text-dim">No data yet</p>}
                       </div>
                       <div className="mt-4 flex justify-center">
-                        <StatusPill status={ev.overall} />
+                        <StatusPill status={ev.hasData ? ev.overall : null} />
                       </div>
                       <ul className="mt-4 space-y-2 border-t border-line pt-4">
                         {ev.alerts.slice(0, 2).map((a) => (

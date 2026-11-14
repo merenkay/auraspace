@@ -79,9 +79,18 @@ describe('sleep override (home)', () => {
 })
 
 describe('non-overridden vitals are identical across contexts', () => {
-  it('bp, hr, spo2, temp, glucose, mood behave the same', () => {
-    for (const k of ['bp', 'hr', 'spo2', 'temp', 'glucose', 'mood'] as const) {
+  it('bp, hr, spo2, temp, glucose behave the same', () => {
+    for (const k of ['bp', 'hr', 'spo2', 'temp', 'glucose'] as const) {
       for (const c of ['polar', 'home'] as const) expect(vitalFor(k, c)).toBe(vitalFor(k, 'space'))
+    }
+  })
+  it('mood differs only in who it is shared with', () => {
+    const base = vitalFor('mood', 'space')
+    for (const c of ['polar', 'home'] as const) {
+      const m = vitalFor('mood', c)
+      expect(m.evaluate).toBe(base.evaluate)
+      expect(m.fields).toBe(base.fields)
+      expect(m.howTo).not.toContain('flight surgeon')
     }
   })
   it('overrides keep label, unit, fields and display', () => {

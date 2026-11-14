@@ -6,47 +6,20 @@ import { VITAL_BY_KEY, type FieldId, type VitalKey } from '../data/vitals'
 import { baselineOf } from '../lib/health'
 import { isImportedDevice, isSyntheticDevice } from '../lib/samsungHealth'
 import { useCrewData, useSession } from '../lib/session'
+import { AXIS_LABEL, BANDS, dateOfDay, fmtLong, fmtShort, niceAxis } from '../lib/trend'
 import type { Measurement } from '../lib/types'
 
 // The wizard (and its parser) loads only when someone opens it.
 const SamsungImportWizard = lazy(() => import('../components/import/SamsungImportWizard'))
 
-// Population reference ranges drawn as the green band (for blood pressure: the upper number only).
-const BANDS: Partial<Record<VitalKey, [number, number]>> = {
-  bp: [90, 130], hr: [50, 100], spo2: [95, 100], temp: [36.1, 37.5], glucose: [70, 99], sleep: [7, 9], mood: [4, 5], exercise: [90, 150], vision: [4, 5], water: [2.5, 4],
-}
 
-const AXIS_LABEL = { fill: 'var(--color-dim)', fontSize: 12, fontFamily: 'var(--font-mono)' }
 /** With this many points or fewer every reading gets its own dot (DESIGN.md §9). */
 const DOT_LIMIT = 31
 
-/** Calendar date of a tracking day: today minus the days in between (days can be <= 0 for imported history). */
-function dateOfDay(day: number, today: number) {
-  const d = new Date()
-  d.setHours(12, 0, 0, 0)
-  d.setDate(d.getDate() - (today - day))
-  return d
-}
-const fmtShort = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-const fmtLong = (d: Date) => d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })
 const hhmm = (iso: string) => new Date(iso).toTimeString().slice(0, 5)
 
 type Point = { day: number; value: number; value2?: number; imported: boolean }
 
-/** Round y-axis bounds and ticks (about five) so the scale reads 4, 5, 6 instead of 4.25, 5.1, 5.95. */
-function niceAxis(values: number[]): { domain: [number, number]; ticks: number[] } {
-  const lo = Math.min(...values)
-  const hi = Math.max(...values)
-  const span = hi - lo || Math.abs(hi) * 0.1 || 1
-  const raw = span / 4
-  const mag = 10 ** Math.floor(Math.log10(raw))
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw
-  const min = Math.floor(lo / step) * step
-  const max = Math.ceil(hi / step) * step
-  const ticks: number[] = []
-  for (let v = min; v <= max + step / 2; v += step) ticks.push(+v.toFixed(6))
-  return { domain: [+min.toFixed(6), +max.toFixed(6)], ticks }
-}
 
 
 /** One point per tracking day (the newest reading of that day wins), every day including day <= 0. */

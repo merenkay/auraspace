@@ -38,10 +38,10 @@ export const MISSION = {
 }
 
 export const CREW: DemoCrew[] = [
-  { id: 1, username: 'okafor', name: 'Mira Okafor', callsign: 'CDR', position: 'Commander', color: '#53D7FF', agency: 'Demo crew', streak: 12, doneTasks: ['bp', 'temp', 'mood'] },
-  { id: 2, username: 'reyes', name: 'Daniel Reyes', callsign: 'PLT', position: 'Pilot', color: '#B49CFF', agency: 'Demo crew', streak: 3, doneTasks: ['bp'] },
-  { id: 3, username: 'tanaka', name: 'Aiko Tanaka', callsign: 'MS1', position: 'Mission Specialist', color: '#35D399', agency: 'Demo crew', streak: 31, doneTasks: ['bp', 'temp', 'mood', 'ared'] },
-  { id: 4, username: 'brandt', name: 'Lukas Brandt', callsign: 'FE', position: 'Flight Engineer', color: '#F6BD60', agency: 'Demo crew', streak: 0, doneTasks: [] },
+  { id: 1, username: 'okafor', name: 'Mira Okafor', callsign: 'CDR', position: 'Commander', color: '#92C1FD', agency: 'Demo crew', streak: 12, doneTasks: ['bp', 'temp', 'mood'] },
+  { id: 2, username: 'reyes', name: 'Daniel Reyes', callsign: 'PLT', position: 'Pilot', color: '#B9DAFF', agency: 'Demo crew', streak: 3, doneTasks: ['bp'] },
+  { id: 3, username: 'tanaka', name: 'Aiko Tanaka', callsign: 'MS1', position: 'Mission Specialist', color: '#C7C4BD', agency: 'Demo crew', streak: 31, doneTasks: ['bp', 'temp', 'mood', 'ared'] },
+  { id: 4, username: 'brandt', name: 'Lukas Brandt', callsign: 'FE', position: 'Flight Engineer', color: '#9B9891', agency: 'Demo crew', streak: 0, doneTasks: [] },
 ]
 
 export const STAFF: DemoStaff[] = [

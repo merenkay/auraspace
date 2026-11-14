@@ -11,7 +11,6 @@ type KbSystem = { text: string; quote: string; source: Source }
 export type ContextDef = {
   id: Context
   label: string
-  icon: string
   blurb: string
   contact: string // who reviews findings
   reportButton: string
@@ -26,7 +25,6 @@ export const CONTEXTS: Record<Context, ContextDef> = {
   space: {
     id: 'space',
     label: 'Space crew',
-    icon: '🚀',
     blurb: 'Long missions on a station, spacecraft or planetary base.',
     contact: 'flight surgeon',
     reportButton: 'Send report to flight surgeon',
@@ -39,7 +37,6 @@ export const CONTEXTS: Record<Context, ContextDef> = {
   polar: {
     id: 'polar',
     label: 'Polar & remote station',
-    icon: '🧊',
     blurb: 'Antarctic and other remote stations: isolation, darkness, cold and altitude.',
     contact: 'station doctor',
     reportButton: 'Send report to station doctor',
@@ -52,7 +49,6 @@ export const CONTEXTS: Record<Context, ContextDef> = {
   home: {
     id: 'home',
     label: 'Home care',
-    icon: '🏡',
     blurb: 'Older adults living at home, with family or a caregiver nearby.',
     contact: 'doctor or caregiver',
     reportButton: 'Prepare report for my doctor',
@@ -75,6 +71,7 @@ const T = kb.thresholds
 /** Thresholds that differ by context. Space uses NASA figures; polar/home use WHO and EFSA. */
 const OVERRIDES: Record<Exclude<Context, 'space'>, Partial<Record<VitalKey, Partial<VitalDef>>>> = {
   polar: {
+    mood: { howTo: 'Answer honestly — this stays between you, AURA and your station doctor.' },
     exercise: {
       evaluate: (v) => (v.exercise < 21 ? 'warn' : 'ok'),
       ranges: 'On target ≥ 21 min/day (≈ 150 min per week) · Below target < 21 min',
@@ -89,6 +86,7 @@ const OVERRIDES: Record<Exclude<Context, 'space'>, Partial<Record<VitalKey, Part
     },
   },
   home: {
+    mood: { howTo: 'Answer honestly — this stays between you, AURA and your doctor or caregiver.' },
     exercise: {
       evaluate: (v) => (v.exercise < 21 ? 'warn' : 'ok'),
       ranges: 'On target ≥ 21 min/day (≈ 150 min per week) · Below target < 21 min',

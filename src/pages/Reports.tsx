@@ -12,7 +12,9 @@ export default function Reports() {
   const { backend } = useSession()
   const [reports, setReports] = useState<Report[] | null>(null)
   const [open, setOpen] = useState<number | null>(null)
-  const [note, setNote] = useState('')
+  // one draft reply per report, so text typed for one row never ends up in another
+  const [notes, setNotes] = useState<Record<number, string>>({})
+  const [failed, setFailed] = useState<number | null>(null)
   const uid = useId()
 
   useEffect(() => {
@@ -39,9 +41,14 @@ export default function Reports() {
 
   const review = async (id: number) => {
     if (!backend) return
-    const r = await backend.reviewReport(id, note || 'Reviewed — continue monitoring.')
-    setReports((list) => list?.map((x) => (x.id === id ? r : x)) ?? null)
-    setNote('')
+    setFailed(null)
+    try {
+      const r = await backend.reviewReport(id, notes[id]?.trim() || 'Reviewed — continue monitoring.')
+      setReports((list) => list?.map((x) => (x.id === id ? r : x)) ?? null)
+      setNotes(({ [id]: _sent, ...rest }) => rest)
+    } catch {
+      setFailed(id)
+    }
   }
 
   return (
@@ -101,6 +108,11 @@ export default function Reports() {
                             </li>
                           ))}
                         </ul>
+                        {failed === r.id && (
+                          <Notice tone="warn" role="alert" className="mt-5" title="The reply was not saved">
+                            Check your connection and try again.
+                          </Notice>
+                        )}
                         {r.status === 'reviewed' ? (
                           <Notice tone="ok" title={`Reviewed by ${r.reviewedBy}`} className="mt-5">
                             {r.reviewNote}
@@ -114,7 +126,7 @@ export default function Reports() {
                             }}
                           >
                             <Field label="Reply to the crew member" hint="Leave empty to send “Reviewed — continue monitoring.”" className="min-w-0 flex-1">
-                              <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Reply to the crew member…" />
+                              <Input value={notes[r.id] ?? ''} onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))} placeholder="Reply to the crew member…" />
                             </Field>
                             <Button type="submit" variant="primary" icon={Send}>
                               Mark reviewed

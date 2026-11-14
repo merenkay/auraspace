@@ -116,6 +116,16 @@ export default function Register() {
         )
       }
     >
+      {backend?.signupOpen === false ? (
+        <div className="space-y-4">
+          <Notice tone="info" title="Sign-up is closed on this server">
+            New accounts are switched off here. Sign in with an existing account, or try the demo from the sign-in page.
+          </Notice>
+          <Button to="/login" icon={ArrowLeft}>
+            Back to sign in
+          </Button>
+        </div>
+      ) : (
       <PageTransition routeKey={ticket ? 'code' : 'form'} direction={ticket ? 1 : -1}>
         {!ticket ? (
           <form onSubmit={submit} className="space-y-4">
@@ -205,6 +215,7 @@ export default function Register() {
           </form>
         )}
       </PageTransition>
+      )}
     </AuthLayout>
   )
 }

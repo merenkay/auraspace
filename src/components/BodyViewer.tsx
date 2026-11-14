@@ -78,6 +78,8 @@ const TIP_W = 240
 
 type Props = {
   statuses: Record<SystemId, Status>
+  /** Systems with at least one reading. Unmeasured systems read "Not measured yet" instead of "Normal". */
+  measured?: Record<SystemId, boolean>
   summaries: Record<SystemId, string>
   selected: SystemId | null
   onSelect: (id: SystemId) => void
@@ -91,7 +93,7 @@ type Hover = { id: SystemId; cycling: boolean; count: number }
 type Spin = 'auto' | 'on' | 'off'
 
 
-export default function BodyViewer({ statuses, summaries, selected, onSelect, heartRate, compact = false, showRadiation = true }: Props) {
+export default function BodyViewer({ statuses, measured, summaries, selected, onSelect, heartRate, compact = false, showRadiation = true }: Props) {
   const [manifest, setManifest] = useState<Manifest | null | undefined>(undefined)
   const [failed, setFailed] = useState(viewerBroken)
   const [ready, setReady] = useState(false)
@@ -210,11 +212,12 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
   if (!use3D) {
     return (
       <div className="h-full">
-        <BodyMap statuses={statuses} summaries={summaries} selected={selected} onSelect={onSelect} heartRate={heartRate} showRadiation={showRadiation} />
+        <BodyMap statuses={statuses} measured={measured} summaries={summaries} selected={selected} onSelect={onSelect} heartRate={heartRate} showRadiation={showRadiation} />
       </div>
     )
   }
 
+  const shown = (id: SystemId): Status | null => (measured && measured[id] === false ? null : statuses[id])
   const spinning = spin === 'on' || (spin === 'auto' && !selected && !reducedMotion)
   const tip = hover ? SYSTEM_BY_ID[hover.id] : null
   const sel = selected ? SYSTEM_BY_ID[selected] : null
@@ -260,9 +263,9 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
         <div className="min-w-0 px-1 pt-1.5" aria-live="polite">
           {sel ? (
             <p className="flex min-w-0 items-center gap-2 text-sm font-semibold text-ink" data-viewer-selected={sel.id}>
-              <StatusIcon status={statuses[sel.id]} size={15} />
+              <StatusIcon status={shown(sel.id)} size={15} />
               <span className="truncate">{sel.name}</span>
-              <span className="font-normal text-dim">· {statusLabel(statuses[sel.id])}</span>
+              <span className="font-normal text-dim">· {shown(sel.id) ? statusLabel(shown(sel.id)!) : "Not measured yet"}</span>
             </p>
           ) : (
             <p className="text-xs leading-snug text-dim">{coarse ? 'Tap a body part. Drag to rotate, pinch to zoom.' : 'Click a body part. Drag to rotate, Ctrl + scroll to zoom.'}</p>
@@ -306,7 +309,7 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
           {hover.cycling && <p className="mb-1 text-xs font-medium text-accent">Click again to select</p>}
           <div className="flex items-center justify-between gap-2">
             <span className="text-sm font-semibold text-ink">{tip.name}</span>
-            <StatusText status={statuses[tip.id]} className="text-xs" />
+            <StatusText status={shown(tip.id)} className="text-xs" />
           </div>
           <div className="mt-1 text-base font-semibold" style={{ color: statuses[tip.id] === 'ok' ? undefined : STATUS_COLOR[statuses[tip.id]] }}>
             {summaries[tip.id]}

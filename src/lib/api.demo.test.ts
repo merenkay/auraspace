@@ -408,3 +408,14 @@ describe('addMeasurements', () => {
     expect(await status(b.addMeasurements(1, { hr: 60 }, 'manual', 'x'))).toBe(403)
   })
 })
+
+describe('addMeasurements validation (demo store matches the server)', () => {
+  it('rejects unknown metrics, non-numbers and out-of-range values, saving nothing', async () => {
+    await b.demoLogin('astronaut', 1)
+    const before = (await b.measurements(1)).length
+    for (const bad of [{ hr: 9999 }, { hr: Number.NaN }, { nope: 1 }, { hr: 70, sys: 5 }, {}]) {
+      await expect(b.addMeasurements(1, bad as never, 'manual', 'x')).rejects.toMatchObject({ status: 400 })
+    }
+    expect((await b.measurements(1)).length).toBe(before)
+  })
+})

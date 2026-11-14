@@ -1,6 +1,7 @@
 import { STATUS_COLOR, type Status } from '../data/vitals'
 import { isImportedDevice, isSyntheticDevice } from '../lib/samsungHealth'
-import { Badge, Card, Metric, Sparkline, cx, useMedia } from './ui'
+import Sparkline from './Sparkline'
+import { Badge, Card, Metric, cx, useMedia } from './ui'
 
 const SOURCE_LABEL: Record<string, string> = { device: 'Device', manual: 'Manual', live: 'Live', sim: 'Simulated' }
 

@@ -84,7 +84,7 @@ export function answer(key: VitalKey, question: string, ev: Evaluation, rows: Me
     return {
       question,
       sections: [{ title: 'WHAT I OBSERVED', text: `There is no ${d.label.toLowerCase()} reading I can access. I will not assume it is normal.` }],
-      escalation: { level: 'warn', text: 'Record a measurement first, or ask the flight surgeon if you have symptoms.' },
+      escalation: { level: 'warn', text: `Record a measurement first, or ask your ${contact} if you have symptoms.` },
       refs: [],
       confidence: 'None — no data',
       reviewed: 0,
