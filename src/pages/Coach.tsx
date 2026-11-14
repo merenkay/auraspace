@@ -1,7 +1,8 @@
 import { motion } from 'motion/react'
 import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis } from 'recharts'
 import { CountUp, Panel, Reveal, Spinner } from '../components/ui'
-import { STATUS_COLOR, VITAL_BY_KEY } from '../data/vitals'
+import { THRESHOLD_SOURCES, vitalFor } from '../data/contexts'
+import { STATUS_COLOR } from '../data/vitals'
 import { seriesOf } from '../lib/health'
 import { useCrewData, useSession } from '../lib/session'
 
@@ -23,9 +24,17 @@ export default function Coach({ crewId }: { crewId: number }) {
   const water = ev.values.water
   const canEdit = user?.role === 'astronaut'
   const bpWarn = ev.vitalStatus.bp && ev.vitalStatus.bp !== 'ok'
+  const ctx = ev.context
+  const space = ctx === 'space'
+  const exDef = vitalFor('exercise', ctx)
+  const waterDef = vitalFor('water', ctx)
+  const sleepDef = vitalFor('sleep', ctx)
+  const exTarget = space ? 90 : 21
+  const waterTarget = space ? 2.5 : 2
 
   return (
     <div className="space-y-6">
+      {space ? (
       <Reveal>
         <Panel>
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -65,6 +74,18 @@ export default function Coach({ crewId }: { crewId: number }) {
           </div>
         </Panel>
       </Reveal>
+      ) : (
+        <Reveal>
+          <Panel>
+            <p className="label">Your activity goal</p>
+            <h1 className="mt-1 font-display text-3xl font-bold">150 minutes a week</h1>
+            <p className="mt-2 max-w-2xl text-sm text-soft">{THRESHOLD_SOURCES.activity.text} {ctx === 'home' ? THRESHOLD_SOURCES.activityOlderBalance.text : ''}</p>
+            <a href={THRESHOLD_SOURCES.activity.source.url} target="_blank" rel="noreferrer" className="mt-2 block text-xs text-cyan underline">
+              Source: {THRESHOLD_SOURCES.activity.source.org} — {THRESHOLD_SOURCES.activity.source.title}
+            </a>
+          </Panel>
+        </Reveal>
+      )}
 
       <div className="grid gap-5 lg:grid-cols-3">
         <Reveal delay={0.05}>
@@ -74,38 +95,38 @@ export default function Coach({ crewId }: { crewId: number }) {
                 <BarChart data={week} margin={{ top: 8, right: 0, bottom: 0, left: 0 }}>
                   <XAxis dataKey="day" tick={{ fill: '#91A9BD', fontSize: 11 }} tickLine={false} axisLine={false} tickFormatter={(d) => `D${d}`} />
                   <Tooltip cursor={{ fill: '#162D42' }} contentStyle={{ background: '#07111F', border: '1px solid #1E3A55', borderRadius: 12 }} labelFormatter={(d) => `Day ${d}`} />
-                  <ReferenceLine y={90} stroke="#35D399" strokeDasharray="4 4" />
+                  <ReferenceLine y={exTarget} stroke="#35D399" strokeDasharray="4 4" />
                   <Bar dataKey="value" name="Minutes" radius={[8, 8, 2, 2]} animationDuration={900}>
                     {week.map((w) => (
-                      <Cell key={w.day} fill={STATUS_COLOR[VITAL_BY_KEY.exercise.evaluate({ ...ev.values, exercise: w.value })]} />
+                      <Cell key={w.day} fill={STATUS_COLOR[exDef.evaluate({ ...ev.values, exercise: w.value })]} />
                     ))}
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 text-xs text-dim">Target 90 min/day. NASA reports ISS crews training 1.5–2 h a day.</p>
+            <p className="mt-2 text-xs text-dim">{space ? 'Target 90 min/day. NASA reports ISS crews training 1.5–2 h a day.' : `Target about ${exTarget} min/day (≈ 150 min per week, WHO).`}</p>
           </Panel>
         </Reveal>
 
         <Reveal delay={0.1}>
           <Panel title="Sleep & recovery" className="h-full">
-            <div className="font-display text-5xl font-bold" style={{ color: STATUS_COLOR[VITAL_BY_KEY.sleep.evaluate({ ...ev.values, sleep: sleepAvg })] }}>
+            <div className="font-display text-5xl font-bold" style={{ color: STATUS_COLOR[sleepDef.evaluate({ ...ev.values, sleep: sleepAvg })] }}>
               <CountUp value={sleepAvg} decimals={1} /> <span className="text-base font-normal text-dim">h / night</span>
             </div>
-            <p className="mt-2 text-sm text-soft">7-night average. NASA recommends 7–9 h; astronauts average about 6 h in flight.</p>
+            <p className="mt-2 text-sm text-soft">{space ? '7-night average. NASA recommends 7–9 h; astronauts average about 6 h in flight.' : ctx === 'home' ? `7-night average. ${THRESHOLD_SOURCES.sleepOlder.text}` : '7-night average. Fixed bedtimes helped Concordia crews sleep through the polar night (ESA).'}</p>
           </Panel>
         </Reveal>
 
         <Reveal delay={0.15}>
           <Panel title="Hydration" className="h-full">
-            <div className="font-display text-5xl font-bold" style={{ color: STATUS_COLOR[VITAL_BY_KEY.water.evaluate(ev.values)] }}>
-              {water.toFixed(1)} <span className="text-base font-normal text-dim">of 2.5 L</span>
+            <div className="font-display text-5xl font-bold" style={{ color: STATUS_COLOR[waterDef.evaluate(ev.values)] }}>
+              {water.toFixed(1)} <span className="text-base font-normal text-dim">of {waterTarget} L</span>
             </div>
             <div className="mt-3 h-2 rounded-full bg-line">
               <motion.div
                 className="h-2 rounded-full"
-                style={{ background: STATUS_COLOR[VITAL_BY_KEY.water.evaluate(ev.values)] }}
-                animate={{ width: `${Math.min(100, (water / 2.5) * 100)}%` }}
+                style={{ background: STATUS_COLOR[waterDef.evaluate(ev.values)] }}
+                animate={{ width: `${Math.min(100, (water / waterTarget) * 100)}%` }}
               />
             </div>
             {canEdit && (
@@ -118,11 +139,12 @@ export default function Coach({ crewId }: { crewId: number }) {
                 + 250 mL
               </motion.button>
             )}
-            <p className="mt-2 text-xs text-dim">Minimum 2.5 L/day per crew member (NASA OCHMO TB-027).</p>
+            <p className="mt-2 text-xs text-dim">{space ? 'Minimum 2.5 L/day per crew member (NASA OCHMO TB-027).' : waterDef.source}</p>
           </Panel>
         </Reveal>
       </div>
 
+      {space && (
       <Reveal>
         <h2 className="label mb-3">Onboard equipment</h2>
         <div className="grid gap-4 md:grid-cols-3">
@@ -146,6 +168,7 @@ export default function Coach({ crewId }: { crewId: number }) {
           Source: NASA OCHMO TB-031 — Exercise overview
         </a>
       </Reveal>
+      )}
     </div>
   )
 }

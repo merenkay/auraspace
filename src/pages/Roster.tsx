@@ -13,7 +13,7 @@ export default function Roster() {
   useEffect(() => {
     if (!backend || !mission) return
     let alive = true
-    Promise.all(crew.map(async (c) => [c.id, evaluate(await backend.measurements(c.id, mission.day - 30), mission.profileId, mission.day, user?.role === 'ground')] as const)).then(
+    Promise.all(crew.map(async (c) => [c.id, evaluate(await backend.measurements(c.id, mission.day - 30), mission, user?.role === 'ground')] as const)).then(
       (list) => alive && setEvals(Object.fromEntries(list)),
     )
     return () => {

@@ -1,6 +1,6 @@
 import { motion } from 'motion/react'
 import { lazy, Suspense, useState, type FormEvent } from 'react'
-import { useNavigate } from 'react-router'
+import { Link, useNavigate } from 'react-router'
 import { Logo } from '../components/ui'
 import { CREW } from '../lib/demoData'
 import { useSession } from '../lib/session'
@@ -62,15 +62,15 @@ export default function Login() {
           <motion.h1 custom={1} variants={item} className="mt-10 font-display text-4xl font-bold leading-tight sm:text-5xl">
             Your health,
             <br />
-            <span className="bg-gradient-to-r from-cyan to-ice bg-clip-text text-transparent">14 minutes from Earth.</span>
+            <span className="bg-gradient-to-r from-cyan to-ice bg-clip-text text-transparent">wherever help is far away.</span>
           </motion.h1>
           <motion.p custom={2} variants={item} className="mt-4 max-w-sm text-soft">
-            Self-assessment for long missions — measure, understand, and know when to call the flight surgeon.
+            Measure, understand, and know when to call for help — built for astronauts 14 minutes from Earth, and just as useful at a polar station or at home.
           </motion.p>
 
           <motion.form custom={3} variants={item} onSubmit={submit} className="glass mt-8 space-y-3 rounded-3xl p-5">
             <label className="block">
-              <span className="label">Username</span>
+              <span className="label">Email or username</span>
               <input
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
@@ -100,6 +100,14 @@ export default function Login() {
             >
               {busy ? 'Signing in…' : 'Sign in'}
             </button>
+            <div className="flex justify-between text-sm">
+              <Link to="/register" className="font-semibold text-cyan">
+                Create an account
+              </Link>
+              <Link to="/forgot" className="text-dim hover:text-ink">
+                Forgot password?
+              </Link>
+            </div>
           </motion.form>
 
           <motion.div custom={4} variants={item} className="mt-6">

@@ -9,12 +9,17 @@ import { Spinner } from './ui'
 const Body3D = lazy(() => import('./three/Body3D'))
 
 type Manifest = { files: string[] }
+type RawManifest = { files: (string | { file: string })[] }
 let manifestPromise: Promise<Manifest | null> | null = null
 function loadManifest() {
   if (!manifestPromise) {
     manifestPromise = fetch('/models/body-manifest.json')
       .then((r) => (r.ok ? r.json() : null))
-      .then((m: Manifest | null) => (m && Array.isArray(m.files) && m.files.length ? { files: m.files.map((f) => (f.startsWith('/') ? f : `/models/${f.replace(/^.*\//, '')}`)) } : null))
+      .then((m: RawManifest | null) =>
+        m && Array.isArray(m.files) && m.files.length
+          ? { files: m.files.map((f) => `/models/${(typeof f === 'string' ? f : f.file).replace(/^.*\//, '')}`) }
+          : null,
+      )
       .catch(() => null)
   }
   return manifestPromise
@@ -45,12 +50,13 @@ type Props = {
   onSelect: (id: SystemId) => void
   heartRate: number
   compact?: boolean
+  showRadiation?: boolean
 }
 
-export default function BodyViewer({ statuses, summaries, selected, onSelect, heartRate, compact = false }: Props) {
+export default function BodyViewer({ statuses, summaries, selected, onSelect, heartRate, compact = false, showRadiation = true }: Props) {
   const [manifest, setManifest] = useState<Manifest | null | undefined>(undefined)
   const [layers, setLayers] = useState<Record<LayerId, boolean>>({
-    skin: true, muscles: true, skeleton: true, organs: true, arteries: true, veins: false, nerves: false,
+    skin: false, muscles: true, skeleton: true, organs: true, arteries: true, veins: false, nerves: false,
   })
   const [hover, setHover] = useState<{ id: SystemId; x: number; y: number } | null>(null)
   const [autoRotate, setAutoRotate] = useState(true)
@@ -156,13 +162,13 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
         </div>
       )}
       <div className="absolute right-2 top-2 flex gap-1.5">
-        <button
+        {showRadiation && <button
           type="button"
           onClick={() => onSelect('radiation')}
           className="min-h-9 rounded-full border border-line bg-space/60 px-3 text-xs font-semibold text-soft hover:border-cyan"
         >
           ☢ Whole body
-        </button>
+        </button>}
         <button
           type="button"
           onClick={() => setAutoRotate((a) => !a)}
@@ -173,6 +179,7 @@ export default function BodyViewer({ statuses, summaries, selected, onSelect, he
         </button>
       </div>
       <p className="pointer-events-none absolute left-3 top-3 text-[11px] text-dim">Drag to rotate 360° · scroll to zoom</p>
+      <a href="https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html" target="_blank" rel="noreferrer" className="absolute bottom-1 right-3 text-[10px] text-dim/70 hover:text-dim">3D: BodyParts3D © DBCLS · CC BY-SA 2.1 JP</a>
     </div>
   )
 }

@@ -1,18 +1,9 @@
 // Deterministic health rules: latest values, statuses, alerts and score.
 // These never depend on the AI assistant.
+import { CONTEXTS, vitalsFor, type Context } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS } from '../data/missions'
 import { SYSTEMS, type SystemId } from '../data/systems'
-import {
-  FIELD_IDS,
-  STATUS_RANK,
-  VITALS,
-  VITAL_BY_KEY,
-  worst,
-  type FieldId,
-  type Status,
-  type Values,
-  type VitalKey,
-} from '../data/vitals'
+import { FIELD_IDS, STATUS_RANK, VITAL_BY_KEY, worst, type FieldId, type Status, type Values, type VitalDef, type VitalKey } from '../data/vitals'
 import type { Measurement, ReportSummary } from './types'
 
 export type Latest = { values: Values; meta: Partial<Record<FieldId, Measurement>> }
@@ -37,8 +28,10 @@ export function seriesOf(rows: Measurement[], metric: FieldId, days = 14, today 
 }
 
 export function baselineOf(rows: Measurement[], metric: FieldId): number | null {
-  const early = rows.filter((r) => r.metric === metric && r.day <= 14)
-  if (!early.length) return null
+  const own = rows.filter((r) => r.metric === metric)
+  if (!own.length) return null
+  const firstDay = Math.min(...own.map((r) => r.day))
+  const early = own.filter((r) => r.day <= firstDay + 13)
   return early.reduce((s, r) => s + r.value, 0) / early.length
 }
 
@@ -53,29 +46,37 @@ export function radiation(profileId: string, day: number) {
 export type Alert = { key: string; level: Status; title: string; detail: string; at?: string; system: SystemId }
 
 const ACTION: Partial<Record<VitalKey, string>> = {
-  bp: 'Rest 5 minutes and re-measure. Tell the crew medical officer if it stays at or above 130/80.',
+  bp: 'Rest 5 minutes and re-measure. Tell your care contact if it stays at or above 130/80.',
   hr: 'Re-measure at rest. Note palpitations, dizziness or chest pain.',
-  spo2: 'Warm your hand and re-measure; check cabin CO₂ and airflow.',
+  spo2: 'Warm your hand and re-measure; check ventilation and air quality.',
   temp: 'Re-measure in 30 minutes, rest and hydrate; limit close contact.',
   glucose: 'Re-measure tomorrow before eating; log meals today.',
   sleep: 'Keep a fixed sleep window and dim the lights an hour before sleep.',
-  mood: 'A private check-in with the flight surgeon is available any time.',
-  exercise: 'Complete today’s prescribed session; split it in two if needed.',
+  mood: 'Talk to someone you trust; a private check-in with your care contact is available any time.',
+  exercise: 'Fit in today’s activity; split it into shorter sessions if needed.',
   vision: 'Repeat the check for each eye; request an OCT scan if blur persists.',
   water: 'Drink a glass now and spread drinks across the day.',
 }
 
-export function evaluate(rows: Measurement[], profileId: string, day: number, hidePrivate = false) {
+export type EvalInput = { context: Context; profileId: string; day: number }
+
+export function systemsFor(ctx: Context) {
+  return SYSTEMS.filter((s) => !CONTEXTS[ctx].hiddenSystems.includes(s.id))
+}
+
+export function evaluate(rows: Measurement[], mission: EvalInput, hidePrivate = false) {
+  const ctx = mission.context
   const { values, meta } = latestOf(rows)
-  const vitals = VITALS.filter((d) => !(hidePrivate && d.private) && d.fields.every((f) => meta[f.id]))
+  const defs = vitalsFor(ctx)
+  const defByKey = Object.fromEntries(defs.map((d) => [d.key, d])) as Partial<Record<VitalKey, VitalDef>>
+  const vitals = defs.filter((d) => !(hidePrivate && d.private) && d.fields.every((f) => meta[f.id]))
   const vitalStatus = Object.fromEntries(vitals.map((d) => [d.key, d.evaluate(values)])) as Partial<Record<VitalKey, Status>>
-  const rad = radiation(profileId, day)
+  const rad = radiation(mission.profileId, mission.day)
+  const showRad = ctx === 'space'
+  const systems = systemsFor(ctx)
 
   const systemStatus = Object.fromEntries(
-    SYSTEMS.map((s) => [
-      s.id,
-      s.id === 'radiation' ? rad.status : worst(s.vitals.map((k) => vitalStatus[k] ?? 'ok')),
-    ]),
+    SYSTEMS.map((s) => [s.id, s.id === 'radiation' ? (showRad ? rad.status : 'ok') : worst(s.vitals.map((k) => vitalStatus[k] ?? 'ok'))]),
   ) as Record<SystemId, Status>
 
   const alerts: Alert[] = []
@@ -83,32 +84,24 @@ export function evaluate(rows: Measurement[], profileId: string, day: number, hi
     const st = vitalStatus[d.key]!
     if (st === 'ok') continue
     const sys = SYSTEMS.find((s) => s.vitals.includes(d.key))?.id ?? 'heart'
-    alerts.push({
-      key: d.key,
-      level: st,
-      title: `${d.label} ${d.display(values)} ${d.unit}`,
-      detail: ACTION[d.key] ?? '',
-      at: meta[d.primary]?.at,
-      system: sys,
-    })
+    alerts.push({ key: d.key, level: st, title: `${d.label} ${d.display(values)} ${d.unit}`, detail: ACTION[d.key] ?? '', at: meta[d.primary]?.at, system: sys })
   }
-  // trend rule: three short nights in a row
-  const sleep = seriesOf(rows, 'sleep', 3, day)
+  const sleep = seriesOf(rows, 'sleep', 3, mission.day)
   if (sleep.length === 3 && sleep.every((s) => s.value < 6) && !alerts.some((a) => a.key === 'sleep')) {
     alerts.push({ key: 'sleep-trend', level: 'warn', title: 'Three short nights in a row', detail: ACTION.sleep!, system: 'brain' })
   }
-  if (rad.status !== 'ok') {
+  if (showRad && rad.status !== 'ok') {
     alerts.push({ key: 'rad', level: rad.status, title: `Radiation ${rad.pct.toFixed(0)}% of career limit`, detail: 'Review shielding and storm-shelter procedures.', system: 'radiation' })
   }
   alerts.sort((a, b) => STATUS_RANK[b.level] - STATUS_RANK[a.level])
 
-  // 100 minus a fixed penalty per out-of-range reading (and radiation), so every point is explainable.
+  // 100 minus a fixed penalty per out-of-range reading (and radiation in space), so every point is explainable.
   const PENALTY: Record<Status, number> = { ok: 0, warn: 9, crit: 22 }
-  const penalty = Object.values(vitalStatus).reduce((s, st) => s + PENALTY[st!], 0) + PENALTY[rad.status]
+  const penalty = Object.values(vitalStatus).reduce((s, st) => s + PENALTY[st!], 0) + (showRad ? PENALTY[rad.status] : 0)
   const score = Math.max(0, 100 - penalty)
-  const overall: Status = worst(Object.values(systemStatus))
+  const overall: Status = worst(systems.map((s) => systemStatus[s.id]))
 
-  return { values, meta, vitals, vitalStatus, systemStatus, alerts, score, overall, rad }
+  return { context: ctx, values, meta, vitals, defByKey, vitalStatus, systemStatus, systems, alerts, score, overall, rad, showRad }
 }
 
 export type Evaluation = ReturnType<typeof evaluate>

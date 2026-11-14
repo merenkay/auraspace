@@ -1,14 +1,17 @@
+import type { Context } from '../data/contexts'
 import type { FieldId, Status } from '../data/vitals'
 
-export type Role = 'astronaut' | 'surgeon' | 'ground'
+export type Role = 'astronaut' | 'surgeon' | 'ground' | 'member'
 
 export type User = {
   id: number
   username: string
+  email?: string | null
   role: Role
   name: string
   title: string
   crewId: number | null
+  context: Context
 }
 
 export type CrewMember = {
@@ -17,6 +20,7 @@ export type CrewMember = {
   callsign: string
   position: string
   color: string
+  context?: Context
 }
 
 export type Measurement = {
@@ -51,4 +55,13 @@ export type Report = {
   reviewedBy: string | null
 }
 
-export type Mission = { name: string; profileId: string; day: number; totalDays: number; environment: string }
+export type Mission = {
+  name: string
+  profileId: string
+  day: number
+  totalDays: number | null
+  environment: string
+  context: Context
+}
+
+export type CodeTicket = { email: string; expiresIn: number; demoCode?: string }

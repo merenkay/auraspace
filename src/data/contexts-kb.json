@@ -1,0 +1,131 @@
+{
+  "polar": {
+    "headline": "At remote research stations, crews live in months of isolation, darkness and sometimes thin air, so tracking sleep, mood and basic vitals early helps when outside medical help is far away.",
+    "systems": {
+      "brain": {
+        "text": "Winter-over crews face long isolation and months without sunlight, which can disturb sleep and mood. At Concordia, altitude may affect sleep as much as isolation does. Watch for shorter, less restful sleep and keep fixed bedtimes.",
+        "quote": "the altitude and thin air probably play a greater role in sleep disorders.",
+        "source": { "title": "Concordia blog: sleep at altitude (ESA)", "org": "ESA", "url": "https://blogs.esa.int/concordia/?p=2465" }
+      },
+      "lungs": {
+        "text": "Concordia sits at about 3,200 m, where thin air means less oxygen. Breathing can become uneven during sleep (periodic breathing), and people differ in how well they cope. Watch for breathlessness and poor sleep.",
+        "quote": "chronic hypobaric hypoxia – lack of oxygen to the brain.",
+        "source": { "title": "20 years of ice-cold research: extremophile tips for healthy living", "org": "ESA", "url": "https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/20_years_of_ice-cold_research_extremophile_tips_for_healthy_living" }
+      },
+      "immune": {
+        "text": "Months of isolation and confinement are a stressful environment for the body. A study of Concordia winter-over crew found signs of weaker antiviral defences, though the sample was small and exploratory. Watch for infections that linger.",
+        "quote": "Exposure to stressful environments weakens immunity evidenced by a detectable reactivation of dormant viruses.",
+        "source": { "title": "Exploratory RNA-seq analysis in healthy subjects reveals vulnerability to viral infections during a 12-month period of isolation and confinement", "org": "Brain, Behavior, & Immunity - Health (PMC)", "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC8474453" }
+      }
+    },
+    "facts": [
+      {
+        "text": "Concordia crews spend almost nine months a year completely isolated from the outside world.",
+        "quote": "subjected to almost nine months of complete isolation per year.",
+        "source": { "title": "20 years of ice-cold research: extremophile tips for healthy living", "org": "ESA", "url": "https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/20_years_of_ice-cold_research_extremophile_tips_for_healthy_living" }
+      },
+      {
+        "text": "The Concordia crew of up to 15 people lives through four months of complete darkness.",
+        "quote": "the crew of up to 15 people also endure four months of complete darkness.",
+        "source": { "title": "20 years of ice-cold research: extremophile tips for healthy living", "org": "ESA", "url": "https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/20_years_of_ice-cold_research_extremophile_tips_for_healthy_living" }
+      },
+      {
+        "text": "Going to bed at fixed times helped Concordia crews sleep, while blue light in the dark months kept them more alert.",
+        "quote": "Concordians who forced themselves to go to bed at fixed times.",
+        "source": { "title": "20 years of ice-cold research: extremophile tips for healthy living", "org": "ESA", "url": "https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/20_years_of_ice-cold_research_extremophile_tips_for_healthy_living" }
+      },
+      {
+        "text": "Antarctic stations serve as space analogues: they help researchers learn how people cope in extreme, isolated conditions.",
+        "quote": "an ideal environment to better understand how humans adapt and survive in extreme conditions.",
+        "source": { "title": "20 years of ice-cold research: extremophile tips for healthy living", "org": "ESA", "url": "https://www.esa.int/Science_Exploration/Human_and_Robotic_Exploration/20_years_of_ice-cold_research_extremophile_tips_for_healthy_living" }
+      },
+      {
+        "text": "Pilot data from Palmer Station (Antarctica) suggest winter-over crews show immune changes similar to, but smaller than, those seen in astronauts, with raised stress hormone (cortisol) levels.",
+        "quote": "Salivary cortisol was substantially elevated throughout the entire winterover compared to baseline.",
+        "source": { "title": "Palmer Station, Antarctica: A Ground-Based Spaceflight Analog Suitable for Validation of Biomedical Countermeasures for Deep Space Missions", "org": "NASA NTRS", "url": "https://ntrs.nasa.gov/citations/20230004257" }
+      }
+    ]
+  },
+  "home": {
+    "headline": "Many older adults live independently, and gentle regular tracking of blood pressure, activity, hydration, sleep and social contact can flag changes early, since falls, high blood pressure and loneliness are common in later life.",
+    "systems": {
+      "brain": {
+        "text": "Loneliness and social isolation are common in later life and are linked to poorer mental health. Regular contact with others and steady sleep habits support mood and thinking. Watch for low mood, withdrawal or changes in sleep.",
+        "quote": "Social isolation and loneliness, which affect about a quarter of older people,",
+        "source": { "title": "Mental health of older adults", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/mental-health-of-older-adults" }
+      },
+      "heart": {
+        "text": "Blood pressure tends to rise with age, and high blood pressure often has no symptoms. Regular home or clinic checks are the only way to know. Share repeated high readings with a health professional.",
+        "quote": "The only way to detect hypertension is to have a health professional measure blood pressure.",
+        "source": { "title": "Hypertension", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/hypertension" }
+      },
+      "metabolism": {
+        "text": "Vitamin D helps keep bones and muscles healthy. People who are rarely outdoors or live in care settings may need a supplement all year, so ask a pharmacist or doctor about it.",
+        "quote": "These nutrients are needed to keep bones, teeth and muscles healthy.",
+        "source": { "title": "Vitamin D", "org": "NHS", "url": "https://www.nhs.uk/conditions/vitamins-and-minerals/vitamin-d/" }
+      },
+      "bones": {
+        "text": "Falls are a major cause of injury in people over 60 and can cause fractures and loss of independence. Exercise that challenges balance helps lower fall risk. Watch for new unsteadiness or dizziness.",
+        "quote": "Risk increases with impairments in balance, strength, gait, vision, cognition or mobility.",
+        "source": { "title": "Falls", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/falls" }
+      },
+      "renal": {
+        "text": "Older adults have a higher risk of dehydration, so drinking regularly through the day matters. A simple check is pale-coloured urine. Drink more in hot weather or when unwell.",
+        "quote": "Children under the age of 5 and older adults should get plenty of fluids as they have an increased risk of dehydration.",
+        "source": { "title": "Dehydration", "org": "NHS", "url": "https://www.nhs.uk/conditions/dehydration/" }
+      }
+    },
+    "facts": [
+      {
+        "text": "Around 44% of adults with high blood pressure do not know they have it.",
+        "quote": "An estimated 600 million adults with hypertension (44%) are unaware that they have the condition.",
+        "source": { "title": "Hypertension", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/hypertension" }
+      },
+      {
+        "text": "Most fatal falls happen to people aged 60 and over.",
+        "quote": "About 71% of the estimated fall deaths in 2023 occurred among adults aged 60 years and older.",
+        "source": { "title": "Falls", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/falls" }
+      },
+      {
+        "text": "Exercise programmes can reduce how often people fall.",
+        "quote": "Exercise reduced the overall rate of falls by approximately 23% in trial populations.",
+        "source": { "title": "Falls", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/falls" }
+      },
+      {
+        "text": "Non-fatal falls can still cause lasting harm and lead to needing long-term care.",
+        "quote": "Non-fatal falls also cause fractures, head injury, loss of independence, disability and long-term care needs.",
+        "source": { "title": "Falls", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/falls" }
+      },
+      {
+        "text": "Drinking enough so that urine is pale is a simple hydration check.",
+        "quote": "You should drink enough during the day so that your pee is a pale colour.",
+        "source": { "title": "Dehydration", "org": "NHS", "url": "https://www.nhs.uk/conditions/dehydration/" }
+      }
+    ]
+  },
+  "thresholds": {
+    "activity": {
+      "text": "Adults, including older adults, should aim for at least 150 minutes of moderate-intensity activity per week, plus muscle strengthening on at least 2 days.",
+      "valueMinPerWeek": 150,
+      "quote": "at least 150 minutes of moderate-intensity physical activity per week",
+      "source": { "title": "Physical activity", "org": "WHO", "url": "https://www.who.int/news-room/fact-sheets/detail/physical-activity" }
+    },
+    "activityOlderBalance": {
+      "text": "Older adults (65+) are advised to add balance activities and at least 2 days of muscle strengthening each week.",
+      "quote": "At least 2 days of activities that strengthen muscles.",
+      "source": { "title": "Older Adult Activity: An Overview", "org": "CDC", "url": "https://www.cdc.gov/physical-activity-basics/guidelines/older-adults.html" }
+    },
+    "water": {
+      "text": "EFSA adequate intake of total water is 2.0 L/day for women and 2.5 L/day for men. This total includes water from drinking water, all beverages and food moisture, for moderate temperature and activity.",
+      "womenL": 2.0,
+      "menL": 2.5,
+      "quote": "Available data for adults permit the definition of AIs as 2.0 L/day (P 95 3.1 L) for females and 2.5 L/day (P95 4.0 L) for males.",
+      "source": { "title": "Scientific Opinion on Dietary Reference Values for water", "org": "EFSA (via DTU Orbit record of EFSA Journal 2010;8(3):1459)", "url": "https://orbit.dtu.dk/en/publications/efsa-panel-on-dietetic-products-nutrition-and-allergies-nda-scien-153/" }
+    },
+    "sleepOlder": {
+      "text": "CDC lists 7-8 hours of sleep per night for adults aged 65 and older.",
+      "quote": "Adult (65 years and older): 7-8 hours",
+      "source": { "title": "About Sleep", "org": "CDC", "url": "https://www.cdc.gov/sleep/about/index.html" }
+    }
+  }
+}

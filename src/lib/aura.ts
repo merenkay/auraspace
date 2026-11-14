@@ -1,5 +1,6 @@
 // AURA onboard mode: structured, rule-based explanations built only from recorded data and the
 // sourced knowledge base. It never invents values, never diagnoses and never changes thresholds.
+import { CONTEXTS, impactOf, type Context } from '../data/contexts'
 import { recordsForSystem } from '../data/kb'
 import { SYSTEM_BY_ID } from '../data/systems'
 import { VITAL_BY_KEY, type VitalKey } from '../data/vitals'
@@ -73,7 +74,9 @@ export function topicFor(text: string): VitalKey | null {
 }
 
 export function answer(key: VitalKey, question: string, ev: Evaluation, rows: Measurement[], today: number): AuraAnswer {
-  const d = VITAL_BY_KEY[key]
+  const ctx: Context = ev.context
+  const contact = CONTEXTS[ctx].contact
+  const d = ev.defByKey[key] ?? VITAL_BY_KEY[key]
   const sys = SYSTEM_BY_ID[VITAL_SYSTEM[key]]
   const st = ev.vitalStatus[key]
   const meta = ev.meta[d.primary]
@@ -112,20 +115,24 @@ export function answer(key: VitalKey, question: string, ev: Evaluation, rows: Me
 
   const escalation =
     st === 'crit'
-      ? { level: 'crit' as const, text: 'Follow the onboard protocol now and contact the flight surgeon. Include this finding in today’s report — do not wait for it to resolve on its own.' }
+      ? { level: 'crit' as const, text: ctx === 'home' ? `Contact your ${contact} now. If you feel unwell or it gets worse, call your local emergency number (112 in Europe).` : `Follow the onboard protocol now and contact the ${contact}. Include this finding in today’s report — do not wait for it to resolve on its own.` }
       : st === 'warn'
-        ? { level: 'warn' as const, text: 'Not urgent. If a repeat measurement stays out of range, tell the crew medical officer and include it in today’s flight-surgeon report.' }
+        ? { level: 'warn' as const, text: `Not urgent. If a repeat measurement stays out of range, tell your ${contact} and include it in today’s report.` }
         : { level: 'ok' as const, text: 'No professional review needed for this reading. Keep the regular schedule.' }
 
-  const refs = recordsForSystem(sys.id)
-    .slice(0, 2)
-    .map((r) => ({ title: r.title, org: r.organization, url: r.url }))
+  const impact = impactOf(sys.id, ctx)
+  const refs =
+    ctx === 'space'
+      ? recordsForSystem(sys.id).slice(0, 2).map((r) => ({ title: r.title, org: r.organization, url: r.url }))
+      : impact.source
+        ? [{ title: impact.source.title, org: impact.source.org, url: impact.source.url }]
+        : []
 
   return {
     question,
     sections: [
       { title: 'WHAT I OBSERVED', text: observed },
-      { title: 'WHY IT MAY MATTER', text: sys.space.split('. ').slice(0, 2).join('. ').replace(/\.?$/, '.') },
+      { title: 'WHY IT MAY MATTER', text: impact.text.split('. ').slice(0, 2).join('. ').replace(/\.?$/, '.') },
       { title: 'POSSIBLE EXPLANATIONS', text: `${HYPOTHESES[key]} These are hypotheses, not findings.` },
       { title: 'WHAT IS MISSING', text: MISSING[key] },
       { title: 'HOW CERTAIN', text: confidence },

@@ -34,6 +34,7 @@ export const MISSION = {
   day: 142,
   totalDays: 210,
   environment: 'Spacecraft',
+  context: 'space' as const,
 }
 
 export const CREW: DemoCrew[] = [
@@ -48,6 +49,26 @@ export const STAFF: DemoStaff[] = [
   { id: 102, username: 'capcom', name: 'Jonas Weber', role: 'ground', title: 'Mission Control · CAPCOM' },
 ]
 
+export const TASKS_BY_CONTEXT: Record<'space' | 'polar' | 'home', { id: string; label: string; time: string }[]> = {
+  space: [] as { id: string; label: string; time: string }[],
+  polar: [
+    { id: 'bp', label: 'Morning blood pressure', time: '08:00' },
+    { id: 'spo2', label: 'Oxygen saturation', time: '08:10' },
+    { id: 'mood', label: 'Mood check-in', time: '09:00' },
+    { id: 'light', label: 'Bright-light break', time: '10:00' },
+    { id: 'exercise', label: 'Exercise session', time: '17:00' },
+    { id: 'sleep', label: 'Log last night’s sleep', time: '21:00' },
+  ],
+  home: [
+    { id: 'bp', label: 'Morning blood pressure', time: '08:30' },
+    { id: 'water', label: 'Glass of water', time: '10:00' },
+    { id: 'walk', label: 'Short walk', time: '11:00' },
+    { id: 'mood', label: 'How are you today?', time: '12:00' },
+    { id: 'call', label: 'Call family or a friend', time: '16:00' },
+    { id: 'sleep', label: 'Log last night’s sleep', time: '20:00' },
+  ],
+}
+
 export const TASKS = [
   { id: 'bp', label: 'Morning blood pressure', time: '08:30' },
   { id: 'temp', label: 'Body temperature', time: '08:45' },
@@ -56,6 +77,7 @@ export const TASKS = [
   { id: 'vision', label: 'Vision self-check', time: '14:00' },
   { id: 'water', label: 'Log water intake', time: '20:00' },
 ]
+TASKS_BY_CONTEXT.space = TASKS
 
 // mulberry32 PRNG
 function rng(seed: number) {

@@ -2,7 +2,7 @@ import { motion } from 'motion/react'
 import { useState } from 'react'
 import { Area, AreaChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import { Panel, Reveal, Spinner } from '../components/ui'
-import { STATUS_COLOR, VITALS, VITAL_BY_KEY, type VitalKey } from '../data/vitals'
+import { STATUS_COLOR, VITAL_BY_KEY, type VitalKey } from '../data/vitals'
 import { baselineOf, seriesOf } from '../lib/health'
 import { useCrewData, useSession } from '../lib/session'
 
@@ -12,10 +12,11 @@ export default function History({ crewId }: { crewId: number }) {
   const ev = data.ev
   const [key, setKey] = useState<VitalKey>('bp')
   if (!ev) return <Spinner />
-  const available = VITALS.filter((d) => ev.vitalStatus[d.key])
-  const def = VITAL_BY_KEY[available.some((d) => d.key === key) ? key : available[0].key]
+  const available = ev.vitals
+  if (!available.length) return <p className="text-dim">No measurements yet — log your first reading on the Overview.</p>
+  const def = ev.defByKey[available.some((d) => d.key === key) ? key : available[0].key] ?? VITAL_BY_KEY[key]
   const today = mission?.day ?? 142
-  const series = seriesOf(data.rows, def.primary, today, today)
+  const series = seriesOf(data.rows, def.primary, today + 1, today)
   const base = baselineOf(data.rows, def.primary)
   const recent = [...data.rows].filter((r) => r.metric === def.primary).sort((a, b) => b.at.localeCompare(a.at)).slice(0, 12)
 
@@ -37,7 +38,7 @@ export default function History({ crewId }: { crewId: number }) {
       </div>
 
       <Reveal>
-        <Panel title={`${def.label} · whole mission`}>
+        <Panel title={`${def.label} · {mission?.context === 'space' ? 'whole mission' : 'since you started'}`}>
           <div className="h-80">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart key={def.key} data={series} margin={{ top: 10, right: 12, bottom: 0, left: -10 }}>

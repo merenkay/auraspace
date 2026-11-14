@@ -13,6 +13,7 @@ type Session = {
   login: (u: string, p: string) => Promise<void>
   demoLogin: (role: Role, crewId?: number) => Promise<void>
   logout: () => Promise<void>
+  signedIn: (u: User) => Promise<void>
 }
 
 const Ctx = createContext<Session | null>(null)
@@ -73,6 +74,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         await backend.logout()
         await loadFor(backend, null)
       },
+      signedIn: async (u) => {
+        if (!backend) return
+        await loadFor(backend, u)
+      },
     }),
     [backend, user, mission, crew, ready, loadFor],
   )
@@ -126,7 +131,7 @@ export function useCrewData(crewId: number | null): CrewData {
   }, [reload])
 
   const ev = useMemo(
-    () => (mission && rows.length ? evaluate(rows, mission.profileId, mission.day, user?.role === 'ground') : null),
+    () => (mission && rows.length ? evaluate(rows, mission, user?.role === 'ground') : null),
     [rows, mission, user],
   )
 

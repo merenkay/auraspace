@@ -1,33 +1,36 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { useRef } from 'react'
 import { NavLink, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
+import { CONTEXTS } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { STATUS_COLOR } from '../data/vitals'
 import { radiation } from '../lib/health'
 import { useSession } from '../lib/session'
+import type { User } from '../lib/types'
 import { Logo } from './ui'
 
 type Tab = { to: string; label: string; end?: boolean }
 
-function tabsFor(role: string, crewId: string | undefined, ownId: number | null): Tab[] {
-  if (role === 'astronaut' && ownId != null) {
-    const b = `/crew/${ownId}`
+function tabsFor(user: User | null, crewId: string | undefined): Tab[] {
+  if (!user) return []
+  if ((user.role === 'astronaut' || user.role === 'member') && user.crewId != null) {
+    const b = `/crew/${user.crewId}`
     return [
       { to: b, label: 'Overview', end: true },
       { to: `${b}/diagnostics`, label: 'Diagnostics' },
       { to: `${b}/aura`, label: 'AURA' },
-      { to: `${b}/coach`, label: 'Coach' },
+      { to: `${b}/coach`, label: CONTEXTS[user.context].activityTab },
       { to: `${b}/history`, label: 'History' },
-      { to: '/environment', label: 'Environment' },
+      { to: '/environment', label: user.context === 'space' ? 'Environment' : 'Conditions' },
     ]
   }
   const top: Tab[] = [{ to: '/crew', label: 'Crew', end: true }]
-  if (role === 'surgeon') top.push({ to: '/reports', label: 'Reports' })
+  if (user.role === 'surgeon') top.push({ to: '/reports', label: 'Reports' })
   top.push({ to: '/environment', label: 'Environment' })
   if (!crewId) return top
   const b = `/crew/${crewId}`
   const member: Tab[] =
-    role === 'surgeon'
+    user.role === 'surgeon'
       ? [
           { to: b, label: 'Overview', end: true },
           { to: `${b}/diagnostics`, label: 'Diagnostics' },
@@ -47,15 +50,16 @@ export default function AppShell() {
   const loc = useLocation()
   const nav = useNavigate()
   const outlet = useOutlet()
-  const tabs = tabsFor(user?.role ?? 'astronaut', crewId, user?.crewId ?? null)
+  const tabs = tabsFor(user, crewId)
   const idx = Math.max(0, tabs.findIndex((t) => (t.end ? loc.pathname === t.to : loc.pathname.startsWith(t.to))))
   const prev = useRef(idx)
   const dir = idx >= prev.current ? 1 : -1
   prev.current = idx
 
+  const ctx = mission?.context ?? 'space'
   const prof = MISSIONS.find((m) => m.id === mission?.profileId) ?? MISSIONS[3]
-  const day = mission?.day ?? 142
-  const total = mission?.totalDays ?? 210
+  const day = mission?.day ?? 1
+  const total = mission?.totalDays ?? null
   const rad = radiation(prof.id, day)
   const viewing = crewId ? crew.find((c) => String(c.id) === crewId) : null
 
@@ -71,37 +75,47 @@ export default function AppShell() {
               <div className="text-[10px] tracking-[0.2em] text-dim">FULL BODY DIAGNOSTICS</div>
             </div>
           </div>
-          <Stat label="Mission" value={mission?.name ?? '—'} sub={mission?.environment} />
-          <div className="min-w-32">
-            <div className="label">Mission day</div>
-            <div className="font-semibold">
-              {day} <span className="font-normal text-dim">/ {total}</span>
-            </div>
-            <div className="mt-1 h-1 rounded-full bg-line">
-              <motion.div
-                className="h-1 rounded-full bg-cyan"
-                initial={{ width: 0 }}
-                animate={{ width: `${(day / total) * 100}%` }}
-                transition={{ duration: 1.2, ease: 'easeOut' }}
-              />
-            </div>
-          </div>
-          <Stat label="Earth delay" value={formatDelay(prof.delaySec)} sub="one-way" />
-          <div className="min-w-36">
-            <div className="label">Radiation</div>
-            <div className="font-semibold">
-              {rad.dose.toFixed(0)} mSv <span className="text-xs font-normal text-dim">{rad.pct.toFixed(0)}% of {CAREER_LIMIT_MSV}</span>
-            </div>
-            <div className="mt-1 h-1 rounded-full bg-line">
-              <motion.div
-                className="h-1 rounded-full"
-                style={{ background: STATUS_COLOR[rad.status] }}
-                initial={{ width: 0 }}
-                animate={{ width: `${rad.pct}%` }}
-                transition={{ duration: 1.2, ease: 'easeOut', delay: 0.2 }}
-              />
-            </div>
-          </div>
+
+          {ctx === 'space' ? (
+            <>
+              <Stat label="Mission" value={mission?.name ?? '—'} sub={mission?.environment} />
+              <div className="min-w-32">
+                <div className="label">Mission day</div>
+                <div className="font-semibold">
+                  {day} {total && <span className="font-normal text-dim">/ {total}</span>}
+                </div>
+                {total && (
+                  <div className="mt-1 h-1 rounded-full bg-line">
+                    <motion.div className="h-1 rounded-full bg-cyan" initial={{ width: 0 }} animate={{ width: `${(day / total) * 100}%` }} transition={{ duration: 1.2, ease: 'easeOut' }} />
+                  </div>
+                )}
+              </div>
+              <Stat label="Earth delay" value={formatDelay(prof.delaySec)} sub="one-way" />
+              <div className="min-w-36">
+                <div className="label">Radiation</div>
+                <div className="font-semibold">
+                  {rad.dose.toFixed(0)} mSv <span className="text-xs font-normal text-dim">{rad.pct.toFixed(0)}% of {CAREER_LIMIT_MSV}</span>
+                </div>
+                <div className="mt-1 h-1 rounded-full bg-line">
+                  <motion.div
+                    className="h-1 rounded-full"
+                    style={{ background: STATUS_COLOR[rad.status] }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${rad.pct}%` }}
+                    transition={{ duration: 1.2, ease: 'easeOut', delay: 0.2 }}
+                  />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <Stat label="Profile" value={`${CONTEXTS[ctx].icon} ${CONTEXTS[ctx].label}`} />
+              <Stat label="Tracking since" value={`Day ${day}`} />
+              <Stat label="Care contact" value={CONTEXTS[ctx].contact.replace(/^./, (c) => c.toUpperCase())} />
+              <Stat label="Today" value={new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} />
+            </>
+          )}
+
           <div className="flex items-center gap-3 border-l border-line pl-5">
             <div className="text-right">
               <div className="text-sm font-semibold">{user?.name}</div>
@@ -121,7 +135,8 @@ export default function AppShell() {
         </div>
         <nav aria-label="Sections" className="mx-auto flex max-w-[1500px] items-center gap-1 overflow-x-auto px-3 sm:px-5">
           {tabs.map((t, i) => {
-            const isMember = user?.role !== 'astronaut' && crewId && t.to.startsWith(`/crew/${crewId}`)
+            const staff = user?.role === 'surgeon' || user?.role === 'ground'
+            const isMember = staff && crewId && t.to.startsWith(`/crew/${crewId}`)
             const firstMember = isMember && !tabs[i - 1]?.to.startsWith(`/crew/${crewId}`)
             return (
               <div key={t.to} className="flex items-center">
@@ -134,9 +149,7 @@ export default function AppShell() {
                 <NavLink
                   to={t.to}
                   end={t.end}
-                  className={({ isActive }) =>
-                    `relative whitespace-nowrap px-3.5 py-3 text-sm font-medium transition ${isActive ? 'text-ink' : 'text-dim hover:text-ink'}`
-                  }
+                  className={({ isActive }) => `relative whitespace-nowrap px-3.5 py-3 text-sm font-medium transition ${isActive ? 'text-ink' : 'text-dim hover:text-ink'}`}
                 >
                   {({ isActive }) => (
                     <>

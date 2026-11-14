@@ -2,6 +2,7 @@ import { motion } from 'motion/react'
 import { useEffect, useState } from 'react'
 import ScienceLibrary from '../components/ScienceLibrary'
 import { CountUp, Panel, Reveal } from '../components/ui'
+import { CONTEXTS } from '../data/contexts'
 import { CABIN_LIMITS, CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { STATUS_COLOR, STATUS_LABEL, type Status } from '../data/vitals'
 import { useSerial } from '../hooks/useSerial'
@@ -12,13 +13,15 @@ const GRAVITY: Record<string, number> = { iss: 0, 'lunar-transit': 0, 'lunar-bas
 
 export default function Environment() {
   const { mission } = useSession()
-  const [profile, setProfile] = useState(mission?.profileId ?? 'mars-transit')
+  const ctx = mission?.context ?? 'space'
+  const space = ctx === 'space'
+  const [profile, setProfile] = useState(space ? (mission?.profileId ?? 'mars-transit') : 'mars-transit')
   const [cabin, setCabin] = useState<{ t: number; h: number; live: boolean }>({ t: 22.4, h: 41, live: false })
   const [sim, setSim] = useState(false)
   const [library, setLibrary] = useState(false)
   const day = mission?.day ?? 142
   const rad = radiation(profile, day)
-  const prof = MISSIONS.find((m) => m.id === profile)!
+  const prof = MISSIONS.find((m) => m.id === profile) ?? MISSIONS[3]
 
   const serial = useSerial((r) => {
     setCabin((c) => ({ t: typeof r.t === 'number' ? r.t : c.t, h: typeof r.h === 'number' ? r.h : c.h, live: true }))
@@ -37,12 +40,17 @@ export default function Environment() {
   const cabinCards = [
     { name: 'Temperature', value: cabin.t.toFixed(1), unit: '°C', st: tStatus, limit: '18–27 °C', src: cabin.live ? 'ARDUINO · LIVE' : sim ? 'SIMULATED' : 'SAMPLE' },
     { name: 'Humidity', value: cabin.h.toFixed(0), unit: '%', st: hStatus, limit: '25–75 %', src: cabin.live ? 'ARDUINO · LIVE' : sim ? 'SIMULATED' : 'SAMPLE' },
-    { name: 'CO₂', value: '2.4', unit: 'mmHg', st: 'ok' as Status, limit: '≤ 3 mmHg (1-h avg)', src: 'SAMPLE' },
-    { name: 'Pressure', value: '101.3', unit: 'kPa', st: 'ok' as Status, limit: '14.7 psia · 21% O₂', src: 'SAMPLE' },
+    ...(space
+      ? [
+          { name: 'CO₂', value: '2.4', unit: 'mmHg', st: 'ok' as Status, limit: '≤ 3 mmHg (1-h avg)', src: 'SAMPLE' },
+          { name: 'Pressure', value: '101.3', unit: 'kPa', st: 'ok' as Status, limit: '14.7 psia · 21% O₂', src: 'SAMPLE' },
+        ]
+      : []),
   ]
 
   return (
     <div className="space-y-6">
+      {space && (
       <div className="flex flex-wrap items-center gap-2">
         {MISSIONS.map((m) => (
           <button
@@ -60,7 +68,9 @@ export default function Environment() {
           📚 Science Library
         </button>
       </div>
+      )}
 
+      {space && (
       <div className="grid gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Reveal>
           <Panel title="Space radiation" className="h-full">
@@ -124,10 +134,11 @@ export default function Environment() {
           </Panel>
         </Reveal>
       </div>
+      )}
 
       <Reveal>
         <Panel
-          title="Cabin conditions"
+          title={space ? 'Cabin conditions' : CONTEXTS[ctx].envTitle}
           action={
             <div className="flex gap-2">
               <button type="button" onClick={() => setSim((s) => !s)} className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${sim ? 'border-cyan bg-cyan/15 text-ice' : 'border-line text-soft'}`}>
@@ -145,7 +156,7 @@ export default function Environment() {
             </div>
           }
         >
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className={`grid grid-cols-2 gap-4 ${space ? 'lg:grid-cols-4' : ''}`}>
             {cabinCards.map((c, i) => (
               <motion.div
                 key={c.name}
@@ -170,7 +181,7 @@ export default function Environment() {
             ))}
           </div>
           {serial.error && <p className="mt-3 text-xs text-crit">Sensor: {serial.error}</p>}
-          <p className="mt-3 text-xs text-dim">Limits: NASA-STD-3001 Vol 2 and OCHMO TB-004 (CO₂). Arduino sends lines like {'{"t":23.4,"h":41}'} at 9600 baud.</p>
+          <p className="mt-3 text-xs text-dim">{space ? 'Limits: NASA-STD-3001 Vol 2 and OCHMO TB-004 (CO₂).' : 'Reference band 18–27 °C and 25–75 % humidity comes from NASA’s crew-cabin standard; treat it as a guide, not a home or station rule.'} Arduino sends lines like {'{"t":23.4,"h":41}'} at 9600 baud.</p>
         </Panel>
       </Reveal>
 
