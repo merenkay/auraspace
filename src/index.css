@@ -1,21 +1,158 @@
 @import 'tailwindcss';
 
+/*
+ * AURA design tokens — "Quiet Cockpit". The handbook is docs/DESIGN.md; read it before styling a page.
+ * Token NAMES are an API used by every page. Change values here, never the names.
+ */
 @theme {
-  --color-space: #07111f;
-  --color-deep: #0b1a2c;
-  --color-panel: #102438;
-  --color-panel2: #162d42;
-  --color-line: #1e3a55;
-  --color-cyan: #53d7ff;
-  --color-ice: #a5e9ff;
-  --color-ok: #35d399;
-  --color-warn: #f6bd60;
-  --color-crit: #f06464;
-  --color-ink: #f0f7ff;
-  --color-soft: #c9d8e5;
-  --color-dim: #91a9bd;
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+  /* ---- Surfaces (warm graphite, darkest to lightest) ---- */
+  --color-deep: #0c0b09; /* wells: inputs, chart plot areas, code */
+  --color-space: #12110f; /* the page */
+  --color-panel: #1a1916; /* a surface resting on the page */
+  --color-panel2: #22211e; /* hover, selected, raised (overlays) */
+  --color-line: #2f2e2a; /* hairlines and surface borders (decorative, low contrast on purpose) */
+  --color-edge: #716e69; /* borders of controls: >= 3:1 on every surface */
+
+  /* ---- Text ---- */
+  --color-ink: #f3f0ea; /* primary text and numbers */
+  --color-soft: #c7c4bd; /* secondary text */
+  --color-dim: #9b9891; /* labels, metadata: still >= 4.5:1 on every surface */
+
+  /* ---- Accent: interaction only (focus, links, selection, live). Shifts slightly per context, see below ---- */
+  --color-accent: #92c1fd;
+  --color-accent-hi: #b9daff;
+  /* legacy aliases of the accent — existing class names (text-cyan, bg-cyan, hover:bg-ice) keep working */
+  --color-cyan: #92c1fd;
+  --color-ice: #b9daff;
+
+  /* ---- Status: the only saturated colours. Must equal STATUS_COLOR in src/data/vitals.ts ---- */
+  --color-ok: #4dc588;
+  --color-warn: #fac547;
+  --color-crit: #f75d59;
+
+  /* ---- Type ---- */
+  --font-sans: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+
+  --text-display: 2.75rem; /* 44 — auth headline only */
+  --text-display--line-height: 1.05;
+  --text-display--letter-spacing: -0.025em;
+  --text-display--font-weight: 600;
+  --text-title: 1.75rem; /* 28 — one page title per page */
+  --text-title--line-height: 1.15;
+  --text-title--letter-spacing: -0.02em;
+  --text-title--font-weight: 600;
+  --text-heading: 1.125rem; /* 18 — section headings */
+  --text-heading--line-height: 1.35;
+  --text-heading--letter-spacing: -0.01em;
+  --text-heading--font-weight: 600;
+  --text-metric-xl: 3.5rem; /* 56 — the one hero number of a view */
+  --text-metric-xl--line-height: 1;
+  --text-metric-xl--letter-spacing: -0.03em;
+  --text-metric-xl--font-weight: 500;
+  --text-metric-lg: 2.25rem; /* 36 — a vital in a card */
+  --text-metric-lg--line-height: 1.05;
+  --text-metric-lg--letter-spacing: -0.025em;
+  --text-metric-lg--font-weight: 500;
+  --text-metric-md: 1.5rem; /* 24 — supporting figures */
+  --text-metric-md--line-height: 1.15;
+  --text-metric-md--letter-spacing: -0.015em;
+  --text-metric-md--font-weight: 500;
+
+  /* ---- Shape: one tight radius scale; legacy rounded-2xl / rounded-3xl collapse into it ---- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem; /* controls */
+  --radius-xl: 0.625rem;
+  --radius-2xl: 0.75rem; /* surfaces */
+  --radius-3xl: 0.75rem;
+
+  /* Overlays are the only things with a shadow */
+  --shadow-overlay: 0 24px 64px -16px rgb(0 0 0 / 0.7), 0 0 0 1px var(--color-line);
+
+  /* ---- Motion (mirrored as DUR / EASE / SPRING in src/components/ui.tsx) ---- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.6, 0, 0.2, 1);
+  --default-transition-duration: 160ms;
+  --default-transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  --animate-status-ping: status-ping 700ms cubic-bezier(0.2, 0.8, 0.2, 1) 1 both;
+  --animate-skeleton: skeleton 1.6s ease-in-out infinite;
+  --animate-live: live 2s ease-in-out infinite;
+  --animate-shake: shake 320ms cubic-bezier(0.36, 0.07, 0.19, 0.97) 1;
+
+  /* One ring that expands once: "this status just changed" */
+  @keyframes status-ping {
+    from {
+      opacity: 0.7;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(1.9);
+    }
+  }
+  @keyframes skeleton {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
+  @keyframes live {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+  /* A refused input (wrong code): a short horizontal shake, once */
+  @keyframes shake {
+    20% {
+      transform: translateX(-5px);
+    }
+    40% {
+      transform: translateX(4px);
+    }
+    60% {
+      transform: translateX(-3px);
+    }
+    80% {
+      transform: translateX(2px);
+    }
+  }
+}
+
+/*
+ * Contextual accent: same lightness and chroma, a different hue (space = horizon blue, polar = glacier, home = heather).
+ * useContextAccent() sets data-context on <html> for the signed-in profile; data-accent="…" scopes it to one element
+ * (used where the three contexts are shown side by side, e.g. the profile chooser).
+ */
+[data-accent='space'] {
+  --color-accent: #92c1fd;
+  --color-accent-hi: #b9daff;
+  --color-cyan: #92c1fd;
+  --color-ice: #b9daff;
+}
+:root[data-context='polar'],
+[data-accent='polar'] {
+  --color-accent: #84d3e1;
+  --color-accent-hi: #ade6f1;
+  --color-cyan: #84d3e1;
+  --color-ice: #ade6f1;
+}
+:root[data-context='home'],
+[data-accent='home'] {
+  --color-accent: #cbafed;
+  --color-accent-hi: #e0cef8;
+  --color-cyan: #cbafed;
+  --color-ice: #e0cef8;
 }
 
 :root {
@@ -24,6 +161,7 @@
 
 html {
   scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 html,
@@ -37,34 +175,33 @@ body {
   background: var(--color-space);
   color: var(--color-ink);
   font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   -webkit-tap-highlight-color: transparent;
 }
 
-/* soft aurora behind every page */
-.aurora {
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    radial-gradient(60% 50% at 15% 0%, rgba(83, 215, 255, 0.1), transparent 70%),
-    radial-gradient(50% 40% at 90% 10%, rgba(180, 156, 255, 0.08), transparent 70%),
-    var(--color-space);
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 35%, transparent);
+  color: var(--color-ink);
 }
 
-.glass {
-  background: linear-gradient(180deg, rgba(22, 45, 66, 0.72), rgba(16, 36, 56, 0.72));
-  border: 1px solid rgba(83, 215, 255, 0.12);
-  backdrop-filter: blur(14px);
+/*
+ * Keyboard focus. Deliberately unlayered so it also wins over legacy `outline-none` utilities:
+ * every interactive element in the product gets the same visible ring.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex], [role='button'], [role='tab'], [role='radio']):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
-
-.label {
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--color-dim);
-  font-weight: 600;
+:where(input:not([type='checkbox'], [type='radio']), select, textarea):focus-visible {
+  outline-offset: 0;
+}
+:where([tabindex='-1']):focus-visible {
+  outline: none;
 }
 
 ::-webkit-scrollbar {
@@ -72,72 +209,153 @@ body {
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e3a55;
+  background: #3e3d3a;
   border-radius: 10px;
+  border: 2px solid var(--color-space);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* ---------- Small shared classes (prefer the primitives in src/components/ui.tsx) ---------- */
+
+/* Field labels and captions: sentence case, never uppercase or letter-spaced. */
+.label {
+  font-size: 0.8125rem;
+  line-height: 1.35;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-dim);
+  font-weight: 500;
+}
+
+/* Machine-written metadata: timestamps, sources, ids, axis ticks. */
+.meta {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: var(--color-dim);
+}
+
+/* Text links. Always underlined: colour alone never marks a link. */
+.link {
+  color: var(--color-accent);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklab, var(--color-accent) 45%, transparent);
+  transition: color 160ms var(--ease-out), text-decoration-color 160ms var(--ease-out);
+}
+.link:hover {
+  color: var(--color-accent-hi);
+  text-decoration-color: currentColor;
+}
+
+/* Hide a scrollbar on horizontally scrolling tab rows. */
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Legacy surface class: now a flat panel with a hairline. No blur, no gradient. */
+.glass {
+  background: var(--color-panel);
+  border: 1px solid var(--color-line);
+}
+
+/* Legacy page backdrop: now simply the flat page colour. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--color-space);
 }
 
 /* ---------- SVG body map fallback ---------- */
 .organ {
   cursor: pointer;
-  outline: none;
-  opacity: 0.82;
-  transition: opacity 0.18s ease, filter 0.18s ease;
+  opacity: 0.78;
+  transition: opacity 160ms var(--ease-out), filter 160ms var(--ease-out);
 }
 .organ .pop {
-  transition: transform 0.18s ease;
+  transition: transform 160ms var(--ease-out);
   transform-box: fill-box;
   transform-origin: center;
 }
 .organ.is-active,
 .organ:focus-visible {
   opacity: 1;
-  filter: drop-shadow(0 0 5px currentColor) drop-shadow(0 0 14px currentColor);
+  filter: brightness(1.25) saturate(1.1);
 }
 .organ.is-active .pop {
-  transform: scale(1.1);
+  transform: scale(1.06);
 }
+/* Three pulses to announce it, then steady: nothing blinks forever. */
 .organ.is-crit {
-  animation: crit-blink 1.1s ease-in-out infinite;
+  animation: crit-attn 900ms ease-in-out 3;
 }
 .body-shell {
-  filter: drop-shadow(0 0 6px rgba(83, 215, 255, 0.55));
+  filter: none;
 }
 .organ.is-active .body-shell {
-  filter: drop-shadow(0 0 10px currentColor) brightness(1.5);
+  filter: brightness(1.4);
 }
 .heartbeat {
-  animation: heartbeat 0.85s ease-in-out infinite;
+  animation: heartbeat 0.9s ease-in-out 3;
   transform-box: fill-box;
   transform-origin: center;
 }
+/* The decorative scan sweep is retired; the class stays so existing markup is harmless. */
 .scanline {
-  animation: scan 4.5s linear infinite;
+  display: none;
 }
+/* Only for genuinely live data (a streaming sensor). */
 .live-dot {
-  animation: live-dot 1s ease-in-out infinite;
+  animation: live 2s ease-in-out infinite;
 }
 
 @keyframes heartbeat {
-  0%, 100% { transform: scale(1); }
-  12% { transform: scale(1.22); }
-  24% { transform: scale(1); }
-  36% { transform: scale(1.14); }
-  48% { transform: scale(1); }
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  12% {
+    transform: scale(1.16);
+  }
+  24% {
+    transform: scale(1);
+  }
+  36% {
+    transform: scale(1.1);
+  }
+  48% {
+    transform: scale(1);
+  }
 }
-@keyframes scan {
-  from { transform: translateY(-50px); }
-  to { transform: translateY(580px); }
-}
-@keyframes crit-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.45; }
-}
-@keyframes live-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
+@keyframes crit-attn {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
+/* Reduced motion: movement stops, state changes still happen (instantly). */
 @media (prefers-reduced-motion: reduce) {
-  html { scroll-behavior: auto; }
-  .heartbeat, .scanline, .organ.is-crit, .live-dot { animation: none; }
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

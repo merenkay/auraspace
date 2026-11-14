@@ -13,6 +13,13 @@ if (!$cfg) {
     http_response_code(503);
     exit("aura-config.php not found. Upload it next to (one level above) public_html first.\n");
 }
+// A half-edited copy of the example file must never be usable: its placeholder values are public.
+foreach (['install_token', 'app_secret', 'demo_password', 'db_pass'] as $placeholderKey) {
+    if (stripos((string) ($cfg[$placeholderKey] ?? ''), 'CHANGE-ME') !== false) {
+        http_response_code(400);
+        exit("aura-config.php still contains the placeholder CHANGE-ME for '$placeholderKey'. Replace it with your own value (or run: node tools/make-config.mjs).\n");
+    }
+}
 if (empty($cfg['install_token']) || strlen($cfg['install_token']) < 16 || !hash_equals($cfg['install_token'], (string) ($_GET['token'] ?? ''))) {
     http_response_code(403);
     exit("Forbidden: wrong or missing token (install_token must be at least 16 characters).\n");
@@ -28,7 +35,13 @@ if (!is_array($seed)) {
     exit("seed.json is missing or invalid in /api. Redeploy the site.\n");
 }
 
-$pdo = db();
+try {
+    $pdo = db();
+} catch (Throwable $e) {
+    http_response_code(500);
+    $why = $e->getMessage() === 'not_configured' ? 'db_name or db_user is missing in aura-config.php' : $e->getMessage();
+    exit("Database connection failed: $why\n");
+}
 $schema = [
     "CREATE TABLE IF NOT EXISTS mission (
         id INT PRIMARY KEY, name VARCHAR(80) NOT NULL, profile_id VARCHAR(32) NOT NULL,

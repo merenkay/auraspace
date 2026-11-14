@@ -1,28 +1,66 @@
-import { motion } from 'motion/react'
-import { lazy, Suspense, useState, type FormEvent } from 'react'
+import { ArrowRight, RadioTower, Stethoscope, type LucideIcon } from 'lucide-react'
+import { useState, type FormEvent } from 'react'
 import { Link, useNavigate } from 'react-router'
-import { Logo } from '../components/ui'
-import { CREW } from '../lib/demoData'
+import { AuthLayout } from '../components/AuthLayout'
+import { Avatar, Button, Field, Input, List, Notice, PasswordInput, Row, SourceLink, Stagger, StaggerItem, UiKit, CONTEXT_ICON } from '../components/ui'
+import { contextFacts, type Context } from '../data/contexts'
+import { ENV_VALUES } from '../data/kb'
+import { CREW, MISSION, STAFF } from '../lib/demoData'
 import { useSession } from '../lib/session'
 import type { Role } from '../lib/types'
 
-const SpaceScene = lazy(() => import('../components/three/SpaceScene'))
-
-const item = {
-  hidden: { opacity: 0, x: -24 },
-  show: (i: number) => ({ opacity: 1, x: 0, transition: { delay: 0.15 + i * 0.08, duration: 0.5, ease: [0.22, 1, 0.36, 1] as const } }),
+// What each simulated crew member's data shows (see src/lib/demoData.ts).
+const STORY: Record<number, string> = {
+  1: 'blood pressure rising',
+  2: 'short sleep, low mood',
+  3: 'all readings normal',
+  4: 'low water and exercise',
+}
+const STAFF_NOTE: Record<string, { icon: LucideIcon; note: string }> = {
+  surgeon: { icon: Stethoscope, note: 'reviews the whole crew' },
+  ground: { icon: RadioTower, note: 'sees crew status, never mood' },
 }
 
+type Premise = { context: Context; label: string; value: string; unit: string; text: string; org: string; url: string }
+
+/** Why the product exists, one sourced number per context. Figures come from the knowledge base (src/data/kb, src/data/contexts-kb.json). */
+function premises(): Premise[] {
+  const mars = ENV_VALUES.find((e) => e.id === 'comms-delay-earth-mars')
+  const polar = contextFacts('polar').facts.find((f) => f.quote.includes('nine months'))
+  const home = contextFacts('home').facts.find((f) => f.quote.includes('44%'))
+  const out: Premise[] = []
+  if (mars?.valueMax != null)
+    out.push({
+      context: 'space',
+      label: 'Space crew',
+      value: String(mars.valueMax),
+      unit: mars.unit,
+      text: `for a message from Mars to reach Earth when the planets are farthest apart${mars.value != null ? ` (${mars.value} ${mars.unit} at the closest)` : ''}.`,
+      org: mars.source.organization,
+      url: mars.source.url,
+    })
+  if (polar) out.push({ context: 'polar', label: 'Polar station', value: '≈ 9', unit: 'months', text: 'of every year, crews at Concordia station in Antarctica are completely isolated from the outside world.', org: polar.source.org, url: polar.source.url })
+  if (home) out.push({ context: 'home', label: 'Home care', value: '44', unit: '%', text: 'of adults with high blood pressure do not know they have it.', org: home.source.org, url: home.source.url })
+  return out
+}
+
+// Development only: /login?kit shows every shared primitive in every state (see docs/DESIGN.md).
+const SHOW_KIT = import.meta.env.DEV && typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('kit')
+
 export default function Login() {
-  const { login, demoLogin, backend } = useSession()
+  return SHOW_KIT ? <UiKit /> : <SignIn />
+}
+
+function SignIn() {
+  const { login, demoLogin } = useSession()
   const nav = useNavigate()
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const go = async (fn: () => Promise<void>) => {
-    setBusy(true)
+  const go = async (key: string, fn: () => Promise<void>) => {
+    setBusy(key)
     setError(null)
     try {
       await fn()
@@ -30,119 +68,119 @@ export default function Login() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Sign-in failed')
     } finally {
-      setBusy(false)
+      setBusy(null)
     }
   }
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    void go(() => login(username, password))
+    void go('form', () => login(username, password))
   }
-  const demo = (role: Role, crewId?: number) => void go(() => demoLogin(role, crewId))
+  const demo = (role: Role, crewId?: number) => void go(`${role}${crewId ?? ''}`, () => demoLogin(role, crewId))
 
   return (
-    <div className="relative min-h-screen overflow-hidden">
-      <div className="absolute inset-0">
-        <Suspense fallback={null}>
-          <SpaceScene />
-        </Suspense>
-      </div>
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-space via-space/85 to-transparent" />
+    <AuthLayout
+      hero
+      title={
+        <>
+          Your health, <span className="text-dim">wherever help is far away.</span>
+        </>
+      }
+      lead="Measure, understand, and know when to call for help. Built for astronauts on a long mission, and just as useful at a polar station or at home."
+      aside={
+        <Stagger as="ul" delay={0.15} step={0.07} className="max-w-xl border-b border-line">
+          {premises().map((p) => {
+            const Icon = CONTEXT_ICON[p.context]
+            return (
+            <StaggerItem as="li" key={p.context} className="grid grid-cols-[minmax(0,7.5rem)_minmax(0,1fr)] gap-x-5 border-t border-line py-5 sm:grid-cols-[9.5rem_minmax(0,1fr)]">
+              <div data-accent={p.context}>
+                <div className="flex items-center gap-1.5 text-[13px] text-dim">
+                  <Icon className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+                  {p.label}
+                </div>
+                <div className="mt-2 flex items-baseline gap-1.5 whitespace-nowrap">
+                  <span className="text-metric-lg text-ink">{p.value}</span>
+                  <span className="text-sm text-dim">{p.unit}</span>
+                </div>
+              </div>
+              <div className="pt-[26px] text-[15px] leading-relaxed text-soft">
+                {p.text} <SourceLink href={p.url} org={p.org} className="whitespace-nowrap" />
+              </div>
+            </StaggerItem>
+            )
+          })}
+        </Stagger>
+      }
+    >
+      <form onSubmit={submit} className="space-y-4" aria-labelledby="signin-h">
+        <h2 id="signin-h" className="border-b border-line pb-3 text-heading text-ink">
+          Sign in
+        </h2>
+        <Field label="Email or username">
+          <Input value={username} onChange={(e) => setUsername(e.target.value)} autoComplete="username" autoCapitalize="none" spellCheck={false} />
+        </Field>
+        <Field label="Password">
+          <PasswordInput value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" />
+        </Field>
+        {error && (
+          <Notice tone="crit" role="alert">
+            {error}
+          </Notice>
+        )}
+        <Button type="submit" variant="primary" size="lg" full loading={busy === 'form'} disabled={Boolean(busy) || !username || !password}>
+          Sign in
+        </Button>
+        <div className="flex items-center justify-between text-sm">
+          <Link to="/register" className="link -my-3 py-3">
+            Create an account
+          </Link>
+          <Link to="/forgot" className="link -my-3 py-3">
+            Forgot password?
+          </Link>
+        </div>
+      </form>
 
-      <main className="relative z-10 flex min-h-screen items-center px-5 py-10 sm:px-12">
-        <motion.div initial="hidden" animate="show" className="w-full max-w-md">
-          <motion.div custom={0} variants={item} className="flex items-center gap-3">
-            <Logo size={44} />
-            <div>
-              <div className="font-display text-2xl font-bold tracking-[0.12em]">AURA</div>
-              <div className="text-[11px] tracking-[0.2em] text-dim">FULL BODY DIAGNOSTICS</div>
-            </div>
-          </motion.div>
-
-          <motion.h1 custom={1} variants={item} className="mt-10 font-display text-4xl font-bold leading-tight sm:text-5xl">
-            Your health,
-            <br />
-            <span className="bg-gradient-to-r from-cyan to-ice bg-clip-text text-transparent">wherever help is far away.</span>
-          </motion.h1>
-          <motion.p custom={2} variants={item} className="mt-4 max-w-sm text-soft">
-            Measure, understand, and know when to call for help — built for astronauts 14 minutes from Earth, and just as useful at a polar station or at home.
-          </motion.p>
-
-          <motion.form custom={3} variants={item} onSubmit={submit} className="glass mt-8 space-y-3 rounded-3xl p-5">
-            <label className="block">
-              <span className="label">Email or username</span>
-              <input
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                autoComplete="username"
-                className="mt-1.5 w-full rounded-xl border border-line bg-space/70 px-4 py-3 text-ink outline-none transition focus:border-cyan"
-              />
-            </label>
-            <label className="block">
-              <span className="label">Password</span>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                autoComplete="current-password"
-                className="mt-1.5 w-full rounded-xl border border-line bg-space/70 px-4 py-3 text-ink outline-none transition focus:border-cyan"
-              />
-            </label>
-            {error && (
-              <p role="alert" className="text-sm text-crit">
-                {error}
-              </p>
-            )}
-            <button
-              type="submit"
-              disabled={busy || !username || !password}
-              className="w-full rounded-xl bg-cyan py-3 font-semibold text-space transition hover:bg-ice disabled:opacity-40"
-            >
-              {busy ? 'Signing in…' : 'Sign in'}
-            </button>
-            <div className="flex justify-between text-sm">
-              <Link to="/register" className="font-semibold text-cyan">
-                Create an account
-              </Link>
-              <Link to="/forgot" className="text-dim hover:text-ink">
-                Forgot password?
-              </Link>
-            </div>
-          </motion.form>
-
-          <motion.div custom={4} variants={item} className="mt-6">
-            <p className="label">Demo access for judges</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {CREW.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  disabled={busy}
-                  onClick={() => demo('astronaut', c.id)}
-                  className="group flex items-center gap-2 rounded-full border border-line bg-space/60 py-1.5 pl-1.5 pr-3 text-sm transition hover:border-cyan"
-                  title={`${c.name} — ${c.position}`}
-                >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-bold text-space" style={{ background: c.color }}>
-                    {c.callsign}
+      <section className="mt-9" aria-labelledby="demo-h">
+        <div className="border-b border-line pb-3">
+          <h2 id="demo-h" className="text-heading text-ink">
+            Try the demo
+          </h2>
+          <p className="mt-0.5 text-sm text-dim">
+            A simulated crew on {MISSION.name}, day {MISSION.day}. No account needed.
+          </p>
+        </div>
+        <List className="border-t-0">
+          {CREW.map((c) => (
+            <Row
+              key={c.id}
+              onClick={() => demo('astronaut', c.id)}
+              disabled={Boolean(busy)}
+              leading={<Avatar name={c.name} text={c.callsign} />}
+              title={c.name}
+              description={`${c.position} · ${STORY[c.id] ?? 'simulated data'}`}
+              trailing={<ArrowRight className="h-4 w-4 text-dim" aria-hidden="true" />}
+            />
+          ))}
+          {STAFF.map((s) => {
+            const n = STAFF_NOTE[s.role]
+            return (
+              <Row
+                key={s.id}
+                onClick={() => demo(s.role)}
+                disabled={Boolean(busy)}
+                leading={
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full border border-line text-soft">
+                    <n.icon className="h-4 w-4" aria-hidden="true" />
                   </span>
-                  {c.name.split(' ')[0]}
-                </button>
-              ))}
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <button type="button" disabled={busy} onClick={() => demo('surgeon')} className="rounded-full border border-line bg-space/60 px-4 py-2 text-sm transition hover:border-cyan">
-                🩺 Flight Surgeon
-              </button>
-              <button type="button" disabled={busy} onClick={() => demo('ground')} className="rounded-full border border-line bg-space/60 px-4 py-2 text-sm transition hover:border-cyan">
-                🛰 Mission Control
-              </button>
-            </div>
-            <p className="mt-4 text-xs text-dim">
-              {backend?.mode === 'server' ? '● Connected to the mission database' : '○ Demo mode — data stays in this browser'} · all crew data is simulated
-            </p>
-          </motion.div>
-        </motion.div>
-      </main>
-    </div>
+                }
+                title={s.title.split(' · ')[0]}
+                description={`${s.name} · ${n.note}`}
+                trailing={<ArrowRight className="h-4 w-4 text-dim" aria-hidden="true" />}
+              />
+            )
+          })}
+        </List>
+      </section>
+    </AuthLayout>
   )
 }

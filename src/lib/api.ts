@@ -3,7 +3,8 @@
 import { contextOf, type Context } from '../data/contexts'
 import type { FieldId } from '../data/vitals'
 import { CREW, MISSION, STAFF, TASKS_BY_CONTEXT, generateMeasurements } from './demoData'
-import type { CodeTicket, CrewMember, Measurement, Mission, Report, ReportSummary, Role, Task, User } from './types'
+import { IMPORT_DEVICES } from './samsungHealth'
+import type { CodeTicket, CrewMember, ImportResult, ImportRow, Measurement, Mission, Report, ReportSummary, Role, Task, User } from './types'
 
 export type Mode = 'server' | 'demo'
 export type SignupInput = { name: string; email: string; password: string; context: Context; consent: boolean }
@@ -23,8 +24,15 @@ export interface Backend {
   deleteAccount(password: string): Promise<void>
   mission(): Promise<Mission>
   crew(): Promise<CrewMember[]>
+  /** Rows with day >= sinceDay. Default: everything, including imported history before day 1. */
   measurements(crewId: number, sinceDay?: number): Promise<Measurement[]>
   addMeasurements(crewId: number, values: Partial<Record<FieldId, number>>, source: string, device: string): Promise<Measurement[]>
+  /**
+   * Saves daily values from a device export (source 'device'). Each row keeps its own timestamp; its tracking day
+   * is today's day minus the whole days since `localDate` (can be <= 0). Deduplicated by person + metric + local
+   * day + device: a day that was already imported keeps its first value. Self users only, own record only.
+   */
+  importMeasurements(crewId: number, rows: ImportRow[], device: string, onProgress?: (done: number, total: number) => void): Promise<ImportResult>
   tasks(crewId: number): Promise<{ tasks: Task[]; streak: number }>
   toggleTask(crewId: number, taskId: string): Promise<{ tasks: Task[]; streak: number }>
   reports(crewId?: number): Promise<Report[]>
@@ -38,6 +46,36 @@ class ApiError extends Error {
     super(message)
     this.status = status
   }
+}
+
+/* ------------------------------------------------------------------ import */
+
+/** Default lower bound for measurements(): include imported history that predates day 1. */
+const EARLIEST_DAY = -100000
+/** Rows per import request (the server caps at 400). */
+const IMPORT_CHUNK = 300
+/** Metrics an import may write, with the same plausible ranges as METRICS in public/api/lib.php. */
+const IMPORT_RANGES: Partial<Record<FieldId, [number, number]>> = {
+  sys: [60, 250], dia: [30, 150], hr: [20, 220], spo2: [50, 100], temp: [30, 43], sleep: [0, 16], exercise: [0, 300], water: [0, 8],
+}
+
+/** Shared row validation (demo store; the PHP route applies the same rules). Returns null when the row is invalid. */
+function cleanImportRow(r: ImportRow, today: string): ImportRow | null {
+  const range = IMPORT_RANGES[r.metric]
+  if (!range || typeof r.value !== 'number' || !Number.isFinite(r.value) || r.value < range[0] || r.value > range[1]) return null
+  if (typeof r.localDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(r.localDate)) return null
+  const d = Date.parse(`${r.localDate}T00:00:00Z`)
+  if (!Number.isFinite(d) || new Date(d).toISOString().slice(0, 10) !== r.localDate) return null
+  const ago = Math.round((Date.parse(`${today}T00:00:00Z`) - d) / 86400000)
+  if (ago < -1 || ago > 3660) return null
+  const at = Date.parse(r.at)
+  if (!Number.isFinite(at)) return null
+  return { metric: r.metric, value: r.value, localDate: r.localDate, at: new Date(Math.min(at, Date.now())).toISOString() }
+}
+
+function localToday() {
+  const n = new Date()
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
 }
 
 /* ------------------------------------------------------------------ server */
@@ -83,8 +121,31 @@ function makeServer(mailReady: boolean): Backend {
     deleteAccount: (password) => post('auth/delete', { password }).then(() => undefined),
     mission: () => call<{ mission: Mission }>('mission').then((d) => ({ ...d.mission, context: contextOf(d.mission.context) })),
     crew: () => call<{ crew: CrewMember[] }>('crew').then((d) => d.crew),
-    measurements: (crewId, sinceDay = 1) => call<{ measurements: Measurement[] }>('measurements', { query: { crew: crewId, since: sinceDay } }).then((d) => d.measurements),
+    measurements: async (crewId, sinceDay = EARLIEST_DAY) => {
+      // The core route only serves day >= 1; imported history from before day 1 comes from the import module.
+      // If that module is not deployed (or fails), the app still works with the core rows.
+      const [main, early] = await Promise.all([
+        call<{ measurements: Measurement[] }>('measurements', { query: { crew: crewId, since: Math.max(1, sinceDay) } }).then((d) => d.measurements),
+        sinceDay < 1
+          ? call<{ measurements: Measurement[] }>('import/early', { query: { crew: crewId, since: sinceDay } }).then((d) => d.measurements).catch(() => [] as Measurement[])
+          : Promise.resolve([] as Measurement[]),
+      ])
+      return early.length ? [...early, ...main].sort((a, b) => a.at.localeCompare(b.at)) : main
+    },
     addMeasurements: (crewId, values, source, device) => post<{ measurements: Measurement[] }>('measurements', { crewId, values, source, device }).then((d) => d.measurements),
+    importMeasurements: async (crewId, rows, device, onProgress) => {
+      const total: ImportResult = { added: 0, unchanged: 0, conflicts: 0, rejected: 0, measurements: [] }
+      for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
+        const r = await post<ImportResult>('import/measurements', { crewId, device, rows: rows.slice(i, i + IMPORT_CHUNK) })
+        total.added += r.added
+        total.unchanged += r.unchanged
+        total.conflicts += r.conflicts
+        total.rejected += r.rejected
+        total.measurements.push(...(r.measurements ?? []))
+        onProgress?.(Math.min(rows.length, i + IMPORT_CHUNK), rows.length)
+      }
+      return total
+    },
     tasks: (crewId) => call('tasks', { query: { crew: crewId } }),
     toggleTask: (crewId, taskId) => post('tasks/toggle', { crewId, taskId }),
     reports: (crewId) => call<{ reports: Report[] }>('reports', { query: crewId ? { crew: crewId } : {} }).then((d) => d.reports),
@@ -106,6 +167,8 @@ type Store = {
   reports: Report[]
   members: DemoMember[]
   pending: Record<string, Pending>
+  /** Device-import dedupe index: `${crewId}|${metric}|${localDate}|${device}` -> id of the row in `extra`. Optional for older stores. */
+  imports?: Record<string, number>
 }
 
 function readStore(): Store {
@@ -116,6 +179,7 @@ function readStore(): Store {
     reports: [],
     members: [],
     pending: {},
+    imports: {},
   }
   try {
     const raw = localStorage.getItem(KEY)
@@ -129,6 +193,14 @@ function writeStore(s: Store) {
     localStorage.setItem(KEY, JSON.stringify(s))
   } catch {
     /* storage unavailable: demo state lives for this page only */
+  }
+}
+/** Like writeStore, but reports failure (used where silently losing data would mislead, e.g. imports). */
+function writeStoreOrThrow(s: Store) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(s))
+  } catch {
+    throw new ApiError('This browser has no room left to store the imported data. Import a shorter date range.', 507)
   }
 }
 
@@ -290,6 +362,7 @@ const demo: Backend = {
       members: st.members.filter((x) => x.id !== m.id),
       extra: st.extra.filter((x) => x.crewId !== m.crewId),
       reports: st.reports.filter((x) => x.crewId !== m.crewId),
+      imports: Object.fromEntries(Object.entries(st.imports ?? {}).filter(([k]) => !k.startsWith(`${m.crewId}|`))),
     })
   },
   mission: async () => {
@@ -310,7 +383,7 @@ const demo: Backend = {
     const list = CREW.map(({ id, name, callsign, position, color }) => ({ id, name, callsign, position, color, context: 'space' as Context }))
     return delay(u?.role === 'astronaut' ? list.filter((c) => c.id === u.crewId) : list)
   },
-  measurements: async (crewId, sinceDay = 1) => {
+  measurements: async (crewId, sinceDay = EARLIEST_DAY) => {
     const st = readStore()
     const rows = [...base(), ...st.extra].filter((m) => m.crewId === crewId && m.day >= sinceDay)
     const visible = st.user?.role === 'ground' ? rows.filter((m) => m.metric !== 'mood') : rows
@@ -324,6 +397,43 @@ const demo: Backend = {
     const rows: Measurement[] = Object.entries(values).map(([metric, value]) => ({ id: id++, crewId, metric: metric as FieldId, value: value as number, day, at: now, source, device }))
     writeStore({ ...st, extra: [...st.extra, ...rows] })
     return delay(rows)
+  },
+  importMeasurements: async (crewId, rows, device, onProgress) => {
+    const st = readStore()
+    const u = st.user
+    if (!u || (u.role !== 'astronaut' && u.role !== 'member') || u.crewId !== crewId) throw new ApiError('You can only import data into your own record.', 403)
+    if (!(IMPORT_DEVICES as readonly string[]).includes(device)) throw new ApiError('Unknown device label.', 400)
+    const today = localToday()
+    const curDay = dayFor(st, crewId)
+    const index = { ...(st.imports ?? {}) }
+    const extra = [...st.extra]
+    const byId = new Map(extra.map((m, i) => [m.id, i]))
+    let id = Math.max(1_000_000 + extra.length, ...extra.map((m) => m.id + 1))
+    const result: ImportResult = { added: 0, unchanged: 0, conflicts: 0, rejected: 0, measurements: [] }
+    for (const raw of rows) {
+      const r = cleanImportRow(raw, today)
+      if (!r) {
+        result.rejected++
+        continue
+      }
+      const key = `${crewId}|${r.metric}|${r.localDate}|${device}`
+      const prevIdx = index[key] != null ? byId.get(index[key]) : undefined
+      if (prevIdx != null) {
+        if (Math.abs(extra[prevIdx].value - r.value) < 0.005) result.unchanged++
+        else result.conflicts++ // append-only: keep the value imported first
+        continue
+      }
+      const ago = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${r.localDate}T00:00:00Z`)) / 86400000)
+      const m: Measurement = { id: id++, crewId, metric: r.metric, value: r.value, day: curDay - ago, at: r.at, source: 'device', device }
+      byId.set(m.id, extra.length)
+      extra.push(m)
+      index[key] = m.id
+      result.added++
+      result.measurements.push(m)
+    }
+    writeStoreOrThrow({ ...st, extra, imports: index })
+    onProgress?.(rows.length, rows.length)
+    return delay(result)
   },
   tasks: async (crewId) => delay(tasksFor(readStore(), crewId)),
   toggleTask: async (crewId, taskId) => {

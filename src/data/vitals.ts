@@ -189,7 +189,7 @@ export const VITALS: VitalDef[] = [
 
 export const VITAL_BY_KEY = Object.fromEntries(VITALS.map((d) => [d.key, d])) as Record<VitalKey, VitalDef>
 
-export const STATUS_COLOR: Record<Status, string> = { ok: '#35D399', warn: '#F6BD60', crit: '#F06464' }
+export const STATUS_COLOR: Record<Status, string> = { ok: '#4DC588', warn: '#FAC547', crit: '#F75D59' }
 export const STATUS_LABEL: Record<Status, string> = { ok: 'NORMAL', warn: 'ATTENTION', crit: 'URGENT' }
 export const STATUS_RANK: Record<Status, number> = { ok: 0, warn: 1, crit: 2 }
 

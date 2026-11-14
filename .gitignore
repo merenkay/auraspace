@@ -6,3 +6,5 @@ dist
 public/api/seed.json
 aura-config.php
 public/api/config.local.php
+/aura-config*
+!/aura-config.example.php

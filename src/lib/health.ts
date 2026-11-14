@@ -121,9 +121,12 @@ export function timeAgo(iso?: string): string {
   const diff = (Date.now() - d.getTime()) / 60000
   if (diff < 1) return 'just now'
   if (diff < 60) return `${Math.round(diff)} min ago`
-  if (diff < 24 * 60) return `today ${d.toTimeString().slice(0, 5)}`
-  if (diff < 48 * 60) return `yesterday ${d.toTimeString().slice(0, 5)}`
-  return `${Math.round(diff / 1440)} days ago`
+  // Compare calendar days, not elapsed hours: 18:35 yesterday is "yesterday" even at 09:00 today.
+  const midnight = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((midnight(new Date()) - midnight(d)) / 86400000)
+  if (days <= 0) return `today ${d.toTimeString().slice(0, 5)}`
+  if (days === 1) return `yesterday ${d.toTimeString().slice(0, 5)}`
+  return `${days} days ago`
 }
 
 export const VITAL_SYSTEM: Record<VitalKey, SystemId> = Object.fromEntries(

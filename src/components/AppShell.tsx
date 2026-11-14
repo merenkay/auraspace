@@ -1,193 +1,290 @@
-import { AnimatePresence, motion } from 'motion/react'
-import { useRef } from 'react'
-import { NavLink, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
-import { CONTEXTS } from '../data/contexts'
+import { ChartLine, ChevronDown, ChevronLeft, CloudSun, Dumbbell, Ellipsis, FileText, HeartPulse, LogOut, MessagesSquare, Orbit, PersonStanding, UserRound, Users, type LucideIcon } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Link, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
+import { CONTEXTS, type Context } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
-import { STATUS_COLOR } from '../data/vitals'
 import { radiation } from '../lib/health'
 import { useSession } from '../lib/session'
 import type { User } from '../lib/types'
-import { Logo } from './ui'
+import { Avatar, Button, CONTEXT_ICON, List, Logo, Meter, MotionRoot, PageTransition, Row, SPRING, Sheet, StatusIcon, cx, useContextAccent } from './ui'
 
-type Tab = { to: string; label: string; end?: boolean }
+type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
 
-function tabsFor(user: User | null, crewId: string | undefined): Tab[] {
-  if (!user) return []
+/** `primary` is the product navigation. `subject` appears for staff while they look at one crew member. */
+function navFor(user: User | null, crewId: string | undefined): { primary: NavItem[]; subject: NavItem[] } {
+  if (!user) return { primary: [], subject: [] }
   if ((user.role === 'astronaut' || user.role === 'member') && user.crewId != null) {
     const b = `/crew/${user.crewId}`
-    return [
-      { to: b, label: 'Overview', end: true },
-      { to: `${b}/diagnostics`, label: 'Diagnostics' },
-      { to: `${b}/aura`, label: 'AURA' },
-      { to: `${b}/coach`, label: CONTEXTS[user.context].activityTab },
-      { to: `${b}/history`, label: 'History' },
-      { to: '/environment', label: user.context === 'space' ? 'Environment' : 'Conditions' },
-    ]
+    return {
+      primary: [
+        { to: b, label: 'Overview', icon: HeartPulse, end: true },
+        { to: `${b}/diagnostics`, label: 'Diagnostics', icon: PersonStanding },
+        { to: `${b}/aura`, label: 'AURA', icon: MessagesSquare },
+        { to: `${b}/coach`, label: CONTEXTS[user.context].activityTab, icon: Dumbbell },
+        { to: `${b}/history`, label: 'History', icon: ChartLine },
+        user.context === 'space' ? { to: '/environment', label: 'Environment', icon: Orbit } : { to: '/environment', label: 'Conditions', icon: CloudSun },
+      ],
+      subject: [],
+    }
   }
-  const top: Tab[] = [{ to: '/crew', label: 'Crew', end: true }]
-  if (user.role === 'surgeon') top.push({ to: '/reports', label: 'Reports' })
-  top.push({ to: '/environment', label: 'Environment' })
-  if (!crewId) return top
+  const primary: NavItem[] = [{ to: '/crew', label: 'Crew', icon: Users }]
+  if (user.role === 'surgeon') primary.push({ to: '/reports', label: 'Reports', icon: FileText })
+  primary.push({ to: '/environment', label: 'Environment', icon: Orbit })
+  if (!crewId) return { primary, subject: [] }
   const b = `/crew/${crewId}`
-  const member: Tab[] =
+  const subject: NavItem[] =
     user.role === 'surgeon'
       ? [
-          { to: b, label: 'Overview', end: true },
-          { to: `${b}/diagnostics`, label: 'Diagnostics' },
-          { to: `${b}/aura`, label: 'AURA' },
-          { to: `${b}/history`, label: 'History' },
+          { to: b, label: 'Overview', icon: HeartPulse, end: true },
+          { to: `${b}/diagnostics`, label: 'Diagnostics', icon: PersonStanding },
+          { to: `${b}/aura`, label: 'AURA', icon: MessagesSquare },
+          { to: `${b}/history`, label: 'History', icon: ChartLine },
         ]
       : [
-          { to: b, label: 'Overview', end: true },
-          { to: `${b}/history`, label: 'History' },
+          { to: b, label: 'Overview', icon: HeartPulse, end: true },
+          { to: `${b}/history`, label: 'History', icon: ChartLine },
         ]
-  return [...top, ...member]
+  return { primary, subject }
 }
+
+const isActive = (item: NavItem, path: string) => (item.end ? path === item.to : path === item.to || path.startsWith(`${item.to}/`))
+
+type Fact = { label: string; value: ReactNode; sub?: ReactNode; /** show `sub` only from the lg breakpoint up */ subWide?: boolean; meter?: ReactNode; lead?: ReactNode }
 
 export default function AppShell() {
   const { user, mission, crew, logout } = useSession()
   const { crewId } = useParams()
   const loc = useLocation()
-  const nav = useNavigate()
+  const go = useNavigate()
   const outlet = useOutlet()
-  const tabs = tabsFor(user, crewId)
-  const idx = Math.max(0, tabs.findIndex((t) => (t.end ? loc.pathname === t.to : loc.pathname.startsWith(t.to))))
-  const prev = useRef(idx)
-  const dir = idx >= prev.current ? 1 : -1
-  prev.current = idx
+  const [moreOpen, setMoreOpen] = useState(false)
 
-  const ctx = mission?.context ?? 'space'
-  const prof = MISSIONS.find((m) => m.id === mission?.profileId) ?? MISSIONS[3]
+  const ctx: Context = mission?.context ?? user?.context ?? 'space'
+  useContextAccent(ctx)
+
+  const { primary, subject } = navFor(user, crewId)
+  const path = loc.pathname
+
+  // Where the current page sits in the navigation: drives the direction of the page transition.
+  const subjectIdx = subject.findIndex((t) => isActive(t, path))
+  const primaryIdx = primary.findIndex((t) => isActive(t, path))
+  const pos = { depth: subjectIdx >= 0 ? 1 : 0, order: subjectIdx >= 0 ? subjectIdx : primaryIdx }
+  const [nav, setNav] = useState<{ path: string; depth: number; order: number; dir: -1 | 0 | 1 }>({ path, ...pos, dir: 0 })
+  if (nav.path !== path) {
+    const dir = nav.depth !== pos.depth || nav.order === pos.order ? 0 : pos.order > nav.order ? 1 : -1
+    setNav({ path, ...pos, dir })
+  }
+
+  useEffect(() => {
+    setMoreOpen(false)
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [path])
+
+  const prof = MISSIONS.find((m) => m.id === mission?.profileId)
   const day = mission?.day ?? 1
   const total = mission?.totalDays ?? null
-  const rad = radiation(prof.id, day)
-  const viewing = crewId ? crew.find((c) => String(c.id) === crewId) : null
+  const viewing = crewId && subject.length ? crew.find((c) => String(c.id) === crewId) : null
+  const ContextIcon = CONTEXT_ICON[ctx]
+
+  const facts: Fact[] = []
+  if (ctx === 'space') {
+    const rad = prof ? radiation(prof.id, day) : null
+    facts.push({ label: 'Mission', value: mission?.name ?? '—', sub: mission?.environment, subWide: true })
+    facts.push({
+      label: 'Mission day',
+      value: day,
+      sub: total ? `of ${total}` : undefined,
+      meter: total ? <Meter value={day} max={total} label={`Mission day ${day} of ${total}`} /> : undefined,
+    })
+    if (prof) facts.push({ label: 'Earth delay', value: formatDelay(prof.delaySec), sub: prof.delaySec >= 0.5 ? 'one-way' : undefined })
+    if (rad)
+      facts.push({
+        label: 'Radiation',
+        lead: rad.status !== 'ok' ? <StatusIcon status={rad.status} size={14} /> : undefined,
+        value: `${rad.dose.toFixed(0)} mSv`,
+        sub: `${rad.pct.toFixed(0)}% of ${CAREER_LIMIT_MSV} career limit`,
+        subWide: true,
+        meter: <Meter value={rad.pct} status={rad.status} marks={[{ at: 50 }, { at: 80 }]} label={`Radiation dose, ${rad.pct.toFixed(0)}% of the career limit`} />,
+      })
+  } else {
+    facts.push({ label: 'Profile', lead: <ContextIcon className="h-3.5 w-3.5 text-accent" aria-hidden="true" />, value: CONTEXTS[ctx].label })
+    facts.push({ label: 'Tracking', value: `Day ${day}` })
+    facts.push({ label: 'Care contact', value: CONTEXTS[ctx].contact.replace(/^./, (c) => c.toUpperCase()) })
+    facts.push({ label: 'Today', value: new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' }) })
+  }
+
+  const signOut = async () => {
+    await logout()
+    go('/login', { replace: true })
+  }
+
+  // Phone: at most four destinations in the bottom bar, the rest (plus mission facts and the account) live behind "More".
+  const barItems = primary.length > 4 ? primary.slice(0, 4) : primary
+  const overflow = primary.slice(barItems.length)
+  const overflowActive = overflow.some((t) => isActive(t, path))
 
   return (
-    <div className="min-h-screen">
-      <div className="aurora" />
-      <header className="sticky top-0 z-30 border-b border-line/70 bg-space/80 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1500px] flex-wrap items-center gap-x-8 gap-y-2 px-4 py-3 sm:px-6">
-          <div className="mr-auto flex items-center gap-3">
-            <Logo />
-            <div>
-              <div className="font-display text-lg font-bold tracking-[0.12em]">AURA</div>
-              <div className="text-[10px] tracking-[0.2em] text-dim">FULL BODY DIAGNOSTICS</div>
-            </div>
-          </div>
+    <MotionRoot>
+      <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-ink focus:px-4 focus:py-2.5 focus:text-sm focus:font-medium focus:text-space">
+        Skip to content
+      </a>
 
-          {ctx === 'space' ? (
-            <>
-              <Stat label="Mission" value={mission?.name ?? '—'} sub={mission?.environment} />
-              <div className="min-w-32">
-                <div className="label">Mission day</div>
-                <div className="font-semibold">
-                  {day} {total && <span className="font-normal text-dim">/ {total}</span>}
-                </div>
-                {total && (
-                  <div className="mt-1 h-1 rounded-full bg-line">
-                    <motion.div className="h-1 rounded-full bg-cyan" initial={{ width: 0 }} animate={{ width: `${(day / total) * 100}%` }} transition={{ duration: 1.2, ease: 'easeOut' }} />
-                  </div>
-                )}
-              </div>
-              <Stat label="Earth delay" value={formatDelay(prof.delaySec)} sub="one-way" />
-              <div className="min-w-36">
-                <div className="label">Radiation</div>
-                <div className="font-semibold">
-                  {rad.dose.toFixed(0)} mSv <span className="text-xs font-normal text-dim">{rad.pct.toFixed(0)}% of {CAREER_LIMIT_MSV}</span>
-                </div>
-                <div className="mt-1 h-1 rounded-full bg-line">
-                  <motion.div
-                    className="h-1 rounded-full"
-                    style={{ background: STATUS_COLOR[rad.status] }}
-                    initial={{ width: 0 }}
-                    animate={{ width: `${rad.pct}%` }}
-                    transition={{ duration: 1.2, ease: 'easeOut', delay: 0.2 }}
-                  />
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <Stat label="Profile" value={`${CONTEXTS[ctx].icon} ${CONTEXTS[ctx].label}`} />
-              <Stat label="Tracking since" value={`Day ${day}`} />
-              <Stat label="Care contact" value={CONTEXTS[ctx].contact.replace(/^./, (c) => c.toUpperCase())} />
-              <Stat label="Today" value={new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })} />
-            </>
-          )}
+      <div className="flex min-h-dvh flex-col">
+        {/* ---- Row 1: brand, navigation, account (sticky) ---- */}
+        <header className="sticky top-0 z-30 border-b border-line bg-space">
+          <div className="mx-auto flex h-14 max-w-[1500px] items-center gap-2 px-4 sm:px-6">
+            <Link to="/" aria-label="AURA home" className="-ml-1 mr-4 flex h-11 items-center rounded-lg px-1">
+              <Logo wordmark size={26} />
+            </Link>
 
-          <div className="flex items-center gap-3 border-l border-line pl-5">
-            <div className="text-right">
-              <div className="text-sm font-semibold">{user?.name}</div>
-              <div className="text-[11px] text-dim">{user?.title}</div>
+            <nav aria-label="Main" className="hidden h-full items-stretch md:flex">
+              {primary.map((t) => {
+                const on = isActive(t, path)
+                return (
+                  <Link key={t.to} to={t.to} aria-current={on ? 'page' : undefined} className={cx('relative flex items-center px-3 text-sm font-medium transition-colors', on ? 'text-ink' : 'text-dim hover:text-ink')}>
+                    {t.label}
+                    {on && <motion.span layoutId="nav-underline" transition={SPRING.snappy} className="absolute inset-x-3 -bottom-px h-0.5 bg-accent" />}
+                  </Link>
+                )
+              })}
+            </nav>
+
+            <div className="ml-auto hidden items-center gap-3 md:flex">
+              <div className="hidden text-right leading-tight lg:block">
+                <div className="text-sm font-medium text-ink">{user?.name}</div>
+                <div className="text-xs text-dim">{user?.title}</div>
+              </div>
+              <Avatar name={user?.name ?? ''} size={32} className="lg:hidden" />
+              <Button variant="quiet" size="sm" icon={LogOut} onClick={signOut} aria-label="Sign out">
+                <span className="hidden lg:inline">Sign out</span>
+              </Button>
             </div>
-            <button
-              type="button"
-              onClick={async () => {
-                await logout()
-                nav('/login', { replace: true })
-              }}
-              className="rounded-lg border border-line px-3 py-2 text-xs font-semibold text-soft transition hover:border-cyan hover:text-ink"
-            >
-              Sign out
+
+            {/* Phone: the one fact that orients you; tap for everything else */}
+            <button type="button" onClick={() => setMoreOpen(true)} aria-label="Mission details and account" className="-mr-2 ml-auto flex h-11 items-center gap-1.5 rounded-lg px-2 text-sm md:hidden">
+              {ctx === 'space' ? (
+                <>
+                  <span className="text-dim">Day</span>
+                  <span className="font-medium text-ink">{day}</span>
+                  {total && <span className="text-dim">/ {total}</span>}
+                </>
+              ) : (
+                <>
+                  <ContextIcon className="h-4 w-4 text-accent" aria-hidden="true" />
+                  <span className="font-medium text-ink">Day {day}</span>
+                </>
+              )}
+              <ChevronDown className="h-4 w-4 text-dim" aria-hidden="true" />
             </button>
           </div>
-        </div>
-        <nav aria-label="Sections" className="mx-auto flex max-w-[1500px] items-center gap-1 overflow-x-auto px-3 sm:px-5">
-          {tabs.map((t, i) => {
-            const staff = user?.role === 'surgeon' || user?.role === 'ground'
-            const isMember = staff && crewId && t.to.startsWith(`/crew/${crewId}`)
-            const firstMember = isMember && !tabs[i - 1]?.to.startsWith(`/crew/${crewId}`)
-            return (
-              <div key={t.to} className="flex items-center">
-                {firstMember && (
-                  <span className="mx-2 flex items-center gap-2 whitespace-nowrap rounded-full bg-panel2 px-3 py-1 text-xs text-soft">
-                    <span className="h-2 w-2 rounded-full" style={{ background: viewing?.color ?? '#53D7FF' }} />
-                    {viewing?.name ?? 'Crew member'}
-                  </span>
-                )}
-                <NavLink
-                  to={t.to}
-                  end={t.end}
-                  className={({ isActive }) => `relative whitespace-nowrap px-3.5 py-3 text-sm font-medium transition ${isActive ? 'text-ink' : 'text-dim hover:text-ink'}`}
-                >
-                  {({ isActive }) => (
-                    <>
-                      {t.label}
-                      {isActive && <motion.span layoutId="tab-underline" className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-cyan" />}
-                    </>
-                  )}
-                </NavLink>
-              </div>
-            )
-          })}
-        </nav>
-      </header>
+        </header>
 
-      <AnimatePresence mode="wait" custom={dir}>
-        <motion.main
-          key={loc.pathname}
-          custom={dir}
-          initial={{ opacity: 0, x: dir * 48 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: dir * -48 }}
-          transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-          className="mx-auto max-w-[1500px] px-4 pb-16 pt-6 sm:px-6"
-        >
-          {outlet}
-        </motion.main>
-      </AnimatePresence>
-    </div>
+        {/* ---- Row 2: where you are (scrolls away) ---- */}
+        <div className="hidden border-b border-line md:block">
+          <dl className="no-scrollbar mx-auto flex h-11 max-w-[1500px] items-center overflow-x-auto px-4 sm:px-6">
+            {facts.map((f, i) => (
+              <div key={f.label} className={cx('flex shrink-0 items-center gap-2 whitespace-nowrap', i > 0 && 'ml-4 border-l border-line pl-4 lg:ml-5 lg:pl-5')}>
+                <dt className="text-[13px] text-dim">{f.label}</dt>
+                <dd className="flex items-center gap-1.5 text-sm">
+                  {f.lead}
+                  <span className="font-medium text-ink">{f.value}</span>
+                  {f.sub && <span className={cx('text-dim', f.subWide && 'hidden lg:inline')}>{f.sub}</span>}
+                </dd>
+                {f.meter && <div className="hidden w-16 lg:block">{f.meter}</div>}
+              </div>
+            ))}
+          </dl>
+        </div>
+
+        {/* ---- Staff: whose record this is, and its sections (sticky under row 1) ---- */}
+        {subject.length > 0 && (
+          <div className="sticky top-14 z-20 border-b border-line bg-space">
+            <div className="mx-auto flex max-w-[1500px] items-center gap-x-5 px-4 sm:px-6">
+              <Link to="/crew" className="-ml-2 flex h-11 shrink-0 items-center gap-2 rounded-lg px-2 text-sm text-soft transition-colors hover:text-ink">
+                <ChevronLeft className="h-4 w-4 text-dim" aria-hidden="true" />
+                <span className="sr-only">Back to crew. Viewing </span>
+                <span className="font-medium text-ink">{viewing?.name ?? 'Crew member'}</span>
+                {viewing && <span className="hidden text-dim sm:inline">{viewing.position}</span>}
+              </Link>
+              <nav aria-label={`Sections for ${viewing?.name ?? 'this crew member'}`} className="no-scrollbar flex items-stretch gap-1 overflow-x-auto border-l border-line pl-3">
+                {subject.map((t) => {
+                  const on = isActive(t, path)
+                  return (
+                    <Link key={t.to} to={t.to} aria-current={on ? 'page' : undefined} className={cx('relative flex h-11 shrink-0 items-center px-2.5 text-sm font-medium transition-colors', on ? 'text-ink' : 'text-dim hover:text-ink')}>
+                      {t.label}
+                      {on && <motion.span layoutId="subject-underline" transition={SPRING.snappy} className="absolute inset-x-2.5 -bottom-px h-0.5 bg-accent" />}
+                    </Link>
+                  )
+                })}
+              </nav>
+            </div>
+          </div>
+        )}
+
+        <main id="main" tabIndex={-1} className="mx-auto w-full max-w-[1500px] flex-1 px-4 pb-10 pt-6 outline-none sm:px-6 md:pt-8">
+          <PageTransition routeKey={path} direction={nav.dir}>
+            {outlet}
+          </PageTransition>
+        </main>
+
+        <footer className="mx-auto w-full max-w-[1500px] px-4 pb-28 sm:px-6 md:pb-8">
+          <p className="border-t border-line pt-4 text-xs leading-relaxed text-dim">Decision support, not a diagnosis. Crew data in this demo is simulated. Not affiliated with NASA.</p>
+        </footer>
+
+        {/* ---- Phone: bottom navigation ---- */}
+        <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-space pb-[env(safe-area-inset-bottom)] md:hidden">
+          <div className="mx-auto flex max-w-lg items-stretch">
+            {barItems.map((t) => (
+              <BarLink key={t.to} item={t} active={isActive(t, path)} />
+            ))}
+            <button type="button" onClick={() => setMoreOpen(true)} aria-haspopup="dialog" className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors', overflowActive ? 'text-ink' : 'text-dim')}>
+              {overflowActive && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
+              {overflow.length ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : <UserRound className="h-5 w-5" aria-hidden="true" />}
+              <span>{overflow.length ? 'More' : 'Account'}</span>
+            </button>
+          </div>
+        </nav>
+      </div>
+
+      {/* ---- Phone: everything that does not fit in the bars ---- */}
+      <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={user?.name ?? 'Account'} description={user?.title}>
+        {overflow.length > 0 && (
+          <List className="mb-6">
+            {overflow.map((t) => (
+              <Row key={t.to} to={t.to} title={t.label} leading={<t.icon className="h-5 w-5" aria-hidden="true" />} selected={isActive(t, path)} />
+            ))}
+          </List>
+        )}
+        <dl className="mb-6 divide-y divide-line border-y border-line">
+          {facts.map((f) => (
+            <div key={f.label} className="py-3">
+              <div className="flex items-baseline justify-between gap-4">
+                <dt className="text-sm text-dim">{f.label}</dt>
+                <dd className="flex items-center gap-1.5 text-right text-[15px]">
+                  {f.lead}
+                  <span className="font-medium text-ink">{f.value}</span>
+                  {f.sub && <span className="text-dim">{f.sub}</span>}
+                </dd>
+              </div>
+              {f.meter && <div className="mt-2">{f.meter}</div>}
+            </div>
+          ))}
+        </dl>
+        <Button variant="secondary" full icon={LogOut} onClick={signOut}>
+          Sign out
+        </Button>
+      </Sheet>
+    </MotionRoot>
   )
 }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function BarLink({ item, active }: { item: NavItem; active: boolean }) {
   return (
-    <div>
-      <div className="label">{label}</div>
-      <div className="font-semibold">
-        {value} {sub && <span className="text-xs font-normal text-dim">{sub}</span>}
-      </div>
-    </div>
+    <Link to={item.to} aria-current={active ? 'page' : undefined} className={cx('relative flex h-16 min-w-0 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors', active ? 'text-ink' : 'text-dim')}>
+      {active && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
+      <item.icon className="h-5 w-5" aria-hidden="true" />
+      <span className="max-w-full truncate px-1">{item.label}</span>
+    </Link>
   )
 }

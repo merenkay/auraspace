@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -12,6 +12,8 @@ export default defineConfig({
   server: {
     proxy: API_ORIGIN ? { '/api': { target: API_ORIGIN, changeOrigin: true, secure: true } } : undefined,
   },
+  // The default vitest pool crashes in this setup; vmThreads works.
+  test: { pool: 'vmThreads' },
   build: {
     chunkSizeWarningLimit: 1600,
     rollupOptions: {

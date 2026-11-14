@@ -65,3 +65,15 @@ export type Mission = {
 }
 
 export type CodeTicket = { email: string; expiresIn: number; demoCode?: string }
+
+/** One daily value from a device export (e.g. Samsung Health). `localDate` is the calendar day in the export's time zone. */
+export type ImportRow = { metric: FieldId; value: number; localDate: string; at: string }
+
+/** Outcome of an import. Re-importing never duplicates: a day already imported keeps its first value. */
+export type ImportResult = {
+  added: number
+  unchanged: number // same day + metric + device already stored with the same value
+  conflicts: number // already stored with a different value; the earlier value was kept (records are append-only)
+  rejected: number // failed validation
+  measurements: Measurement[] // the rows that were added
+}
