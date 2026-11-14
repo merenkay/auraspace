@@ -41,6 +41,9 @@ describe('free-text understanding', () => {
     expect(answers).toMatchObject({ 'chest-pain': 'yes', 'pain-spread': 'yes', breathless: 'yes', sweating: 'yes' })
   })
   it('handles negation in both languages', () => {
+    // "uyuşuyor" (is numb) must not be read as "üşüyor" (is cold)
+    expect(parseFindings('Göğsüm ağrıyor, sol kolum uyuşuyor').answers.chills).toBeUndefined()
+    expect(parseFindings('Çok üşüyorum').answers.chills).toBe('yes')
     expect(parseFindings('No fever, but I have a headache').answers).toMatchObject({ fever: 'no', headache: 'yes' })
     expect(parseFindings('Ateşim yok ama başım ağrıyor').answers).toMatchObject({ fever: 'no', headache: 'yes' })
   })

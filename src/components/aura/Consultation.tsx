@@ -1,12 +1,18 @@
 // The consultation thread: AURA asks, the person answers with quick replies or free text, AURA asks focused
 // follow-ups, then shows the assessment. All logic is the deterministic engine in src/lib/doctor.
-import { RotateCcw, Save, Send } from 'lucide-react'
+import { Mic, RotateCcw, Save, Send, Volume2, VolumeX } from 'lucide-react'
 import { motion, useReducedMotion } from 'motion/react'
 import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import type { HealthProfile } from '../../data/conditions/profile'
 import type { Context } from '../../data/contexts'
-import { assess, FINDING_BY_ID, parseFindings, STARTER_FINDINGS, type Answer, type Answers, type Assessment, type Readings } from '../../lib/doctor'
-import { Button, DUR, EASE, Logo, Meter, Notice, Textarea } from '../ui'
+import { assess, FINDING_BY_ID, parseFindings, STARTER_FINDINGS, URGENCY_TEXT, type Answer, type Answers, type Assessment, type Readings } from '../../lib/doctor'
+import { sfx } from '../../lib/sfx'
+import { emergencyPlan } from '../../lib/voice/consult'
+import { parseIntent } from '../../lib/voice/intents'
+import { createRecognizer, recognitionSupported, type Recognizer } from '../../lib/voice/recognition'
+import { loadSettings, saveSettings } from '../../lib/voice/settings'
+import { cancelSpeech, speak, ttsSupported } from '../../lib/voice/speech'
+import { Button, DUR, EASE, IconButton, Logo, Meter, Notice, Textarea, cx } from '../ui'
 import AssessmentView from './AssessmentView'
 import Disclosure from './Disclosure'
 
@@ -57,6 +63,11 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   const endRef = useRef<HTMLDivElement>(null)
   const resultRef = useRef<HTMLDivElement>(null)
   const reduce = useReducedMotion()
+  // Voice (optional): dictate symptoms or answers, and read AURA's questions and the result aloud.
+  const [readAloud, setReadAloud] = useState(() => loadSettings().readConsult && ttsSupported())
+  const [dictating, setDictating] = useState(false)
+  const recRef = useRef<Recognizer | null>(null)
+  const spokenTurns = useRef(1)
 
   const a = useMemo(() => assess({ answers, context: ctx, readings, profile }), [answers, ctx, readings, profile])
 
@@ -100,7 +111,10 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const q = text.trim()
+    sendText(text.trim())
+  }
+
+  const sendText = (q: string) => {
     if (!q) return
     setText('')
     const { answers: found } = parseFindings(q)
@@ -114,6 +128,69 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
     const noted = `I noted${yes.length ? `: ${yes.join('; ')}` : ''}${no.length ? `${yes.length ? '. ' : ' '}Not present: ${no.join('; ')}` : ''}.`
     advance({ ...answers, ...found }, asked, [turn('me', q), turn('aura', noted)])
   }
+
+  const live = useRef({ pending, reply, sendText })
+  live.current = { pending, reply, sendText }
+
+  const dictate = () => {
+    if (dictating) {
+      recRef.current?.stop()
+      return
+    }
+    cancelSpeech()
+    const r = createRecognizer({
+      lang: loadSettings().lang,
+      onStart: () => {
+        setDictating(true)
+        sfx('listen')
+      },
+      onInterim: (t) => setText(t),
+      onFinal: (t) => {
+        sfx('done')
+        const intent = live.current.pending ? parseIntent(t, { lang: loadSettings().lang }) : null
+        if (intent?.type === 'answer') {
+          setText('')
+          live.current.reply(intent.answer)
+        } else live.current.sendText(t)
+      },
+      onError: () => setText(''),
+      onEnd: () => {
+        setDictating(false)
+        recRef.current = null
+      },
+    })
+    recRef.current = r
+    r?.start()
+  }
+  useEffect(() => () => recRef.current?.abort(), [])
+
+  const toggleRead = () => {
+    const next = !readAloud
+    setReadAloud(next)
+    saveSettings({ ...loadSettings(), readConsult: next })
+    if (!next) cancelSpeech()
+  }
+
+  // Read AURA's new messages aloud (only when the person switched this on).
+  useEffect(() => {
+    if (!readAloud) {
+      spokenTurns.current = turns.length
+      return
+    }
+    const fresh = turns.slice(spokenTurns.current).filter((t) => t.who === 'aura')
+    spokenTurns.current = turns.length
+    if (fresh.length) speak(fresh.map((t) => t.text).join(' '))
+  }, [turns, readAloud])
+
+  // The result: an emergency is spoken at once with its first steps word for word, ahead of anything queued.
+  useEffect(() => {
+    if (!done || !readAloud) return
+    if (a.urgency === 'emergency') {
+      sfx('alarm')
+      speak(emergencyPlan(a, { context: ctx, readings, profile, delaySec }).text, { priority: 'urgent' })
+    } else speak(`${URGENCY_TEXT[a.urgency].title}.${a.candidates[0] ? ` Most consistent with ${a.candidates[0].condition.name.toLowerCase()}.` : ''} The full assessment is on screen.`)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [done])
 
   const restart = () => {
     setTurns([greeting()])
@@ -221,11 +298,20 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
                   }
                 }}
               />
+              {recognitionSupported() && (
+                <IconButton variant="secondary" icon={Mic} label={dictating ? 'Stop dictating' : 'Dictate with your voice'} aria-pressed={dictating} className={cx('shrink-0', dictating && 'border-accent text-accent')} onClick={dictate} />
+              )}
               <Button type="submit" variant="primary" icon={Send} disabled={!text.trim()}>
                 Send
               </Button>
             </div>
             <p className="mt-1.5 text-xs text-dim">English or Turkish, e.g. “my chest hurts and my left arm is numb”. Enter sends, Shift+Enter adds a line.</p>
+            {ttsSupported() && (
+              <button type="button" aria-pressed={readAloud} onClick={toggleRead} className="mt-1.5 inline-flex min-h-8 items-center gap-1.5 rounded-lg text-sm text-dim hover:text-ink">
+                {readAloud ? <Volume2 className="h-4 w-4" aria-hidden="true" /> : <VolumeX className="h-4 w-4" aria-hidden="true" />}
+                Read aloud: {readAloud ? 'on' : 'off'}
+              </button>
+            )}
           </form>
         </div>
       )}

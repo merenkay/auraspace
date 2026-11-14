@@ -39,6 +39,8 @@ import { type VitalKey } from '../data/vitals'
 import type { Evaluation } from '../lib/health'
 import { seriesOf, summaryOf, timeAgo } from '../lib/health'
 import { useCrewData, useSession } from '../lib/session'
+import { onUi } from '../lib/uiBus'
+import { DATA_CHANGED, takePendingSystem } from '../lib/voice/pending'
 import { actionFor } from '../lib/triage'
 import { Check, ChevronDown, Copy, Flame, FileText, Mail, MessageCircle, Plus, Printer, Trash2 } from 'lucide-react'
 
@@ -49,6 +51,20 @@ export default function Overview({ crewId }: { crewId: number }) {
   const data = useCrewData(crewId)
   const [selected, setSelected] = useState<SystemId | null>(null)
   const [editing, setEditing] = useState<VitalKey | null>(null)
+
+  // Voice: "show the heart" selects a system; a value logged by voice refreshes the data.
+  const reloadData = data.reload
+  useEffect(() => {
+    const pending = takePendingSystem()
+    if (pending !== undefined) setSelected(pending)
+    const off = onUi('select-system', (d) => setSelected(d.system))
+    const refresh = () => void reloadData()
+    window.addEventListener(DATA_CHANGED, refresh)
+    return () => {
+      off()
+      window.removeEventListener(DATA_CHANGED, refresh)
+    }
+  }, [reloadData])
   const [sent, setSent] = useState<string | null>(null)
   const [sendError, setSendError] = useState(false)
   const [sending, setSending] = useState(false)

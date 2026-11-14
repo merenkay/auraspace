@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { defineConfig, type Plugin } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
@@ -14,7 +14,15 @@ const API_ORIGIN = process.env.AURA_API_ORIGIN
  * precache the app shell (hashed file names are only known after the build). The version in the worker
  * is a hash of that list + index.html, so every deploy that changes anything gives the browser a new worker.
  * Heavy extras (the 3D engine chunk, the body model) are "optional": fetched when idle or on first use.
+ * Hand control (the MediaPipe library chunk, its WebAssembly runtime and model, ~22 MB in public/mediapipe) is
+ * "lazy": cached only the first time someone switches hand control on, never warmed, in a cache whose name
+ * follows the content of those files (an app deploy keeps it; a MediaPipe upgrade replaces it).
  */
+function filesUnder(dir: string): string[] {
+  if (!existsSync(dir)) return []
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? filesUnder(join(dir, e.name)) : [join(dir, e.name)]))
+}
+
 function auraServiceWorker(): Plugin {
   let outDir = 'dist'
   return {
@@ -28,17 +36,25 @@ function auraServiceWorker(): Plugin {
       if (!existsSync(swPath)) return
       const names = Object.keys(bundle).filter((n) => !n.endsWith('.map'))
       const heavy = names.filter((n) => /^assets\/three-.*\.js$/.test(n))
-      const core = names.filter((n) => n.startsWith('assets/') && !heavy.includes(n)).map((n) => '/' + n)
+      const handChunks = names.filter((n) => /^assets\/mediapipe-.*\.js$/.test(n))
+      const core = names.filter((n) => n.startsWith('assets/') && !heavy.includes(n) && !handChunks.includes(n)).map((n) => '/' + n)
       const statics = ['/', '/offline.html', '/manifest.webmanifest', '/favicon.svg', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png']
       const precache = [...statics, ...core].sort()
       const optional = [...heavy.map((n) => '/' + n), '/models/body-manifest.json', '/models/body.glb']
+      const handFiles = filesUnder(join(outDir, 'mediapipe')).sort()
+      const lazy = [...handChunks.map((n) => '/' + n), ...handFiles.map((f) => '/' + relative(outDir, f).replace(/\\/g, '/'))].sort()
+      const lazyHash = createHash('sha1')
+      for (const f of handFiles) lazyHash.update(relative(outDir, f)).update(readFileSync(f))
+      const lazyVersion = lazyHash.digest('hex').slice(0, 10)
       const indexHtml = existsSync(join(outDir, 'index.html')) ? readFileSync(join(outDir, 'index.html')) : ''
       let src = readFileSync(swPath, 'utf8')
-      const build = createHash('sha1').update(JSON.stringify([precache, optional])).update(indexHtml).update(src).digest('hex').slice(0, 10)
+      const build = createHash('sha1').update(JSON.stringify([precache, optional, lazy])).update(indexHtml).update(src).digest('hex').slice(0, 10)
       src = src
         .replace('__AURA_BUILD__', build)
+        .replace('__AURA_LAZY_VERSION__', lazyVersion)
         .replace(/\/\*__AURA_PRECACHE__\*\/\s*\[[^\]]*\]/, JSON.stringify(precache))
         .replace(/\/\*__AURA_OPTIONAL__\*\/\s*\[[^\]]*\]/, JSON.stringify(optional))
+        .replace(/\/\*__AURA_LAZY__\*\/\s*\[[^\]]*\]/, JSON.stringify(lazy))
       writeFileSync(swPath, src)
     },
   }
@@ -58,6 +74,7 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/three') || id.includes('@react-three')) return 'three'
+          if (id.includes('node_modules/@mediapipe')) return 'mediapipe'
           if (id.includes('node_modules/recharts') || id.includes('node_modules/d3-') || id.includes('node_modules/victory-vendor')) return 'charts'
           if (id.includes('node_modules/motion') || id.includes('node_modules/framer-motion')) return 'motion'
           if (id.includes('node_modules/react-router') || id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/scheduler')) return 'react'

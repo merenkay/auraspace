@@ -7,17 +7,21 @@
  *  - /api/* and every non-GET request is NEVER touched: health data and sign-in always use the network.
  *  - App shell + every JS/CSS chunk of this build is precached (so every page opens offline).
  *  - Heavy extras (3D viewer chunk, body.glb) are cached on first use or on a WARM message (idle time).
+ *  - Hand control (MediaPipe chunk, /mediapipe/ runtime + model, ~22 MB) is cached on first use ONLY, never
+ *    warmed, in its own cache named after the content of those files (an app deploy keeps it).
  *  - Navigations: network first (so a deploy is picked up), 4 s timeout, then cached index.html, then offline.html.
  *  - A new worker waits; the page sends SKIP_WAITING at the next in-app navigation (see src/main.tsx).
  */
 const BUILD = '__AURA_BUILD__'
 const PRECACHE = /*__AURA_PRECACHE__*/ ['/', '/offline.html']
 const OPTIONAL = /*__AURA_OPTIONAL__*/ []
+const LAZY = /*__AURA_LAZY__*/ []
 
 const SHELL = 'aura-shell-' + BUILD
 const RUNTIME = 'aura-runtime-v1' // survives builds: fonts, models, 3D chunk (all immutable or revalidated)
 const FONTS = 'aura-fonts-v1'
-const KEEP = [SHELL, RUNTIME, FONTS]
+const LAZY_CACHE = 'aura-lazy-__AURA_LAZY_VERSION__'
+const KEEP = [SHELL, RUNTIME, FONTS, LAZY_CACHE]
 const MATCH = { ignoreVary: true } // static hosts may send Vary: Origin, which would make module-script requests miss the precache
 
 self.addEventListener('install', (event) => {
@@ -74,6 +78,10 @@ self.addEventListener('fetch', (event) => {
 
   if (req.mode === 'navigate') {
     event.respondWith(navigate(req))
+    return
+  }
+  if (LAZY.includes(url.pathname)) {
+    event.respondWith(cacheFirst(req, LAZY_CACHE))
     return
   }
   if (isAsset(url)) {

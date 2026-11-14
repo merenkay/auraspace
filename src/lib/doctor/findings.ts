@@ -65,7 +65,7 @@ export const FINDINGS: FindingDef[] = [
 
   // infection, temperature
   f('fever', 'High temperature or feeling hot and shivery', 'Do you have a high temperature, or feel hot and shivery?', 'body', ['fever', 'high temperature', 'temperature is high', 'feverish', '\\bates']),
-  f('chills', 'Shivering or feeling very cold', 'Are you shivering or feeling very cold?', 'body', ['shiver', 'chills', 'freezing', 'very cold', 'usu(?:yor|me|dum)', 'titre(?:me|iyor) ?(?:soguk)?', 'donuyorum']),
+  f('chills', 'Shivering or feeling very cold', 'Are you shivering or feeling very cold?', 'body', ['shiver', 'chills', 'freezing', 'very cold', '\\busu(?:yor|me|dum)', 'titre(?:me|iyor) ?(?:soguk)?', 'donuyorum']),
   f('infection', 'A known or suspected infection', 'Do you have signs of an infection — for example a chest, urine or wound infection?', 'body', ['infection', 'infected', 'wound', '\\buti\\b', 'enfeksiyon', 'iltihap', '\\byara\\b']),
   f('hot-skin-no-sweat', 'Very hot skin that has stopped sweating', 'Is the skin very hot but not sweating?', 'skin', ['hot (?:and )?dry skin', 'not sweating', 'stopped sweating', 'skin is (?:very )?hot', 'terlemiyor', 'cilt\\w* (?:cok )?sicak']),
   f('rash', 'Itchy rash or hives', 'Is there an itchy rash, raised bumps or hives on the skin?', 'skin', ['rash', 'hives', 'itchy', 'welts', 'kurdesen', 'kasinti', 'dokuntu']),

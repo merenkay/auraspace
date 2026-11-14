@@ -10,7 +10,7 @@ DirectoryIndex index.html
   RewriteRule ^api/ - [L]
   # Static folders: a missing file must be a real 404, not index.html (an HTML page served as a JS chunk,
   # a 3D model or a sample zip only produces a confusing error).
-  RewriteRule ^(assets|models|samples|icons)/ - [L]
+  RewriteRule ^(assets|models|samples|icons|mediapipe)/ - [L]
   # App-shell files (service worker, manifest, offline page, icon): served as files, a missing one is a 404.
   RewriteRule ^(sw\.js|manifest\.webmanifest|offline\.html|favicon\.svg)$ - [L]
   RewriteCond %{REQUEST_FILENAME} -f [OR]
@@ -21,6 +21,7 @@ DirectoryIndex index.html
 
 <IfModule mod_mime.c>
   AddType model/gltf-binary .glb
+  AddType application/wasm .wasm
   AddType application/manifest+json .webmanifest
 </IfModule>
 

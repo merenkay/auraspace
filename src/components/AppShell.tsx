@@ -3,6 +3,8 @@ import { motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
 import OfflineBadge from './OfflineBadge'
+import HandControl from './gesture/HandControl'
+import AuraVoice from './voice/AuraVoice'
 import { CONTEXTS, type Context } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { radiation } from '../lib/health'
@@ -87,6 +89,8 @@ export default function AppShell() {
   const total = mission?.totalDays ?? null
   const viewing = crewId && subject.length ? crew.find((c) => String(c.id) === crewId) : null
   const ContextIcon = CONTEXT_ICON[ctx]
+  // Whose record the voice assistant talks about: the crew member being viewed, else the signed-in person's own.
+  const voiceCrewId = crewId ? Number(crewId) : (user?.crewId ?? null)
 
   const facts: Fact[] = []
   if (ctx === 'space') {
@@ -153,6 +157,9 @@ export default function AppShell() {
 
             <div className="ml-auto flex items-center gap-3">
               <OfflineBadge />
+              {/* Hands-free controls: each renders its own header button and portals its overlay. */}
+              <AuraVoice crewId={voiceCrewId} />
+              <HandControl />
               <div className="hidden items-center gap-3 md:flex">
                 <div className="hidden text-right leading-tight lg:block">
                   <div className="text-sm font-medium text-ink">{user?.name}</div>

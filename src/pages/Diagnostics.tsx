@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CartesianGrid, Line, LineChart, ReferenceArea, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import BodyViewer from '../components/BodyViewer'
 import EditVitalModal from '../components/EditVitalModal'
@@ -10,6 +10,8 @@ import { STATUS_COLOR, VITAL_BY_KEY, type FieldId, type Status, type VitalKey } 
 import { baselineOf, timeAgo } from '../lib/health'
 import { isImportedDevice } from '../lib/samsungHealth'
 import { useCrewData, useSession } from '../lib/session'
+import { onUi } from '../lib/uiBus'
+import { DATA_CHANGED, takePendingSystem } from '../lib/voice/pending'
 import { AXIS_LABEL, BANDS, dateOfDay, fmtLong, fmtShort, niceAxis } from '../lib/trend'
 import type { Measurement } from '../lib/types'
 
@@ -38,6 +40,22 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
   const data = useCrewData(crewId)
   const [sel, setSel] = useState<SystemId>('heart')
   const [editing, setEditing] = useState<VitalKey | null>(null)
+
+  // Voice: "show the heart" selects a system; a value logged by voice refreshes the data.
+  const reloadData = data.reload
+  useEffect(() => {
+    const pending = takePendingSystem()
+    if (pending !== undefined && pending !== null) setSel(pending)
+    const off = onUi('select-system', (d) => {
+      if (d.system) setSel(d.system) // null (whole body) has no meaning here: a system is always selected
+    })
+    const refresh = () => void reloadData()
+    window.addEventListener(DATA_CHANGED, refresh)
+    return () => {
+      off()
+      window.removeEventListener(DATA_CHANGED, refresh)
+    }
+  }, [reloadData])
   const ev = data.ev
   const sys = SYSTEM_BY_ID[sel]
   const vitals = ev ? sys.vitals.filter((k) => ev.vitalStatus[k]) : []

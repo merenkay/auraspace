@@ -3,6 +3,8 @@ import { Component, lazy, Suspense, useCallback, useEffect, useLayoutEffect, use
 import { SYSTEM_BY_ID, type SystemId } from '../data/systems'
 import { STATUS_COLOR, type Status } from '../data/vitals'
 import BodyMap from './BodyMap'
+import HudLock from './gesture/HudLock'
+import { registerViewer, useHud } from './gesture/viewerBridge'
 import type { HoverMeta, LayerId, ViewerControls } from './three/Body3D'
 import { Button, cx, IconButton, Spinner, StatusIcon, statusLabel, StatusText, useMedia } from './ui'
 
@@ -114,6 +116,8 @@ export default function BodyViewer({ statuses, measured, summaries, selected, on
   const controls = useRef<ViewerControls | null>(null)
   const hintTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const hintCount = useRef(0)
+  const hudUpdate = useRef<(() => void) | null>(null)
+  const hud = useHud()
 
   const fail = useCallback(() => {
     viewerBroken = true
@@ -130,6 +134,13 @@ export default function BodyViewer({ statuses, measured, summaries, selected, on
   }, [])
 
   const use3D = !!manifest && !failed
+
+  // hand control finds this viewer (and drives it through `controls`) when its cursor is over the canvas
+  useEffect(() => {
+    const el = wrapRef.current
+    if (!use3D || !el) return
+    return registerViewer({ el, controls: () => controls.current })
+  }, [use3D])
 
   // a model that never arrives (stalled connection) must not leave an empty box
   useEffect(() => {
@@ -191,6 +202,7 @@ export default function BodyViewer({ statuses, measured, summaries, selected, on
 
   const onInteract = useCallback(() => setSpin((s) => (s === 'auto' ? 'off' : s)), [])
   const onReady = useCallback(() => setReady(true), [])
+  const onView = useCallback(() => hudUpdate.current?.(), [])
   const onZoomHint = useCallback(() => {
     if (hintCount.current >= 3) return
     setZoomHint((shown) => {
@@ -246,9 +258,14 @@ export default function BodyViewer({ statuses, measured, summaries, selected, on
             onLost={fail}
             onZoomHint={onZoomHint}
             controlsRef={controls}
+            onView={onView}
           />
         </Suspense>
       </ViewerBoundary>
+
+      {ready && sel && (
+        <HudLock controls={controls} box={wrapRef} selected={sel.id} name={sel.name} status={shown(sel.id)} reading={summaries[sel.id]} insets={insets} full={hud} updateRef={hudUpdate} />
+      )}
 
       {!ready && (
         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">

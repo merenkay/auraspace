@@ -207,7 +207,16 @@ type NodeRec = {
   solid: boolean
 }
 
-type Instance = { root: THREE.Group; recs: NodeRec[]; materials: THREE.MeshStandardMaterial[]; height: number; radius: number; centerY: Partial<Record<SystemId, number>> }
+type Instance = {
+  root: THREE.Group
+  recs: NodeRec[]
+  materials: THREE.MeshStandardMaterial[]
+  height: number
+  radius: number
+  centerY: Partial<Record<SystemId, number>>
+  /** world-space centre and bounding radius of each system's primary mesh (for overlays that point at it) */
+  anchors: Partial<Record<SystemId, { center: THREE.Vector3; radius: number }>>
+}
 
 const BODY_HEIGHT = 1.75
 
@@ -301,15 +310,20 @@ function buildInstance(scenes: THREE.Object3D[]): Instance {
   root.position.set(-center.x * scale, -box.min.y * scale, -center.z * scale)
   root.updateMatrixWorld(true)
   const centerY: Partial<Record<SystemId, number>> = {}
+  const anchors: Instance['anchors'] = {}
   const one = new THREE.Box3()
   for (const r of recs) {
     if (PRIMARY_NODE[r.system] !== r.name) continue
     one.setFromObject(r.mesh)
     centerY[r.system] = (one.min.y + one.max.y) / 2
+    anchors[r.system] = { center: one.getCenter(new THREE.Vector3()), radius: one.getSize(new THREE.Vector3()).length() / 2 }
   }
   centerY.bones = BODY_HEIGHT / 2
   centerY.radiation = BODY_HEIGHT / 2
-  return { root, recs, materials: [...mats.values()], height: BODY_HEIGHT, radius: (Math.max(size.x, size.z) * scale) / 2, centerY }
+  // whole-body systems point at the trunk
+  anchors.bones = { center: new THREE.Vector3(0, BODY_HEIGHT * 0.55, 0), radius: 0.25 }
+  anchors.radiation = { center: new THREE.Vector3(0, BODY_HEIGHT * 0.62, 0), radius: 0.25 }
+  return { root, recs, materials: [...mats.values()], height: BODY_HEIGHT, radius: (Math.max(size.x, size.z) * scale) / 2, centerY, anchors }
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -321,6 +335,8 @@ const _local = new THREE.Ray()
 const _fwd = new THREE.Vector3()
 const _pt = new THREE.Vector3()
 const _slow: THREE.Intersection[] = []
+const _anchor = new THREE.Vector3()
+const _anchorUp = new THREE.Vector3()
 const pickStats = { rays: 0, picks: 0, ms: 0, last: 0, max: 0 }
 
 /** What one ray (canvas pixel x, y) passes through, ranked. Only visible, selectable meshes take part. */
@@ -401,7 +417,27 @@ export type HoverMeta = {
   count: number
 }
 
-export type ViewerControls = { zoom: (direction: 1 | -1) => void; reset: () => void }
+/** A system's centre on screen, relative to the canvas (CSS pixels); `r` is its approximate radius in pixels. */
+export type ViewerAnchor = { x: number; y: number; r: number }
+
+/**
+ * Imperative control of the viewer for other input methods (buttons, hand control). Client coordinates are
+ * viewport pixels, as in a PointerEvent. None of these change what the mouse and touch handlers do.
+ */
+export type ViewerControls = {
+  zoom: (direction: 1 | -1) => void
+  reset: () => void
+  /** rotate as a drag of (dx, dy) canvas pixels would */
+  rotateBy: (dx: number, dy: number) => void
+  /** multiply the camera distance (< 1 moves closer), keeping the body height under clientY in place */
+  zoomBy: (factor: number, clientY?: number) => void
+  /** select what a click at this point would select (same ranked resolver, touch tolerances); returns it */
+  pickAt: (clientX: number, clientY: number) => SystemId | null
+  /** hover feedback (highlight + tooltip) as a mouse at this point would get; null clears it */
+  hoverAt: (clientX: number | null, clientY?: number) => void
+  /** where a system is on screen right now, or null when it is behind the camera */
+  anchor: (id: SystemId) => ViewerAnchor | null
+}
 
 export type Body3DProps = {
   files: string[]
@@ -429,6 +465,8 @@ export type Body3DProps = {
   /** the user scrolled over the viewer without Ctrl (the page scrolls; zoom needs Ctrl or a pinch) */
   onZoomHint?: () => void
   controlsRef?: RefObject<ViewerControls | null>
+  /** called after a frame in which the camera moved (or the canvas resized), for overlays that track a system */
+  onView?: () => void
 }
 
 // neutral highlight (the ink token); status colours come from STATUS_COLOR
@@ -482,6 +520,7 @@ function Model(props: Body3DProps) {
     frames: 0,
     time: 0,
     readySent: false,
+    viewDirty: true,
   }).current
 
   // ----- appearance -------------------------------------------------------------------------------------
@@ -573,6 +612,7 @@ function Model(props: Body3DProps) {
     camera.setViewOffset(w, h, 0, (insetBottom - insetTop) / 2, w, h)
     placeCamera()
     st.hoverDirty = true
+    st.viewDirty = true
     return () => camera.clearViewOffset()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [size.width, size.height, insetTop, insetBottom, camera, inst])
@@ -616,6 +656,14 @@ function Model(props: Body3DProps) {
     if (changed) applyLooks()
     if (hit) live.current.onHover(hit.id, x, y, { cycling: hit.cycling, count: hit.list.length })
     else if (prev) live.current.onHover(null)
+  }
+
+  // a click (or an air-tap) at canvas point (x, y): select through the resolver, remember the spot for click-again cycling
+  const selectAt = (x: number, y: number, type: string): SystemId | null => {
+    const hit = resolve(x, y, type)
+    st.cycle = hit ? { x: hit.cycling && st.cycle ? st.cycle.x : x, y: hit.cycling && st.cycle ? st.cycle.y : y, list: hit.list, index: hit.index } : null
+    if (hit) live.current.onSelect(hit.id)
+    return hit?.id ?? null
   }
 
   useEffect(() => {
@@ -730,9 +778,7 @@ function Model(props: Body3DProps) {
       const tap = st.tap
       st.tap = null
       if (!tap || performance.now() - tap.at > 1000) return // a drag, a pinch, or a click that is not ours
-      const hit = resolve(tap.x, tap.y, tap.type)
-      st.cycle = hit ? { x: hit.cycling && st.cycle ? st.cycle.x : tap.x, y: hit.cycling && st.cycle ? st.cycle.y : tap.y, list: hit.list, index: hit.index } : null
-      if (hit) live.current.onSelect(hit.id)
+      selectAt(tap.x, tap.y, tap.type)
     }
 
     const onCancel = (e: PointerEvent) => {
@@ -865,6 +911,7 @@ function Model(props: Body3DProps) {
   useEffect(() => {
     if (st.cycle && st.cycle.list[st.cycle.index] !== props.selected) st.cycle = null
     st.hoverDirty = true
+    st.viewDirty = true
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.selected, props.layers, props.showRadiation])
 
@@ -885,6 +932,52 @@ function Model(props: Body3DProps) {
         st.goal.dist = st.home
         st.goal.ty = inst.height / 2
         st.cycle = null
+      },
+      rotateBy: (dx, dy) => {
+        const h = Math.max(1, sizeRef.current.height)
+        st.goal.az -= (2 * Math.PI * dx) / h
+        st.goal.pol -= (2 * Math.PI * dy) / h
+        clampGoal()
+        st.cycle = null
+        st.idleUntil = performance.now() + IDLE_BEFORE_SPIN
+        live.current.onInteract()
+      },
+      zoomBy: (factor, clientY) => {
+        const top = gl.domElement.getBoundingClientRect().top
+        zoomBy(factor, clientY == null ? undefined : worldYAt(clientY - top))
+        st.cycle = null
+        st.hoverDirty = true
+        st.idleUntil = performance.now() + IDLE_BEFORE_SPIN
+        live.current.onInteract()
+      },
+      pickAt: (clientX, clientY) => {
+        const r = gl.domElement.getBoundingClientRect()
+        return selectAt(clientX - r.left, clientY - r.top, 'touch')
+      },
+      hoverAt: (clientX, clientY) => {
+        if (clientX == null || clientY == null) {
+          st.inside = false
+          st.pointer = null
+          st.hoverDirty = false
+          setHover(null)
+          st.idleUntil = performance.now() + IDLE_BEFORE_SPIN
+          return
+        }
+        const r = gl.domElement.getBoundingClientRect()
+        st.inside = true
+        st.pointer = { x: clientX - r.left, y: clientY - r.top, type: 'touch' }
+        st.hoverDirty = true
+      },
+      anchor: (id) => {
+        const a = inst.anchors[id]
+        if (!a) return null
+        const { width: w, height: h } = sizeRef.current
+        const p = _anchor.copy(a.center).project(camera)
+        if (p.z > 1 || p.z < -1) return null
+        const x = ((p.x + 1) / 2) * w
+        const y = ((1 - p.y) / 2) * h
+        const q = _anchorUp.set(0, 1, 0).applyQuaternion(camera.quaternion).multiplyScalar(a.radius).add(a.center).project(camera)
+        return { x, y, r: Math.hypot(((q.x + 1) / 2) * w - x, ((1 - q.y) / 2) * h - y) }
       },
     }
     return () => {
@@ -964,6 +1057,10 @@ function Model(props: Body3DProps) {
       if (st.pointer) st.hoverDirty = true
     }
     placeCamera()
+    if (p.onView && (moving || st.spin > 0.001 || st.viewDirty)) {
+      st.viewDirty = false
+      p.onView()
+    }
 
     // hover: at most one resolve per frame, never during a drag, only once the BVHs exist
     if (st.hoverDirty && st.bvhReady && !st.gesture) {

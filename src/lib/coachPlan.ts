@@ -3,6 +3,7 @@
 // The coach never increases a load on its own; it only holds, lowers or redirects activity.
 import { CONDITION_BY_ID, sourceOf, type Cited, type SourceInfo } from '../data/conditions'
 import { CHOICE_LABEL, type HealthProfile } from '../data/conditions/profile'
+import { COACH_RULES, COACH_SOURCES } from '../data/coach/sources'
 import { CONTEXTS, type Context } from '../data/contexts'
 import type { SavedAssessment } from './clinic'
 import type { Evaluation } from './health'
@@ -94,6 +95,33 @@ export function buildCoachPlan({ context, ev, profile, latest, sleepAvg, now = D
   // 5. Asthma: reliever at hand.
   if (has('conditions', 'asthma')) {
     items.push({ id: 'asthma', level: 'adjust', title: 'Keep your reliever inhaler with you', text: 'Carry your inhaler during every session and stop if you start to wheeze.', reason: 'Your profile lists asthma.', source: cite('asthma-attack', 'prevention', /carry your inhaler/i) })
+  }
+
+  // 5b. Heart and circulation conditions: medical advice before strength training; warning signs stop the session.
+  const cardiac = ['heart-disease', 'angina', 'heart-failure', 'previous-stroke'].filter((c) => has('conditions', c))
+  if (cardiac.length) {
+    basis.push('heart condition on your profile')
+    items.push({
+      id: 'cardiac-clearance',
+      level: 'caution',
+      title: 'Ask before starting or stepping up strength work',
+      text: `Check with your ${contact} which exercises suit you. Stop and get checked if you feel chest pain or pressure, dizziness, palpitations or unusual breathlessness.`,
+      reason: `Your profile lists ${cardiac.map((c) => CHOICE_LABEL[c].toLowerCase()).join(', ')}.`,
+      source: { ...COACH_SOURCES['aha-rt'], quote: COACH_RULES.rtClearance.q },
+    })
+  }
+
+  // 5c. Pregnancy: no sourced exercise rules in this app — keep the starting level and ask.
+  if (has('conditions', 'pregnancy')) {
+    items.push({
+      id: 'pregnancy',
+      level: 'caution',
+      title: 'Ask your midwife or doctor about exercise',
+      text: 'Ask which exercises suit you now. AURA keeps your plan at its starting level and does not step it up.',
+      reason: 'Your profile says you are pregnant.',
+      source: null,
+      rule: true,
+    })
   }
 
   // 6. Falls at home: strength and balance.

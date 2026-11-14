@@ -10,6 +10,7 @@ import { MISSIONS } from '../data/missions'
 import { addAssessment, canReadClinic, canWriteClinic, listAssessments, loadProfile, saveProfile, type SavedAssessment } from '../lib/clinic'
 import { readingsFromEvaluation } from '../lib/doctor'
 import { useCrewData, useSession } from '../lib/session'
+import { DATA_CHANGED } from '../lib/voice/pending'
 
 type View = 'consult' | 'explain' | 'profile' | 'history'
 
@@ -17,6 +18,13 @@ export default function Aura({ crewId }: { crewId: number }) {
   const { mission, user, crew } = useSession()
   const data = useCrewData(crewId)
   const ev = data.ev
+  const reloadData = data.reload
+  // a value logged by voice elsewhere in the app: pick it up
+  useEffect(() => {
+    const refresh = () => void reloadData()
+    window.addEventListener(DATA_CHANGED, refresh)
+    return () => window.removeEventListener(DATA_CHANGED, refresh)
+  }, [reloadData])
   const ctx = ev?.context ?? mission?.context ?? 'space'
   const self = canWriteClinic(user, crewId)
   const readable = canReadClinic(user, crewId)
