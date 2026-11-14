@@ -3,3 +3,6 @@ dist
 .env
 .env.*
 *.local
+public/api/seed.json
+aura-config.php
+public/api/config.local.php

@@ -1,0 +1,10 @@
+# Only index.php and install.php are public entry points.
+<FilesMatch "^(lib\.php|config\.local\.php|seed\.json)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
