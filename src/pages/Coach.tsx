@@ -125,7 +125,7 @@ export default function Coach({ crewId }: { crewId: number }) {
             {onHold && <p className="mt-3 text-sm text-soft">The session is on hold because of a restriction above.</p>}
           </Section>
         ) : (
-          <Section title="Your activity goal" description={`${THRESHOLD_SOURCES.activity.source.org} recommendation`}>
+          <Section title="Your activity goal" description={`${THRESHOLD_SOURCES.activity.source.org} recommendation${onHold ? ' — for after you are cleared' : ''}`}>
             <Metric label="Weekly target" value={150} unit="minutes" />
             <p className="mt-3 max-w-2xl text-soft">
               {THRESHOLD_SOURCES.activity.text} {ctx === 'home' ? THRESHOLD_SOURCES.activityOlderBalance.text : ''}
