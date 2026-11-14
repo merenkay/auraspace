@@ -11,6 +11,7 @@ import { canReadClinic, loadProfile } from '../../lib/clinic'
 import { readingsFromEvaluation } from '../../lib/doctor'
 import { evaluate, systemsFor, type Evaluation } from '../../lib/health'
 import { useSession } from '../../lib/session'
+import { DEV_HOOKS } from '../../lib/devHooks'
 import { sfx } from '../../lib/sfx'
 import type { Measurement } from '../../lib/types'
 import { emitUi, onUi } from '../../lib/uiBus'
@@ -664,7 +665,7 @@ export function useVoiceAgent(crewId: number | null) {
 
   // development only: drive the pipeline without a microphone or speech engine
   useEffect(() => {
-    if (!import.meta.env.DEV) return
+    if (!DEV_HOOKS) return
     const w = window as unknown as { __auraVoice?: unknown }
     const toAlts = (xs: (string | Alt)[]): Alt[] => xs.map((x, i) => (typeof x === 'string' ? { transcript: x, confidence: i === 0 ? 0.9 : 0.6 - i * 0.05 } : x))
     w.__auraVoice = {

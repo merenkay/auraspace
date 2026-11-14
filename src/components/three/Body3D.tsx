@@ -4,12 +4,15 @@
 // layers (BVH accelerated, about 0.05 ms per ray) and ranking what lies along them, instead of taking the
 // nearest mesh. Hover and click share the same resolver, so the tooltip always names what a click selects.
 import { PerformanceMonitor, useGLTF } from '@react-three/drei'
-import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { createRoot, extend, useFrame, useThree, type ReconcilerRoot } from '@react-three/fiber'
 import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import * as THREE from 'three'
-import { CENTER, MeshBVH, type MeshBVHOptions } from 'three-mesh-bvh'
+import { MeshBVH } from 'three-mesh-bvh'
+import type { BvhJob, BvhReply } from './bvh.worker'
+import { BVH_OPTIONS } from './bvhOptions'
 import type { SystemId } from '../../data/systems'
 import { STATUS_COLOR, type Status } from '../../data/vitals'
+import { DEV_HOOKS } from '../../lib/devHooks'
 
 export const NODE_SYSTEM: Record<string, SystemId> = {
   sys_heart: 'heart',
@@ -160,31 +163,94 @@ const CYCLE_RADIUS: Record<string, number> = { mouse: 8, pen: 10, touch: 20, han
 const RING: [number, number][] = Array.from({ length: 8 }, (_, i): [number, number] => [Math.cos((i * Math.PI) / 4), Math.sin((i * Math.PI) / 4)])
 
 // ---------------------------------------------------------------------------------------------------------
-// BVH cache: built once per loaded geometry (the loader caches the model for the lifetime of the page),
-// one mesh per task so the main thread is never blocked for long. Shared by every mount of the viewer.
+// BVH cache: built once per loaded geometry (the loader caches the model for the lifetime of the page) and
+// shared by every mount of the viewer. The builds run in a worker (bvh.worker.ts): the main thread only copies
+// each mesh's position and index arrays out and gets the packed tree back (a 650 ms main-thread stall on the
+// largest mesh before). Fallback without workers: one mesh per task on the main thread, as before.
 // ---------------------------------------------------------------------------------------------------------
 const bvhCache = new WeakMap<THREE.BufferGeometry, Promise<MeshBVH>>()
 let bvhQueue: Promise<unknown> = Promise.resolve()
-const bvhStats = { builds: 0, ms: 0, longest: 0 }
+const bvhStats = { builds: 0, ms: 0, longest: 0, worker: 0 }
+
+let bvhWorker: Worker | null | undefined
+let bvhSeq = 0
+const bvhWaiting = new Map<number, { resolve: (r: BvhReply & { ok: true }) => void; reject: (e: Error) => void }>()
+
+function getBvhWorker(): Worker | null {
+  if (bvhWorker !== undefined) return bvhWorker
+  try {
+    bvhWorker = typeof Worker === 'undefined' ? null : new Worker(new URL('./bvh.worker.ts', import.meta.url), { type: 'module', name: 'aura-bvh' })
+  } catch {
+    bvhWorker = null
+  }
+  if (bvhWorker) {
+    bvhWorker.onmessage = (e: MessageEvent<BvhReply>) => {
+      const w = bvhWaiting.get(e.data.id)
+      bvhWaiting.delete(e.data.id)
+      if (!w) return
+      if (e.data.ok) w.resolve(e.data)
+      else w.reject(new Error(e.data.error))
+    }
+    bvhWorker.onerror = () => {
+      // the worker could not start (or died): everything waiting, and everything after, builds on the main thread
+      bvhWorker?.terminate()
+      bvhWorker = null
+      for (const w of bvhWaiting.values()) w.reject(new Error('bvh worker failed'))
+      bvhWaiting.clear()
+    }
+  }
+  return bvhWorker
+}
+
+function buildInWorker(geometry: THREE.BufferGeometry): Promise<MeshBVH> | null {
+  const worker = getBvhWorker()
+  const pos = geometry.getAttribute('position') as THREE.BufferAttribute | THREE.InterleavedBufferAttribute
+  if (!worker || !pos) return null
+  const interleaved = (pos as THREE.InterleavedBufferAttribute).isInterleavedBufferAttribute === true
+  // copy just this mesh's range (a typed-array view may sit inside the whole model's buffer)
+  const array = (interleaved ? (pos as THREE.InterleavedBufferAttribute).data.array : (pos as THREE.BufferAttribute).array) as unknown as Float32Array
+  const job: BvhJob = {
+    id: ++bvhSeq,
+    array: array.slice(),
+    stride: interleaved ? (pos as THREE.InterleavedBufferAttribute).data.stride : pos.itemSize,
+    offset: interleaved ? (pos as THREE.InterleavedBufferAttribute).offset : 0,
+    itemSize: pos.itemSize,
+    normalized: pos.normalized,
+    interleaved,
+    index: geometry.index ? (geometry.index.array as Uint32Array).slice() : null,
+  }
+  return new Promise<BvhReply & { ok: true }>((resolve, reject) => {
+    bvhWaiting.set(job.id, { resolve, reject })
+    worker.postMessage(job, [job.array.buffer, ...(job.index ? [job.index.buffer] : [])])
+  }).then((r) => {
+    bvhStats.builds++
+    bvhStats.worker++
+    bvhStats.ms += r.ms
+    bvhStats.longest = Math.max(bvhStats.longest, r.ms)
+    return MeshBVH.deserialize({ roots: r.roots, index: null as unknown as Uint32Array, indirectBuffer: r.indirectBuffer } as unknown as Parameters<typeof MeshBVH.deserialize>[0], geometry, { setIndex: false })
+  })
+}
+
+function buildOnMainThread(geometry: THREE.BufferGeometry): Promise<MeshBVH> {
+  const job = bvhQueue
+    .then(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
+    .then(() => {
+      const t = performance.now()
+      const tree = new MeshBVH(geometry, BVH_OPTIONS)
+      const ms = performance.now() - t
+      bvhStats.builds++
+      bvhStats.ms += ms
+      bvhStats.longest = Math.max(bvhStats.longest, ms)
+      return tree
+    })
+  bvhQueue = job.catch(() => undefined)
+  return job
+}
 
 function ensureBvh(geometry: THREE.BufferGeometry): Promise<MeshBVH> {
   let job = bvhCache.get(geometry)
   if (!job) {
-    job = bvhQueue
-      .then(() => new Promise<void>((resolve) => setTimeout(resolve, 0)))
-      .then(() => {
-        const t = performance.now()
-        // indirect: the index buffer used for rendering is left untouched
-        // (a runtime option of three-mesh-bvh 0.8 that its type declarations do not list yet)
-        const options: MeshBVHOptions & { indirect: boolean } = { strategy: CENTER, maxLeafTris: 10, indirect: true }
-        const tree = new MeshBVH(geometry, options)
-        const ms = performance.now() - t
-        bvhStats.builds++
-        bvhStats.ms += ms
-        bvhStats.longest = Math.max(bvhStats.longest, ms)
-        return tree
-      })
-    bvhQueue = job.catch(() => undefined)
+    job = (buildInWorker(geometry) ?? buildOnMainThread(geometry)).catch(() => buildOnMainThread(geometry))
     bvhCache.set(geometry, job)
   }
   return job
@@ -492,13 +558,16 @@ type HoverHit = { id: SystemId; list: SystemId[]; index: number; cycling: boolea
 
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v))
 
-function Model(props: Body3DProps) {
+type ModelProps = Body3DProps & { /** a new mount of the viewer reusing this (pooled) renderer */ session: number }
+
+function Model(props: ModelProps) {
   const loaded = useGLTF(props.files, false) as unknown as { scene: THREE.Group } | { scene: THREE.Group }[]
   const scenes = (Array.isArray(loaded) ? loaded : [loaded]).map((g) => g.scene)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const inst = useMemo(() => buildInstance(scenes), [props.files.join('|')])
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera
   const gl = useThree((s) => s.gl)
+  const scene = useThree((s) => s.scene)
   const size = useThree((s) => s.size)
 
   const live = useRef(props)
@@ -526,7 +595,27 @@ function Model(props: Body3DProps) {
     time: 0,
     readySent: false,
     viewDirty: true,
+    /** shaders compiled (asynchronously, before the first picture) */
+    compiled: false,
+    /** what the last drawn picture depended on: a frame with the same values is not drawn again */
+    sig: [] as number[],
+    drawnAt: 0,
+    pendingMinor: false,
+    session: props.session,
   }).current
+
+  // The renderer is pooled (see Body3D below): a new visit to the page re-uses this mounted scene. Start it like a
+  // fresh mount: home view, nothing hovered, ready reported again once it has drawn.
+  useLayoutEffect(() => {
+    if (st.session === props.session) return
+    st.session = props.session
+    Object.assign(st.view, { az: 0, pol: POLAR_HOME, dist: st.home, ty: BODY_HEIGHT / 2 })
+    Object.assign(st.goal, st.view)
+    Object.assign(st, { spin: 0, idleUntil: 0, gesture: null, inside: false, pointer: null, hover: null, cycle: null, tap: null, readySent: false, frames: 0, viewDirty: true, hoverDirty: false, sig: [] })
+    st.pointers.clear()
+    applyLooks()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.session])
 
   // ----- appearance -------------------------------------------------------------------------------------
   const applyLooks = () => {
@@ -879,6 +968,37 @@ function Model(props: Body3DProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gl, inst])
 
+  // ----- shaders: compiled in the background (KHR_parallel_shader_compile where available) before the first
+  // picture, instead of synchronously inside the first frame (the viewer's skeleton stays up meanwhile)
+  useLayoutEffect(() => {
+    let alive = true
+    st.compiled = false
+    // the error check reads every program's log synchronously (it waits for the compile): development only
+    gl.debug.checkShaderErrors = import.meta.env.DEV
+    const done = () => {
+      if (alive) st.compiled = true
+    }
+    try {
+      const p = (gl as THREE.WebGLRenderer & { compileAsync?: (o: THREE.Object3D, c: THREE.Camera, s?: THREE.Object3D) => Promise<unknown> }).compileAsync?.(scene, camera, scene)
+      if (p) {
+        p.then(done, done)
+        // never wait longer than this for the background compile: draw (and compile, if still needed) anyway
+        const t = setTimeout(done, 4000)
+        return () => {
+          alive = false
+          clearTimeout(t)
+        }
+      }
+    } catch {
+      /* draws (and compiles) in the first frame instead */
+    }
+    done()
+    return () => {
+      alive = false
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gl, inst])
+
   // ----- BVHs, GPU resources, imperative controls -------------------------------------------------------
   useEffect(() => {
     let alive = true
@@ -994,7 +1114,7 @@ function Model(props: Body3DProps) {
 
   // dev-only test hooks (used by the viewer probe; not present in production builds)
   useEffect(() => {
-    if (!import.meta.env.DEV) return
+    if (!DEV_HOOKS) return
     const api = {
       pick: (clientX: number, clientY: number, type = 'mouse') => {
         const r = gl.domElement.getBoundingClientRect()
@@ -1094,12 +1214,64 @@ function Model(props: Body3DProps) {
       }
     }
 
-    st.frames++
+    // ----- draw (this frame callback has a priority, so it does the drawing instead of R3F) -----------------
+    if (!st.compiled) return
+    if (draw(now) || st.frames > 0) st.frames++
     if (!st.readySent && st.frames >= 2) {
       st.readySent = true
       p.onReady?.()
     }
-  })
+  }, 1)
+
+  /**
+   * Draws the scene unless the picture would be identical to the last one: the camera, the canvas size and every
+   * mesh's visibility, colours, opacity and glow are compared. A frame whose only change is the slow status
+   * pulse is drawn at most 30 times a second. Returns whether it drew.
+   */
+  const draw = (now: number) => {
+    const sig = st.sig
+    let i = 0
+    let major = false
+    let minor = false
+    const put = (v: number, isMinor = false) => {
+      if (sig[i] !== v) {
+        sig[i] = v
+        if (isMinor) minor = true
+        else major = true
+      }
+      i++
+    }
+    const c = camera
+    put(c.position.x)
+    put(c.position.y)
+    put(c.position.z)
+    put(c.quaternion.x)
+    put(c.quaternion.y)
+    put(c.quaternion.z)
+    put(c.quaternion.w)
+    put(c.projectionMatrix.elements[0])
+    put(c.projectionMatrix.elements[5])
+    put(c.projectionMatrix.elements[9])
+    put(sizeRef.current.width)
+    put(sizeRef.current.height)
+    put(gl.getPixelRatio())
+    for (const rec of inst.recs) {
+      const m = rec.material
+      put(rec.mesh.visible ? 1 : 0)
+      put(rec.mesh.renderOrder)
+      put(m.opacity)
+      put(m.depthWrite ? 1 : 0)
+      put(m.color.getHex())
+      put(m.emissive.getHex())
+      put(m.emissiveIntensity, true)
+    }
+    if (minor) st.pendingMinor = true
+    if (!major && !(st.pendingMinor && now - st.drawnAt >= 32)) return false
+    st.pendingMinor = false
+    st.drawnAt = now
+    gl.render(scene, camera)
+    return true
+  }
 
   return <primitive object={inst.root} />
 }
@@ -1140,10 +1312,63 @@ function FrameCap({ fps }: { fps: number }) {
   return null
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Renderer pool. Every visit to Overview or Diagnostics used to create a WebGL context, compile the shaders and,
+// on leaving, destroy the context again (forceContextLoss): together several hundred milliseconds of main-thread
+// stall per tab switch. The canvas, its R3F root and the mounted scene are now kept for the page's lifetime and
+// moved into whichever viewer mounts next; while parked the render loop is stopped.
+// ---------------------------------------------------------------------------------------------------------
+type Slot = { canvas: HTMLCanvasElement; root: ReconcilerRoot<HTMLCanvasElement>; busy: boolean }
+const slots: Slot[] = []
+let sessions = 0
+/** contexts kept while no viewer shows them (a second, simultaneous viewer gets its own and gives it back) */
+const MAX_PARKED = 1
+// MSAA is wasted on high-density screens: their pixel ratio already smooths edges. Fixed per context.
+const GL_PROPS = { antialias: typeof window === 'undefined' || (window.devicePixelRatio || 1) < 1.5, alpha: true, powerPreference: 'high-performance' as const }
+// <Canvas> registers the THREE namespace for JSX (<ambientLight> ...); a root made with createRoot needs it too
+extend(THREE as unknown as Parameters<typeof extend>[0])
+const CAMERA = { position: [0, 1, 3.4] as [number, number, number], fov: FOV, near: 0.05, far: 50 }
+
+function acquireSlot(): Slot {
+  let slot = slots.find((s) => !s.busy)
+  if (!slot) {
+    const canvas = document.createElement('canvas')
+    canvas.style.cssText = 'display:block;width:100%;height:100%'
+    slot = { canvas, root: createRoot(canvas), busy: false }
+    slots.push(slot)
+  }
+  slot.busy = true
+  return slot
+}
+
+function releaseSlot(slot: Slot) {
+  slot.busy = false
+  slot.canvas.remove()
+  if (slots.filter((s) => !s.busy).length <= MAX_PARKED) return
+  // too many idle contexts: destroy this one when the browser is idle (never in the middle of a navigation)
+  const i = slots.indexOf(slot)
+  if (i >= 0) slots.splice(i, 1)
+  const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number }
+  const drop = () => slot.root.unmount()
+  if (w.requestIdleCallback) w.requestIdleCallback(drop, { timeout: 5000 })
+  else setTimeout(drop, 2000)
+}
+
+/** Drops a slot whose renderer could not be created (no WebGL). */
+function discardSlot(slot: Slot) {
+  const i = slots.indexOf(slot)
+  if (i >= 0) slots.splice(i, 1)
+  slot.canvas.remove()
+}
+
 export default function Body3D(props: Body3DProps) {
   const wrap = useRef<HTMLDivElement>(null)
   const [inView, setInView] = useState(true)
   const [dpr, setDpr] = useState(() => Math.min(2, typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1))
+  const [failure, setFailure] = useState<unknown>(null)
+  const slot = useRef<Slot | null>(null)
+  const session = useRef(0)
+  const size = useRef({ width: 0, height: 0, top: 0, left: 0 })
 
   // stop rendering while the viewer is scrolled out of sight
   useEffect(() => {
@@ -1154,26 +1379,75 @@ export default function Body3D(props: Body3DProps) {
     return () => io.disconnect()
   }, [])
 
-  return (
-    <div ref={wrap} className="absolute inset-0">
-      <Canvas
-        dpr={props.lowPower ? 1 : dpr}
-        frameloop={!inView ? 'never' : props.lowPower ? 'demand' : 'always'}
-        camera={{ position: [0, 1, 3.4], fov: FOV, near: 0.05, far: 50 }}
-        gl={{ antialias: true, alpha: true }}
-      >
-        <PerformanceMonitor onDecline={() => setDpr(1)} />
-        <ContextWatch onLost={props.onLost} />
-        {props.lowPower && inView && <FrameCap fps={30} />}
-        <ambientLight intensity={0.55} />
-        <hemisphereLight args={['#f1ede6', '#12110F', 0.7]} />
-        <directionalLight position={[2.5, 4, 3]} intensity={1.6} />
-        <directionalLight position={[-3, 2, -2]} intensity={0.7} />
-        <pointLight position={[0, 1.2, 1.5]} intensity={0.6} />
-        <Suspense fallback={null}>
-          <Model {...props} />
-        </Suspense>
-      </Canvas>
-    </div>
-  )
+  const frameloop: 'always' | 'demand' | 'never' = !inView ? 'never' : props.lowPower ? 'demand' : 'always'
+  const pixelRatio = props.lowPower ? 1 : dpr
+
+  const paint = () => {
+    const s = slot.current
+    if (!s) return
+    try {
+      s.root.configure({ gl: GL_PROPS, camera: CAMERA, size: size.current, dpr: pixelRatio, frameloop })
+      s.root.render(
+        <>
+          <PerformanceMonitor onDecline={() => setDpr(1)} />
+          <ContextWatch onLost={props.onLost} />
+          {props.lowPower && inView && <FrameCap fps={30} />}
+          <ambientLight intensity={0.55} />
+          <hemisphereLight args={['#f1ede6', '#12110F', 0.7]} />
+          <directionalLight position={[2.5, 4, 3]} intensity={1.6} />
+          <directionalLight position={[-3, 2, -2]} intensity={0.7} />
+          <pointLight position={[0, 1.2, 1.5]} intensity={0.6} />
+          <Suspense fallback={null}>
+            <Model {...props} session={session.current} />
+          </Suspense>
+        </>,
+      )
+    } catch (e) {
+      // no WebGL (or the context could not be created): the parent's error boundary shows the 2D body map
+      discardSlot(s)
+      slot.current = null
+      setFailure(e ?? new Error('WebGL unavailable'))
+    }
+  }
+
+  // take a renderer from the pool, put its canvas here, give it back on unmount (render loop stopped)
+  useLayoutEffect(() => {
+    const el = wrap.current
+    if (!el) return
+    const s = acquireSlot()
+    slot.current = s
+    session.current = ++sessions
+    el.appendChild(s.canvas)
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      size.current = { width: r.width, height: r.height, top: r.top, left: r.left }
+    }
+    measure()
+    let ro: ResizeObserver | null = null
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        const before = size.current
+        measure()
+        if (before.width !== size.current.width || before.height !== size.current.height) slot.current?.root.configure({ size: size.current })
+      })
+      ro.observe(el)
+    }
+    return () => {
+      ro?.disconnect()
+      if (slot.current !== s) return
+      slot.current = null
+      try {
+        s.root.configure({ frameloop: 'never' })
+      } catch {
+        /* parked as is */
+      }
+      releaseSlot(s)
+    }
+  }, [])
+
+  // every render: pass the current props on to the scene (as <Canvas> did)
+  useLayoutEffect(paint)
+
+  if (failure) throw failure
+  return <div ref={wrap} className="absolute inset-0 overflow-hidden" />
 }

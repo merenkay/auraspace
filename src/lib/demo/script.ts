@@ -180,7 +180,7 @@ export const SCRIPT: Script = {
           rewind: false,
           // the newest message: the follow-up question with the engine's reason for asking it
           target: or({ css: '[role="log"] > div', text: 'Safety check' }, '[role="log"]'),
-          callout: { title: 'Safety check', text: 'The engine asks the one question that can complete a red-flag rule.' },
+          callout: { title: 'Safety check', text: 'The engine asks the one question that can complete a red-flag rule.', prefer: 'above' },
           during: [
             { type: 'wait', ms: 2800 },
             { type: 'click', target: { css: '[role="group"][aria-label="Answer"] button', text: 'Yes', exact: true } },

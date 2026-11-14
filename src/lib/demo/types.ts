@@ -64,7 +64,8 @@ export type Card =
   | { kind: 'principles' }
   | { kind: 'closing' }
 
-export type Callout = { title?: string; text: string }
+/** A short note attached to the spotlight. `prefer`: where it goes when it cannot sit beside the target (default below). */
+export type Callout = { title?: string; text: string; prefer?: 'above' | 'below' }
 
 export type Step = {
   id: string

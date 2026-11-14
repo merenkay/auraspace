@@ -4,6 +4,7 @@
 import { SYSTEM_BY_ID } from '../../data/systems'
 import { GesturePipeline, type GestureEvent, type GestureOptions, type GestureState, type RawFrame, type XY } from '../../lib/gesture/machine'
 import { Dwell, magnetRadius, pickTarget, snapPoint, type Cand } from '../../lib/gesture/target'
+import { DEV_HOOKS } from '../../lib/devHooks'
 import { sfx } from '../../lib/sfx'
 import { viewerAtElement, type ViewerHandle } from './viewerBridge'
 
@@ -425,7 +426,7 @@ export class HandDriver {
     const { state, events } = this.pipeline.push(frame)
     for (const e of events) {
       this.onEvent(e)
-      if (import.meta.env.DEV) {
+      if (DEV_HOOKS) {
         this.log.push({ t: Math.round(frame.t), type: e.type, info: e.type === 'slap' ? e.dir : e.type === 'tap' || e.type === 'press' ? `${Math.round(e.x * window.innerWidth)},${Math.round(e.y * window.innerHeight)}` : undefined })
         if (this.log.length > 60) this.log.shift()
       }

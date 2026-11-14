@@ -60,7 +60,7 @@ function useTargetRect(highlight: Highlight | null, bottomInset: number): Rect |
 }
 
 /** Where the note goes: beside the target on wide screens, below or above it otherwise. Null when there is no room that would not cover the target. */
-function place(r: Rect, noteH: number, bottomInset: number): Place | null {
+function place(r: Rect, noteH: number, bottomInset: number, prefer: 'above' | 'below' = 'below'): Place | null {
   const vw = window.innerWidth
   const vh = window.innerHeight - bottomInset
   const phone = vw < 640
@@ -69,7 +69,8 @@ function place(r: Rect, noteH: number, bottomInset: number): Place | null {
   const fitsLeft = r.x - GAP - width >= 16
   const fitsBottom = r.y + r.h + GAP + noteH <= vh - 8
   const fitsTop = r.y - GAP - noteH >= 8
-  const side: Side | null = !phone && fitsRight ? 'right' : !phone && fitsLeft ? 'left' : fitsBottom ? 'bottom' : fitsTop ? 'top' : fitsRight ? 'right' : fitsLeft ? 'left' : null
+  const vertical: Side | null = prefer === 'above' ? (fitsTop ? 'top' : fitsBottom ? 'bottom' : null) : fitsBottom ? 'bottom' : fitsTop ? 'top' : null
+  const side: Side | null = !phone && fitsRight ? 'right' : !phone && fitsLeft ? 'left' : (vertical ?? (fitsRight ? 'right' : fitsLeft ? 'left' : null))
   // The target fills the screen: the caption carries the message, the note would only hide what is being shown.
   if (!side) return null
   if (side === 'right' || side === 'left') {
@@ -108,7 +109,7 @@ export default function Spotlight({ highlight, bottomInset, reduced }: { highlig
   const gliding = !reduced && performance.now() < morphUntil.current
   const move = gliding ? { duration: MORPH_S, ease: EASE.inOut } : { duration: 0 }
   const fade = { duration: reduced ? 0 : DUR.base, ease: EASE.out }
-  const p = rect && callout ? place(rect, noteH, bottomInset) : null
+  const p = rect && callout ? place(rect, noteH, bottomInset, callout.prefer) : null
 
   return (
     <AnimatePresence>

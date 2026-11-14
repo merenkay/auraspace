@@ -31,21 +31,11 @@ function loadManifest() {
   return manifestPromise
 }
 
-// Checked once per page load. The probe context is released straight away: browsers only allow a handful of
-// live WebGL contexts, and the viewer is mounted again on every visit to Overview and Diagnostics.
-let webglSupport: boolean | null = null
+// A cheap check only: creating (and destroying) a probe WebGL context cost 200+ ms of main-thread time. When the
+// API exists but a context cannot be created (blocklisted GPU), Body3D throws and the boundary below switches
+// to the 2D body map, as the probe did. Body3D keeps one pooled context for the whole visit.
 function webglOK() {
-  if (webglSupport === null) {
-    try {
-      const c = document.createElement('canvas')
-      const gl = (c.getContext('webgl2') || c.getContext('webgl')) as WebGLRenderingContext | null
-      webglSupport = !!gl
-      gl?.getExtension('WEBGL_lose_context')?.loseContext()
-    } catch {
-      webglSupport = false
-    }
-  }
-  return webglSupport
+  return typeof window !== 'undefined' && ('WebGL2RenderingContext' in window || 'WebGLRenderingContext' in window)
 }
 
 // Once the 3D view has failed (model missing, context lost) the rest of the session uses the SVG map.

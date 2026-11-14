@@ -4,6 +4,7 @@ import { Hand, LoaderCircle } from 'lucide-react'
 import { Component, lazy, Suspense, useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { Button, IconButton, Notice, cx } from '../ui'
+import { DEV_HOOKS } from '../../lib/devHooks'
 import type { HandErrorKind } from './engine'
 import './viewerBridge' // starts tracking the HUD state before any page needs it
 
@@ -41,7 +42,7 @@ export default function HandControl() {
 
   // dev-only: start hand mode without a camera and feed synthetic landmark frames (see HandSession)
   useEffect(() => {
-    if (!import.meta.env.DEV) return
+    if (!DEV_HOOKS) return
     const w = window as unknown as { __auraHand?: Record<string, unknown> }
     const hook = (w.__auraHand ??= {})
     hook.start = (opts?: { synthetic?: boolean }) => {

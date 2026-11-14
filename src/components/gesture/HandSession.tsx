@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { HAND_BONES } from '../../lib/gesture/classify'
 import type { GestureState, RawFrame, RawHand } from '../../lib/gesture/machine'
 import type { SynthPose } from '../../lib/gesture/synth'
+import { DEV_HOOKS } from '../../lib/devHooks'
 import { sfx } from '../../lib/sfx'
 import { emitUi } from '../../lib/uiBus'
 import { Button, cx, Dialog, IconButton, LiveDot, Notice, Spinner } from '../ui'
@@ -465,7 +466,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
     // dev-only frame injector: window.__auraHand.feed(frame) / .play(steps, fps) / .view() / .stats()
     const w = window as unknown as { __auraHand?: Record<string, unknown> }
     let playT = 0
-    if (import.meta.env.DEV) {
+    if (DEV_HOOKS) {
       const hook = (w.__auraHand ??= {})
       hook.feed = (frame: RawFrame) => handle(frame)
       hook.events = () => drv.log.splice(0)
@@ -537,7 +538,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       stopStream(r?.stream ?? null)
       tracker?.close()
       res.current = null
-      if (import.meta.env.DEV && w.__auraHand) {
+      if (DEV_HOOKS && w.__auraHand) {
         for (const k of ['feed', 'events', 'stats', 'play', 'view', 'settings']) delete w.__auraHand[k]
       }
       emitUi('hud', { on: false, source: 'hand' })
