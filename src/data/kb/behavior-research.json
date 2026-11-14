@@ -1,0 +1,670 @@
+[
+  {
+    "id": "hazard-radiation",
+    "title": "5 Hazards of Human Spaceflight - Space Radiation",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/hrp/hazards/",
+    "lastUpdated": "2026-06-12",
+    "fetchStatus": "ok",
+    "hazards": [
+      "radiation"
+    ],
+    "bodySystems": [
+      "radiation"
+    ],
+    "summary": "NASA lists space radiation as one of the five hazards of human spaceflight. It is invisible and considered one of the most hazardous aspects of spaceflight.",
+    "findings": [
+      {
+        "text": "NASA considers space radiation one of the most hazardous aspects of spaceflight.",
+        "quote": "considered one of the most hazardous aspects of spaceflight."
+      }
+    ],
+    "measurements": [],
+    "countermeasures": [],
+    "limitations": [
+      "The overview page gives no numbers, monitoring methods or countermeasures for radiation."
+    ]
+  },
+  {
+    "id": "hazard-isolation",
+    "title": "5 Hazards of Human Spaceflight - Isolation and Confinement",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/hrp/hazards/",
+    "lastUpdated": "2026-06-12",
+    "fetchStatus": "ok",
+    "hazards": [
+      "isolation"
+    ],
+    "bodySystems": [
+      "brain"
+    ],
+    "summary": "Small groups confined in tight spaces for months or years may show behavioral responses. NASA says crews need careful selection, training and support.",
+    "findings": [
+      {
+        "text": "Crews must be carefully chosen, trained and supported for isolation and confinement.",
+        "quote": "Crews must be carefully chosen, trained, and supported"
+      }
+    ],
+    "measurements": [
+      "Behavioral responses in isolated crews are studied."
+    ],
+    "countermeasures": [
+      "Careful crew selection, training, and support."
+    ],
+    "limitations": [
+      "The overview page gives no numbers or unknowns for this hazard."
+    ]
+  },
+  {
+    "id": "hazard-distance",
+    "title": "5 Hazards of Human Spaceflight - Distance from Earth",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/hrp/hazards/",
+    "lastUpdated": "2026-06-12",
+    "fetchStatus": "ok",
+    "hazards": [
+      "distance"
+    ],
+    "bodySystems": [],
+    "summary": "The farther astronauts travel, the harder it is to get instructions, supplies and medical care from Earth. Self-sufficiency becomes essential.",
+    "findings": [
+      {
+        "text": "Mars is on average 140 million miles from Earth.",
+        "quote": "Mars is, on average, 140 million miles from Earth."
+      },
+      {
+        "text": "Planning and self-sufficiency are key to deep space missions.",
+        "quote": "Planning and self-sufficiency will be key to successful deep space missions."
+      }
+    ],
+    "measurements": [],
+    "countermeasures": [
+      "Planning and self-sufficiency."
+    ],
+    "limitations": [
+      "The overview page lists no specific unknowns."
+    ]
+  },
+  {
+    "id": "hazard-gravity",
+    "title": "5 Hazards of Human Spaceflight - Gravity Fields",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/hrp/hazards/",
+    "lastUpdated": "2026-06-12",
+    "fetchStatus": "ok",
+    "hazards": [
+      "gravity"
+    ],
+    "bodySystems": [
+      "bones"
+    ],
+    "summary": "Bodies must adapt to changing gravity on the station, spacecraft, Moon, Mars and back on Earth. Muscles, bones, inner ear and organs all adjust.",
+    "findings": [
+      {
+        "text": "Mars gravity is three-eighths of Earth's, and astronauts could spend up to two years there.",
+        "quote": "three-eighths of Earth's gravitational pull for up to two years"
+      }
+    ],
+    "measurements": [
+      "Adjustment of muscles, bones, inner ear, and organs."
+    ],
+    "countermeasures": [
+      "The page points to ground analogs, labs and the ISS as test beds for strategies; no specific countermeasure is named."
+    ],
+    "limitations": [
+      "The page notes bodies will keep adjusting to new gravitational loads; no explicit unknowns listed."
+    ]
+  },
+  {
+    "id": "hazard-environment",
+    "title": "5 Hazards of Human Spaceflight - Hostile/Closed Environments",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/hrp/hazards/",
+    "lastUpdated": "2026-06-12",
+    "fetchStatus": "ok",
+    "hazards": [
+      "environment"
+    ],
+    "bodySystems": [
+      "immune"
+    ],
+    "summary": "A spacecraft is both a home and a machine, so its environment must be carefully maintained. NASA monitors microbes and immune responses.",
+    "findings": [
+      {
+        "text": "NASA monitors microbial communities and tracks immune responses in spacecraft environments.",
+        "quote": "monitoring microbial communities, and tracking immune responses"
+      }
+    ],
+    "measurements": [
+      "Microbial communities and immune responses are monitored."
+    ],
+    "countermeasures": [
+      "Controlling temperature, pressure, lighting, and noise."
+    ],
+    "limitations": [
+      "The overview page lists no specific unknowns."
+    ]
+  },
+  {
+    "id": "risk-behavioral-conditions",
+    "title": "Risk of Behavioral Changes and Psychiatric Disorders",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-behavioral-conditions-and-psychiatric-disorders/",
+    "lastUpdated": "2026-02-24",
+    "fetchStatus": "ok",
+    "hazards": [
+      "isolation",
+      "distance"
+    ],
+    "bodySystems": [
+      "brain"
+    ],
+    "summary": "Long isolation and confinement in space can raise the chance of behavioral problems such as anxiety and depression. Long communication delays on a Mars trip add new challenges.",
+    "findings": [
+      {
+        "text": "Prolonged isolation and confinement can increase risk of behavioral issues.",
+        "quote": "prolonged isolation and confinement that astronauts face in space can increase risks of behavioral issues"
+      },
+      {
+        "text": "Communication delays on a multi-year Mars trip will create new challenges.",
+        "quote": "extended communication delays with a multi-year trip to Mars will create new challenges"
+      },
+      {
+        "text": "Windows can reduce monotony and boost mental health.",
+        "quote": "A spacecraft's windows can boost the mental health of astronauts because they reduce monotony"
+      }
+    ],
+    "measurements": [
+      "The page does not describe measurement methods; Earth-based isolation volunteers are studied over multiple months."
+    ],
+    "countermeasures": [
+      "Self-care such as keeping a regular journal",
+      "Growing fresh vegetables",
+      "Regular virtual contact with family and medical professionals",
+      "Spacecraft windows",
+      "Maximizing privacy"
+    ],
+    "limitations": [
+      "No quantitative data or effectiveness data for countermeasures.",
+      "How to support crew psychological health during long communication delays is still open."
+    ]
+  },
+  {
+    "id": "risk-inadequate-teamwork",
+    "title": "Risk of Inadequate Teamwork",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-inadequate-teamwork/",
+    "lastUpdated": "2025-12-02",
+    "fetchStatus": "ok",
+    "hazards": [
+      "isolation",
+      "distance"
+    ],
+    "bodySystems": [
+      "brain"
+    ],
+    "summary": "Teamwork is a priority risk for deep space missions such as Mars. Communication delays, isolation and resource limits make team dynamics harder.",
+    "findings": [
+      {
+        "text": "Team dynamics and cohesion are vital to mission success.",
+        "quote": "Team dynamics and cohesion is vital to mission success."
+      },
+      {
+        "text": "Risks include communication delays, isolation and resource constraints.",
+        "quote": "Examples include communication delays, increased isolation, and numerous resource constraints"
+      },
+      {
+        "text": "Earth-based simulations do not fully replicate spaceflight.",
+        "quote": "Though these simulations do not completely replicate the spaceflight experience"
+      }
+    ],
+    "measurements": [
+      "The page does not state what is measured or how."
+    ],
+    "countermeasures": [
+      "Pre-mission team-building training",
+      "In-mission medical support",
+      "Earth-based analog simulations"
+    ],
+    "limitations": [
+      "The page gives no quantitative data.",
+      "Analog simulations do not completely replicate spaceflight (e.g. crews are not weightless)."
+    ]
+  },
+  {
+    "id": "risk-inadequate-sleep",
+    "title": "Risk from Inadequate Sleep and Irregular Schedules",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-from-inadequate-sleep-and-irregular-schedules/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": [
+      "environment",
+      "isolation"
+    ],
+    "bodySystems": [
+      "brain"
+    ],
+    "summary": "Astronauts face sleep loss, irregular light-dark cycles and heavy workloads. These can cause short- and long-term health effects that affect mission success.",
+    "findings": [
+      {
+        "text": "The ISS has 16 sunrises and sunsets per day, which can disrupt the sleep-wake cycle.",
+        "quote": "16 sunrises and sunsets per day"
+      },
+      {
+        "text": "LEDs that simulate Earth's light-dark cycle are used to help astronauts sleep better.",
+        "quote": "simulate Earth's light-dark cycle to help astronauts sleep better"
+      }
+    ],
+    "measurements": [
+      "The page does not state what is measured or how."
+    ],
+    "countermeasures": [
+      "LEDs that simulate Earth's light-dark cycle",
+      "Designated relaxation and self-care time",
+      "Research on light and caffeine effects on body clocks"
+    ],
+    "limitations": [
+      "No results reported from the light and caffeine research.",
+      "No sleep duration, quality or performance data given."
+    ]
+  },
+  {
+    "id": "risk-inadequate-systems-operations-support",
+    "title": "Risk of Inadequate Systems Operations Support",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-inadequate-systems-operations-support/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": [
+      "distance"
+    ],
+    "bodySystems": [
+      "brain"
+    ],
+    "summary": "On the ISS crews rely on real-time help from Mission Control when problems occur. On longer, more distant missions they must diagnose and repair systems on their own.",
+    "findings": [
+      {
+        "text": "NASA astronauts train on average 300 hours in simulators before launch.",
+        "quote": "NASA astronauts train, on average, 300 hours in simulators before launch"
+      },
+      {
+        "text": "Crews still rely on real-time assistance when problems arise.",
+        "quote": "crews still rely on real-time assistance when problems arise."
+      }
+    ],
+    "measurements": [
+      "The page does not state what is measured or how."
+    ],
+    "countermeasures": [
+      "Mission Control training on ISS systems",
+      "Pre-mission emergency training",
+      "User-friendly system design",
+      "Work with industry partners"
+    ],
+    "limitations": [
+      "No data on how well crews perform without real-time support.",
+      "No required competency standard stated."
+    ]
+  },
+  {
+    "id": "risk-injury-dynamic-loads",
+    "title": "Risk of Injury from Dynamic Loads",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-injury-from-dynamic-loads/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": [
+      "gravity"
+    ],
+    "bodySystems": [
+      "bones"
+    ],
+    "summary": "Astronauts face higher injury risk during vehicle landing due to gravity transitions, disorientation and bone loss. NASA builds human body models to understand these effects.",
+    "findings": [
+      {
+        "text": "Such injuries could significantly affect crew health and mission success.",
+        "quote": "Such injuries could significantly affect crew health and mission success."
+      },
+      {
+        "text": "Crews on the Moon and Mars must self-egress and function autonomously shortly after landing.",
+        "quote": "crews will need to self-egress and function autonomously shortly after landing"
+      }
+    ],
+    "measurements": [
+      "Human body models characterize how the body is affected in spaceflight environments."
+    ],
+    "countermeasures": [
+      "Vehicle design standards (seats, restraints)",
+      "Improved spacesuit design",
+      "Research on crew readiness at landing"
+    ],
+    "limitations": [
+      "No quantitative injury thresholds or incidence rates.",
+      "Magnitude of bone and muscle weakening not given."
+    ]
+  },
+  {
+    "id": "risk-radiation-induced-cancers",
+    "title": "Risk of Radiation-Induced Cancers",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-radiation-induced-cancers/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": [
+      "radiation"
+    ],
+    "bodySystems": [
+      "radiation",
+      "heart",
+      "eyes",
+      "brain"
+    ],
+    "summary": "Astronauts are exposed to more radiation in space than on Earth, raising cancer risk and possibly other degenerative conditions. NASA studies prevention, health surveillance and personalized risk assessment.",
+    "findings": [
+      {
+        "text": "Astronauts are exposed to higher radiation levels in space than on Earth.",
+        "quote": "Astronauts are exposed to higher levels of radiation in space than on Earth"
+      },
+      {
+        "text": "Instruments aboard the ISS measure radiation exposure.",
+        "quote": "various instruments that measure radiation exposure are in place aboard the International Space Station"
+      },
+      {
+        "text": "Moon and Mars missions extend beyond Earth's protective bubble.",
+        "quote": "missions to the Moon and Mars will extend beyond this protective bubble"
+      },
+      {
+        "text": "Personal cancer risk assessments aim to use radiation dose and genetic factors.",
+        "quote": "based on radiation dose and genetic factors"
+      }
+    ],
+    "measurements": [
+      "Instruments on the ISS measure radiation exposure",
+      "Heavy-ion beams at the NASA Space Radiation Laboratory study effects on cells and tissue"
+    ],
+    "countermeasures": [
+      "Radiation shielding for Artemis and the lunar Gateway",
+      "Health surveillance best practices",
+      "Medicines to counter radiation effects"
+    ],
+    "limitations": [
+      "No quantitative risk estimates or dose thresholds given.",
+      "Shielding needs for Mars and beyond are still being considered."
+    ]
+  },
+  {
+    "id": "ongoing-hrp-research",
+    "title": "Ongoing HRP Research",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/hrp/ongoing-hrp-research/",
+    "lastUpdated": "2026-08-18",
+    "fetchStatus": "ok",
+    "hazards": [
+      "radiation",
+      "isolation",
+      "distance",
+      "gravity",
+      "environment"
+    ],
+    "bodySystems": [
+      "brain",
+      "immune"
+    ],
+    "summary": "This page lists NASA Human Research Program studies on Artemis II, low Earth orbit and past investigations. Studies track crew well-being, immunity, and body changes in orbit.",
+    "findings": [
+      {
+        "text": "HRP uses research to develop methods to protect astronaut health and performance.",
+        "quote": "HRP uses research to develop methods to protect the health and performance of astronauts in space."
+      },
+      {
+        "text": "ARCHeR monitored astronauts' well-being, activity and sleep patterns.",
+        "quote": "monitored astronauts' well-being, activity, and sleep patterns"
+      }
+    ],
+    "measurements": [
+      "Linked studies (21), all under https://www.nasa.gov/reference/ : archer, immune-biomarkers, artemis-ii-standard-measures, b-complex, brain-fluid-pressure, cipher, simulating-manual-piloting-for-moon-landings, spacecraft-occupant-protection, spinal-fluid-biomarkers, standard-measures, thigh-cuff, venous-haemostasis, zero-t2, omics-archive, tempus-pro; plus past investigations Altered Immunity, Food Acceptability, Food Physiology, Space Gardening, Spinal Health, Veggie Monitoring (nasa.gov/missions/station/ and nasa.gov/humans-in-space/ articles)."
+    ],
+    "countermeasures": [],
+    "limitations": [
+      "Page is an index; details are on the linked study pages."
+    ]
+  },
+  {
+    "id": "study-archer",
+    "title": "ARCHeR",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/archer/",
+    "lastUpdated": "2026-03-17",
+    "fetchStatus": "ok",
+    "hazards": [
+      "isolation",
+      "radiation"
+    ],
+    "bodySystems": [
+      "brain"
+    ],
+    "summary": "ARCHeR tracks astronauts' well-being, activity, sleep and crew interactions during Artemis missions. It aims to show how hazards like isolation and radiation combine to affect performance.",
+    "findings": [
+      {
+        "text": "Data are collected with actigraphy and behavioral performance surveys before and after the mission.",
+        "quote": "Data will be collected using actigraphy and behavioral performance surveys before and after the mission."
+      },
+      {
+        "text": "Actigraphy is also collected during the mission.",
+        "quote": "Actigraphy data will also be collected during the mission."
+      }
+    ],
+    "measurements": [
+      "Actigraphy (wearable activity monitoring)",
+      "Behavioral performance surveys before and after the mission"
+    ],
+    "countermeasures": [
+      "Goal: develop protocols, interventions, and technologies (none named)"
+    ],
+    "limitations": [
+      "No sample size, results or metrics given."
+    ]
+  },
+  {
+    "id": "study-immune-biomarkers",
+    "title": "Immune Biomarkers",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/immune-biomarkers/",
+    "lastUpdated": "2026-03-17",
+    "fetchStatus": "ok",
+    "hazards": [
+      "environment"
+    ],
+    "bodySystems": [
+      "immune"
+    ],
+    "summary": "Starting with Artemis II, this study examines how spaceflight changes crew physiology including the immune system, using blood and saliva samples.",
+    "findings": [
+      {
+        "text": "The study aims to potentially counter spaceflight effects on the immune system.",
+        "quote": "potentially counter the effect of spaceflight on the immune system"
+      },
+      {
+        "text": "Details about dormant virus reactivation in space are still being explored.",
+        "quote": "details about this phenomenon are still being explored"
+      }
+    ],
+    "measurements": [
+      "Blood before and after the mission",
+      "Dry saliva blotted onto paper, collected in space and on Earth",
+      "Stress hormones, viruses and cells"
+    ],
+    "countermeasures": [],
+    "limitations": [
+      "No sample sizes or results given.",
+      "Dormant virus reactivation is still being explored."
+    ]
+  },
+  {
+    "id": "study-brain-fluid-pressure",
+    "title": "Brain Fluid Pressure",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/brain-fluid-pressure/",
+    "lastUpdated": "2025-06-04",
+    "fetchStatus": "ok",
+    "hazards": [
+      "gravity"
+    ],
+    "bodySystems": [
+      "brain",
+      "eyes"
+    ],
+    "summary": "This flight study examines whether pressure of fluid inside the head is linked to eye and brain changes after long spaceflight (SANS). Fluid shifts in microgravity may raise intracranial pressure.",
+    "findings": [
+      {
+        "text": "Visual Impairment Intracranial Pressure Syndrome was identified in 2005.",
+        "quote": "was identified in 2005"
+      }
+    ],
+    "measurements": [
+      "Intracranial pressure",
+      "Eye pressure and neck vein pressure",
+      "Spinal fluid, blood and urine biomarkers, measured shortly after return and compared with preflight baselines"
+    ],
+    "countermeasures": [],
+    "limitations": [
+      "Whether spaceflight is associated with these changes is what the study tests.",
+      "Which biomarkers and which crew are at higher risk is unknown."
+    ]
+  },
+  {
+    "id": "study-cipher",
+    "title": "CIPHER",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/cipher/",
+    "lastUpdated": "2025-06-04",
+    "fetchStatus": "ok",
+    "hazards": [
+      "gravity",
+      "radiation",
+      "isolation"
+    ],
+    "bodySystems": [
+      "eyes",
+      "bones",
+      "heart",
+      "brain"
+    ],
+    "summary": "CIPHER is a suite of 14 studies on how spaceflight affects the eyes, bones, heart and brain. Data are collected before, during and after missions up to a year.",
+    "findings": [
+      {
+        "text": "The suite has 14 studies.",
+        "quote": "This suite of 14 studies is designed to provide a better understanding"
+      },
+      {
+        "text": "Studies check whether bone and muscle loss changes after six months in space.",
+        "quote": "after six months in space"
+      },
+      {
+        "text": "Some studies collect samples on missions up to a year.",
+        "quote": "missions lasting up to a year will provide blood and urine samples"
+      }
+    ],
+    "measurements": [
+      "Blood and urine (calcium, joint biomarkers, telomeres)",
+      "MRI, CT and ultrasound of the heart and arteries",
+      "3D imaging of bones",
+      "Vision tests, vestibular tests"
+    ],
+    "countermeasures": [
+      "Resistive exercise studied for bone loss (as stated on page)"
+    ],
+    "limitations": [
+      "Whether bone/muscle loss accelerates after six months",
+      "Whether vision changes worsen with mission length",
+      "No results reported"
+    ]
+  },
+  {
+    "id": "study-standard-measures",
+    "title": "Standard Measures",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/standard-measures/",
+    "lastUpdated": "2025-06-04",
+    "fetchStatus": "ok",
+    "hazards": [
+      "isolation",
+      "gravity",
+      "radiation",
+      "distance",
+      "environment"
+    ],
+    "bodySystems": [
+      "brain",
+      "immune",
+      "bones"
+    ],
+    "summary": "This flight study collects a standard set of measurements across many body systems before, during and after spaceflight to inform protocols for Moon and Mars missions.",
+    "findings": [
+      {
+        "text": "Standardized measurements are collected across multiple body systems and time points.",
+        "quote": "This study collects a standardized set of measurements across multiple body systems and at various time points"
+      },
+      {
+        "text": "Activity and light exposure are gathered through a wrist sensor.",
+        "quote": "measurements of activity and light exposure (gathered through a wrist sensor)"
+      },
+      {
+        "text": "Saliva is used to measure immune function.",
+        "quote": "saliva to measure the function of the immune system"
+      }
+    ],
+    "measurements": [
+      "Wrist sensor for activity and light",
+      "Sleep reports",
+      "Fluid samples for diet and nutrition",
+      "Saliva for immune function",
+      "Cognition, sensorimotor and strength tests",
+      "Fecal samples for gut microbes"
+    ],
+    "countermeasures": [],
+    "limitations": [
+      "No sample sizes or results given; no unknowns explicitly listed."
+    ]
+  },
+  {
+    "id": "csa-why-experiments-in-space",
+    "title": "Why do we conduct science experiments in space?",
+    "organization": "Canadian Space Agency",
+    "url": "https://www.asc-csa.gc.ca/eng/iss/science/why-do-we-conduct-science-experiments-in-space.asp",
+    "lastUpdated": "2025-10-28",
+    "fetchStatus": "ok",
+    "hazards": [
+      "gravity",
+      "radiation",
+      "isolation",
+      "distance"
+    ],
+    "bodySystems": [
+      "bones",
+      "heart",
+      "brain"
+    ],
+    "summary": "ISS research prepares for deep-space missions and also helps health on Earth, for example for balance problems, osteoporosis, cardiovascular disorders and Type 2 diabetes.",
+    "findings": [
+      {
+        "text": "About 200 international experiments are on the ISS at any time.",
+        "quote": "On average, there are 200 international space experiments on board the ISS at any given time."
+      },
+      {
+        "text": "Six months in space gives data that would take years on Earth.",
+        "quote": "Studying the human body in space for six months gives us data that would take years to gather on Earth."
+      }
+    ],
+    "measurements": [
+      "Bones, heart, blood vessels and brain"
+    ],
+    "countermeasures": [
+      "Goal is to find countermeasures and treatments; none named."
+    ],
+    "limitations": [
+      "No specific countermeasures or quantitative data given."
+    ]
+  }
+]

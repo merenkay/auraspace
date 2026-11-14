@@ -1,0 +1,235 @@
+[
+  {
+    "id": "altered-immune-system-responses",
+    "title": "Risk of Altered Immune System Responses",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-altered-immune-system-responses/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["radiation", "isolation", "gravity"],
+    "bodySystems": ["immune"],
+    "summary": "Spaceflight stressors such as radiation, microgravity and poor sleep can change how an astronaut's immune system behaves. This may trigger allergic reactions or wake up dormant viruses. NASA is studying these changes before longer missions.",
+    "findings": [
+      {"text": "Earlier Earth studies indicated that shifts in immunity may increase infections.", "quote": "indicated that shifts in immunity may lead to an increased incidence of infections"},
+      {"text": "Some ISS astronauts have reported skin and allergy-type symptoms.", "quote": "cold sores, rashes, atypical allergies"},
+      {"text": "Inflight samples returned to Earth are used to track immune changes.", "quote": "inflight biological samples returned to Earth to track immune system changes during spaceflight"}
+    ],
+    "measurements": ["Blood, saliva and urine samples studied as possible triggers of latent virus reactivation", "Biological samples collected before and after spaceflight, and inflight samples returned to Earth"],
+    "countermeasures": ["The page describes no specific countermeasures; it describes research and sampling only"],
+    "limitations": ["What triggers reactivation of latent viruses is still being investigated", "Mechanisms and long-term health effects for longer missions are not explained on the page"]
+  },
+  {
+    "id": "altered-sensorimotor-vestibular-function",
+    "title": "Risk of Altered Sensorimotor and Vestibular Function",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-altered-sensorimotor-and-vestibular-function/",
+    "lastUpdated": "2025-12-02",
+    "fetchStatus": "ok",
+    "hazards": ["gravity"],
+    "bodySystems": ["brain"],
+    "summary": "Changes in gravity, and moving between gravity environments, can cause motion sickness and spatial disorientation. This could affect tasks, vehicle control and spacewalks on Moon and Mars missions. Research is measuring post-landing disorientation and testing medicines, training and orientation aids.",
+    "findings": [
+      {"text": "Most astronauts get motion sickness in spaceflight (no exact figure given).", "quote": "The majority of astronauts experience motion sickness during spaceflight."},
+      {"text": "Motion sickness on Earth does not predict how sick you will get in space.", "quote": "does not predict how motion sick you may get during space travel"},
+      {"text": "Researchers with the U.S. Navy are testing head movements to relieve symptoms after a flight simulator.", "quote": "to test whether specific head movements could help relieve motion sickness symptoms after exiting a flight simulator"}
+    ],
+    "measurements": ["Extent of disorientation right after landing, to set a baseline for planetary landings", "Motion sickness medication use via astronaut surveys", "Recovery interventions tested in extended bedrest experiments"],
+    "countermeasures": ["Medicines combined with training or orientation aids", "Specific head movements (being tested with the U.S. Navy)", "Recovery interventions tested in bedrest studies"],
+    "limitations": ["The page gives no incidence rates", "No effectiveness results are stated for the countermeasures being tested"]
+  },
+  {
+    "id": "cardiovascular-adaptations",
+    "title": "Risk of Cardiovascular Adaptations",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-cardiovascular-adaptations/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["gravity", "distance"],
+    "bodySystems": ["heart"],
+    "summary": "Low gravity and other spaceflight stressors can change the heart and blood vessels, raising concerns about blood clots, irregular heartbeat, cardiovascular disease and low blood pressure. The risk grows with longer missions such as a Mars trip. NASA treats this research as a priority.",
+    "findings": [
+      {"text": "Ultrasound is used to image the heart in space.", "quote": "this tool can help physicians get a better picture of the heart's structure and function"},
+      {"text": "Exercise and diet help crews keep cardiovascular fitness.", "quote": "help crews maintain cardiovascular fitness"},
+      {"text": "Compression garments and extra fluids before landing help prevent low blood pressure.", "quote": "can help to prevent low blood pressure"},
+      {"text": "NASA calls this research a priority.", "quote": "research focused on understanding and treating these risks is a priority for NASA"}
+    ],
+    "measurements": ["Ultrasound imaging of heart structure and function (no specific metrics named)"],
+    "countermeasures": ["Regular exercise and healthy diets", "Lower-body compression garments and high fluid intake before landing", "Enhanced training to respond to cardiovascular emergencies on future Mars missions"],
+    "limitations": ["No data on how often these conditions occur", "Mechanisms and countermeasure effectiveness are not reported"]
+  },
+  {
+    "id": "decompression-sickness",
+    "title": "Risk of Decompression Sickness",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-decompression-sickness/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["environment"],
+    "bodySystems": ["lungs"],
+    "summary": "Decompression sickness (the bends) can occur when astronauts go from a pressurized spacecraft to a lower-pressure spacesuit for a spacewalk. NASA uses training, oxygen pre-breathing and spacewalk-ending protocols, and is developing new suits and lower-pressure spacecraft.",
+    "findings": [
+      {"text": "Astronauts with symptoms during a spacewalk should end it and return.", "quote": "should safely but rapidly end their spacewalk"},
+      {"text": "Pre-breathing high oxygen before spacewalks helps displace body nitrogen.", "quote": "breathing carefully calibrated high levels of oxygen"},
+      {"text": "Variable pressure suits and lower-pressure spacecraft would require trade-offs.", "quote": "decisions will need to be made about risk tradeoffs"}
+    ],
+    "measurements": ["The page describes no measurement or monitoring method; it mentions Earth-based training in high- and low-pressure environments"],
+    "countermeasures": ["Earth-based pressure training", "Oxygen pre-breathe before spacewalks", "Variable pressure suits (in development)", "Lower-pressure deep-space spacecraft"],
+    "limitations": ["No quantitative risk data", "Pre-breathe levels and durations are not specified", "Suit pressure vs. mobility trade-offs remain open"]
+  },
+  {
+    "id": "host-microorganism-interactions",
+    "title": "Risk of Host-Microorganism Interactions",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-host-microorganism-interactions/",
+    "lastUpdated": "2025-12-02",
+    "fetchStatus": "ok",
+    "hazards": ["isolation", "environment"],
+    "bodySystems": ["immune"],
+    "summary": "Astronauts' skin and gut microbes appear to shift in space, and some microbes may become more disease-causing. Precautions exist, but some astronauts still get sick. How these changes affect disease risk is not yet known.",
+    "findings": [
+      {"text": "Crew exposure to large groups is limited before launch.", "quote": "limiting flight crew exposure to large groups in the two weeks prior to launch"},
+      {"text": "Some microbes are more virulent in spaceflight.", "quote": "Some microbes have been found to be more virulent in spaceflight"},
+      {"text": "Surface swabs of the station and crew samples are collected.", "quote": "Astronauts provide biological samples and collect swabs from the surface of the space station"},
+      {"text": "The effect on disease risk is unknown.", "quote": "how these alterations may affect the crews' chances of contracting diseases remains unknown"}
+    ],
+    "measurements": ["Changes in the microbial community on skin and in the gut", "Biological samples and swabs of station surfaces"],
+    "countermeasures": ["Limiting crew exposure to large groups in the two weeks before launch", "Ongoing assessment of disinfectants, anti-inflammatories and antibiotics"],
+    "limitations": ["How microbiome changes affect disease risk is unknown", "Which mechanism drives the risk (microbiome, virulence, immune function) is unresolved", "Interaction of changes may amplify risk"]
+  },
+  {
+    "id": "hypoxia",
+    "title": "Risk of Hypoxia",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-hypoxia/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["environment"],
+    "bodySystems": ["lungs", "brain"],
+    "summary": "Future deep-space cabins will be kept partially depressurized to lower astronauts' nitrogen levels, which raises the chance of mild hypoxia (low oxygen in tissues). NASA considers the risk relatively low but is still assessing it.",
+    "findings": [
+      {"text": "Untreated mild hypoxia can cause confusion, headaches, vision problems and poor sleep.", "quote": "Mild hypoxia, if untreated, can cause confusion, headaches, vision impairment, and trouble sleeping."},
+      {"text": "Astronauts breathe pure oxygen for hours before spacewalks.", "quote": "Astronauts must inhale pure oxygen over several hours prior to spacewalks to avoid decompression sickness"},
+      {"text": "Chamber studies with volunteers help scientists learn about hypoxia.", "quote": "Studying volunteers that spend hours or days in these chambers allows scientists to learn more about hypoxia"}
+    ],
+    "measurements": ["Oxygen concentration and pressure balanced in spacewalk protocols", "New health monitoring protocols to track adaptation to partial depressurization (no specific metrics named)"],
+    "countermeasures": ["Constant partial cabin depressurization", "Balanced oxygen-pressure protocols for spacewalks (under research)", "Suits that allow raising suit pressure (under research)", "Pressure-chamber studies of interventions"],
+    "limitations": ["No ground-based study tests different oxygen exposure levels in humans under spaceflight stressors", "Unknown whether a mildly hypoxic, reduced-pressure environment worsens existing health issues"]
+  },
+  {
+    "id": "inadequate-food-and-nutrition",
+    "title": "Risk of Inadequate Food and Nutrition",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-inadequate-food-and-nutrition/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["distance", "isolation"],
+    "bodySystems": ["metabolism"],
+    "summary": "Poor food or nutrition on long missions can reduce performance and cause illness. Food must be acceptable, safe, nutritious, long-lasting and varied, which gets harder on Moon and Mars missions without regular resupply.",
+    "findings": [
+      {"text": "More than 200 foods and beverages are available on the ISS.", "quote": "More than 200 foods and beverages are available aboard the space station."},
+      {"text": "Astronauts sample menu items and help select flight foods.", "quote": "sample menu items, such as soups, meats, and vegetables"}
+    ],
+    "measurements": ["Meal acceptability, safety, nutrition, shelf life, ease of preparation and variety", "Crew food preferences from pre-flight tasting"],
+    "countermeasures": ["Reducing sodium and adding new foods for variety", "Enhancing diets for nutritional value", "Designing a deep-space food system, tested in analogs and spaceflight"],
+    "limitations": ["No quantitative data on deficits, illness or performance effects", "How shelf life will be extended for Mars-length missions is not explained"]
+  },
+  {
+    "id": "eva-injury-and-performance",
+    "title": "Risk of Injury and Compromised Performance from Spacewalks",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-injury-and-compromised-performance-from-extravehicular-activity-eva/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["gravity", "environment", "distance"],
+    "bodySystems": ["bones", "heart"],
+    "summary": "Spacewalks, real or simulated, carry risk of injury and reduced performance, expected to grow with Artemis III and later missions involving lunar surface work. NASA focuses on pressure and oxygen management, suit design and physical conditioning.",
+    "findings": [
+      {"text": "The longest single spacewalk lasted 8 hours 56 minutes (Voss and Helms, March 12, 2001).", "quote": "It lasted 8 hours and 56 minutes."},
+      {"text": "Spacewalks are physically and mentally demanding, raising injury risk.", "quote": "Spacewalks come with significant physical and mental demands, elevating injury risk."},
+      {"text": "Deep-space spacewalks will be more frequent and longer.", "quote": "During deep space missions, spacewalks will occur more frequently and last longer."}
+    ],
+    "measurements": ["Pressure and oxygen levels in both habitat and spacesuit", "Pressure change from habitat to suit (decompression sickness risk)"],
+    "countermeasures": ["Prebreathe protocols to remove nitrogen", "Spacesuit redesign for durability, safety and dexterity", "Exercise for strength and bone maintenance"],
+    "limitations": ["No injury rates or quantified future risk", "Specific lunar-surface hazards are not detailed"]
+  },
+  {
+    "id": "reduced-cardiorespiratory-musculoskeletal-fitness",
+    "title": "Risk of Reduced Cardiorespiratory and Musculoskeletal Fitness",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-reduced-cardiorespiratory-and-musculoskeletal-fitness/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["gravity", "distance"],
+    "bodySystems": ["bones", "heart", "lungs"],
+    "summary": "Microgravity weakens bones, muscles and the heart-lung system, making mission tasks harder and injuries more likely. ISS crews exercise daily to counter this, but future spacecraft will likely have less room for exercise equipment.",
+    "findings": [
+      {"text": "Average strength and aerobic fitness loss is 10-12% of pre-mission levels.", "quote": "average losses to strength and aerobic fitness are 10-12% of pre-mission levels"},
+      {"text": "12-38% of ISS crew lose more than 20% of pre-mission fitness, depending on how it is measured.", "quote": "between 12-38% of space station crew members lose more than 20% of their pre-mission fitness"},
+      {"text": "ISS crews do 1.5 hours of exercise per day.", "quote": "resistance training and aerobic exercises for 1.5 hours per day"},
+      {"text": "Exercise is done six to seven days a week.", "quote": "Six to seven days a week"},
+      {"text": "Strength loss affects more crew than aerobic decline.", "quote": "Strength loss affects a larger proportion of crew members than does the decline in aerobic fitness"}
+    ],
+    "measurements": ["Periodic fitness self-evaluations", "Upper and lower body strength and endurance, flexibility, aerobic fitness, agility and coordination"],
+    "countermeasures": ["Resistance and aerobic exercise on the ISS", "Exercise device designed to mimic free-weight forces", "Research to optimize exercise machines and protocols for deep space"],
+    "limitations": ["Future Moon and Mars spacecraft will likely have less exercise space", "Effects vary substantially between individual astronauts"]
+  },
+  {
+    "id": "spaceflight-associated-neuro-ocular-syndrome-sans",
+    "title": "Risk of Spaceflight Associated Neuro-ocular Syndrome (SANS)",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-spaceflight-associated-neuro-ocular-syndrome-sans/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["gravity", "distance"],
+    "bodySystems": ["eyes", "brain"],
+    "summary": "SANS is a set of eye and brain changes linked to long-term weightlessness, which shifts fluids toward the head. Effects range from mild to clinically significant, and the long-term outcome is unknown. NASA treats it as a top research priority before a Mars mission.",
+    "findings": [
+      {"text": "About 70 percent of ISS astronauts experience swelling at the back of the eye.", "quote": "Approximately 70 percent of astronauts aboard the International Space Station"},
+      {"text": "The condition was first identified in 2005 under the name VIIP Syndrome.", "quote": "was identified in 2005"},
+      {"text": "Earth analog studies use head-down tilt for weeks or months.", "quote": "a six-degree head-down tilt"},
+      {"text": "Eye exams with a fundoscope track how spaceflight affects the eye.", "quote": "helps scientists track how the spaceflight environment affects the human eye"}
+    ],
+    "measurements": ["Retina examined with a fundoscope", "Optic nerve swelling, retinal folds, flattening of the back of the eye and brain swelling"],
+    "countermeasures": ["Nutritional supplements that could protect the eyes (under investigation)", "Mechanical interventions to reverse headward fluid shifts (under investigation)", "Bed rest studies that replicate microgravity effects"],
+    "limitations": ["Long-term health outcome is unknown", "Why some astronauts have only mild changes and others significant ones is not explained", "No proven prevention or treatment stated"]
+  },
+  {
+    "id": "spaceflight-induced-bone-changes",
+    "title": "Risk of Spaceflight-Induced Bone Changes",
+    "organization": "NASA Human Research Program",
+    "url": "https://www.nasa.gov/reference/risk-of-spaceflight-induced-bone-changes/",
+    "lastUpdated": "2025-05-16",
+    "fetchStatus": "ok",
+    "hazards": ["gravity"],
+    "bodySystems": ["bones"],
+    "summary": "Bones in weight-bearing areas such as the spine and hips lose density in microgravity, which can leave astronauts prone to fractures and early osteoporosis. Resistive exercise, routine bone scans and medications such as bisphosphonates are the main approaches.",
+    "findings": [
+      {"text": "Bones lose about 1% to 1.5% of density per month on average.", "quote": "on average, bones lose between 1% and 1.5%"},
+      {"text": "This rate applies during four-to-six-month missions.", "quote": "during four-to-six-month missions"},
+      {"text": "Crew height can increase by as much as 3% in space.", "quote": "the height of crew members can increase as much as 3% in space"},
+      {"text": "Bisphosphonates could help reduce some bone loss.", "quote": "could help mitigate some spaceflight-induced bone loss"}
+    ],
+    "measurements": ["Routine bone scans before and after spaceflight, also used to check how well resistive exercise maintains bone"],
+    "countermeasures": ["Resistive exercise", "Bisphosphonate medications"],
+    "limitations": ["More research is needed to know if the rate of bone loss persists on lengthy missions", "More research is needed on how to counter or reverse these changes"]
+  },
+  {
+    "id": "renal-stone-formation-evidence-report-update",
+    "title": "Evolution of Spaceflight Renal Stone Risks and Update to the NASA Human Research Program (HRP) Renal Stone Evidence Report and Integrated Concept of Operations",
+    "organization": "NASA Human Research Program",
+    "url": "https://ntrs.nasa.gov/citations/20230015722",
+    "lastUpdated": null,
+    "fetchStatus": "ok",
+    "hazards": ["gravity", "distance"],
+    "bodySystems": ["renal"],
+    "summary": "This NASA Technical Reports Server abstract (AsMA conference paper, May 2024) describes an update to the HRP Renal Stone Evidence Report using 9 years of astronaut renal stone surveillance data. The goal is to reduce the risk of in-flight kidney stone pain that could affect the mission. It is a conference abstract, not the HRP risk page itself.",
+    "findings": [
+      {"text": "The update draws on 9 years of NASA astronaut renal stone surveillance data.", "quote": "based on new information obtained from 9 years of data from NASA's astronaut renal stone surveillance program"},
+      {"text": "Prevention strategies include astronaut selection.", "quote": "There are known and emerging renal stone prevention strategies including astronaut selection"},
+      {"text": "In-flight treatment options include drugs, lithotripsy and propulsive ultrasound.", "quote": "In-flight treatment options include pharmaceuticals, use of lithotripsy and propulsive ultrasound"}
+    ],
+    "measurements": ["Astronaut renal stone surveillance program", "ISS ultrasound technology demonstrations reviewed"],
+    "countermeasures": ["Prevention: astronaut selection, medications, resistive exercise, regular urine studies, ultrasound imaging", "In-flight treatment: pharmaceuticals, lithotripsy, propulsive ultrasound, percutaneous drains"],
+    "limitations": ["Abstract gives no incidence rates or effect sizes", "Effectiveness of each countermeasure is not stated", "Full report PDF was not reviewed; the publication date (May 5, 2024) is a conference date, so lastUpdated is null"]
+  }
+]

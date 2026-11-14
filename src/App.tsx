@@ -3,7 +3,7 @@ import BodyMap from './components/BodyMap'
 import EditVitalModal from './components/EditVitalModal'
 import SystemPanel from './components/SystemPanel'
 import VitalTile from './components/VitalTile'
-import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from './data/missions'
+import { CABIN_LIMITS, CAREER_LIMIT_MSV, MISSIONS, formatDelay } from './data/missions'
 import { SYSTEMS, SYSTEM_BY_ID, type SystemId } from './data/systems'
 import {
   DEFAULT_VALUES,
@@ -19,6 +19,7 @@ import {
   type VitalKey,
 } from './data/vitals'
 import { useSerial } from './hooks/useSerial'
+import ScienceLibrary from './components/ScienceLibrary'
 
 const STORAGE_KEY = 'crewpulse.v1'
 
@@ -60,6 +61,7 @@ export default function App() {
   const [editing, setEditing] = useState<VitalKey | null>(null)
   const [simulate, setSimulate] = useState(false)
   const [cabin, setCabin] = useState<{ t?: number; h?: number } | null>(null)
+  const [libraryOpen, setLibraryOpen] = useState(false)
 
   useEffect(() => {
     try {
@@ -142,7 +144,15 @@ export default function App() {
   }
 
   const cabinStatus: Status =
-    cabin?.t == null ? 'ok' : cabin.t < 15 || cabin.t > 30 ? 'crit' : cabin.t < 18 || cabin.t > 27 ? 'warn' : 'ok'
+    cabin?.t == null && cabin?.h == null
+      ? 'ok'
+      : (cabin.t != null && (cabin.t < CABIN_LIMITS.tempMin - 3 || cabin.t > CABIN_LIMITS.tempMax + 3)) ||
+          (cabin.h != null && (cabin.h < CABIN_LIMITS.rhMin - 10 || cabin.h > CABIN_LIMITS.rhMax + 10))
+        ? 'crit'
+        : (cabin.t != null && (cabin.t < CABIN_LIMITS.tempMin || cabin.t > CABIN_LIMITS.tempMax)) ||
+            (cabin.h != null && (cabin.h < CABIN_LIMITS.rhMin || cabin.h > CABIN_LIMITS.rhMax))
+          ? 'warn'
+          : 'ok'
 
   return (
     <div className="mx-auto flex min-h-screen max-w-[1500px] flex-col gap-3 p-3 sm:p-4">
@@ -181,7 +191,7 @@ export default function App() {
           />
         </label>
         <Stat label="Gravity" value={mission.gravity} />
-        <Stat label="Delay to Earth" value={formatDelay(mission.delaySec)} sub="one-way" />
+        <Stat label="Delay to Earth" value={formatDelay(mission.delaySec)} sub={mission.delayRange} />
 
         <div className="flex gap-2">
           <button
@@ -201,6 +211,12 @@ export default function App() {
             }`}
           >
             {serial.connected ? '● Sensor connected' : '🔌 Connect sensor'}
+          </button>
+          <button
+            onClick={() => setLibraryOpen(true)}
+            className="rounded-lg border border-white/15 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10"
+          >
+            📚 Science Library
           </button>
         </div>
       </header>
@@ -265,7 +281,7 @@ export default function App() {
               unit={`°C${cabin.h != null ? ` · ${cabin.h.toFixed(0)}% humidity` : ''}`}
               status={cabinStatus}
               source="live"
-              note="Comfort band 18–27 °C"
+              note="NASA-STD-3001 limits: 18–27 °C, 25–75% RH"
             />
           </div>
         )}
@@ -294,14 +310,18 @@ export default function App() {
                   <div className="h-full rounded-full" style={{ width: `${Math.min(100, dosePct)}%`, background: STATUS_COLOR[radStatus] }} />
                 </div>
                 <p className="mt-2 text-xs leading-snug text-slate-400">
-                  Day {day} × ~{mission.doseRate} mSv/day ({mission.name}) = {dosePct.toFixed(0)}% of NASA’s {CAREER_LIMIT_MSV} mSv career limit. Simulated
-                  estimate from published average dose rates — a real mission reads the personal dosimeter.
+                  Day {day} × ~{mission.doseRate} mSv/day = {dosePct.toFixed(0)}% of the {CAREER_LIMIT_MSV} mSv career limit (NASA-STD-3001 Vol 1). Simulated
+                  estimate from a published average dose rate — a real mission reads the personal dosimeter.
+                  <br />
+                  <span className="text-slate-500">Dose rate: {mission.doseNote}</span>
                 </p>
               </div>
             ) : undefined
           }
         />
       )}
+
+      {libraryOpen && <ScienceLibrary onClose={() => setLibraryOpen(false)} />}
 
       {editing && (
         <EditVitalModal

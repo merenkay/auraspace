@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 import type { BodySystem } from '../data/systems'
+import { recordsForSystem } from '../data/kb'
+import { RecordCard } from './ScienceLibrary'
 import { STATUS_COLOR, STATUS_LABEL, VITAL_BY_KEY, type Status, type Values, type VitalKey } from '../data/vitals'
 
 type Props = {
@@ -14,6 +16,7 @@ type Props = {
 
 export default function SystemPanel({ system, status, values, action, extra, onEdit, onClose }: Props) {
   const color = STATUS_COLOR[status]
+  const research = recordsForSystem(system.id)
   return (
     <div className="fixed inset-0 z-40 flex items-end justify-end bg-black/50 sm:items-stretch" onClick={onClose}>
       <aside
@@ -84,6 +87,17 @@ export default function SystemPanel({ system, status, values, action, extra, onE
               </p>
             ))}
           </Section>
+        )}
+
+        {research.length > 0 && (
+          <section className="mt-5">
+            <h3 className="text-xs font-bold uppercase tracking-widest text-slate-400">NASA research on this system</h3>
+            <div className="mt-2 space-y-2">
+              {research.map((r) => (
+                <RecordCard key={r.id} r={r} compact />
+              ))}
+            </div>
+          </section>
         )}
 
         <a href={system.sourceUrl} target="_blank" rel="noreferrer" className="mt-4 block text-xs text-sky-300 underline">

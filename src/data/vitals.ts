@@ -24,7 +24,7 @@ export const DEFAULT_VALUES: Values = {
   glucose: 92,
   sleep: 5.5,
   mood: 3,
-  exercise: 130,
+  exercise: 95,
   vision: 4,
 }
 
@@ -122,7 +122,7 @@ export const VITALS: VitalDef[] = [
     evaluate: (v) => (v.sleep < 5 ? 'crit' : v.sleep < 7 ? 'warn' : 'ok'),
     ranges: 'Good ≥ 7 h · Short 5–6.9 h · Alert < 5 h',
     howTo: 'Log the hours you actually slept, not the time spent in your sleep station.',
-    source: 'NASA HRP risk: inadequate sleep and irregular schedules',
+    source: 'NASA OCHMO TB-041: 7–9 h recommended; astronauts average ~6 h. NASA HRP sleep risk',
   },
   {
     key: 'mood',
@@ -141,10 +141,10 @@ export const VITALS: VitalDef[] = [
     unit: 'min today',
     fields: [{ id: 'exercise', label: 'Exercise today (minutes)', min: 0, max: 300, step: 5 }],
     display: (v) => `${Math.round(v.exercise)}`,
-    evaluate: (v) => (v.exercise < 60 ? 'crit' : v.exercise < 120 ? 'warn' : 'ok'),
-    ranges: 'On target ≥ 120 min · Low 60–119 · Alert < 60',
-    howTo: 'Add up resistance and cardio sessions. ISS crews exercise about 2 hours every day.',
-    source: 'ISS exercise countermeasure routine; NASA HRP bone and fitness risks',
+    evaluate: (v) => (v.exercise < 45 ? 'crit' : v.exercise < 90 ? 'warn' : 'ok'),
+    ranges: 'On target ≥ 90 min · Low 45–89 · Alert < 45 (lower cut-offs are CrewPulse demo values)',
+    howTo: 'Add up resistance and aerobic sessions. NASA reports ISS crews training 1.5–2 hours a day, six to seven days a week.',
+    source: 'NASA HRP — Reduced fitness risk (“1.5 hours per day”); NASA Astronaut Exercise (~2 h/day average)',
   },
   {
     key: 'vision',

@@ -41,7 +41,7 @@ export const SYSTEMS: BodySystem[] = [
     icon: '👁️',
     vitals: ['vision'],
     hazard: 'Gravity fields',
-    hint: 'Fluid shifts toward the head can change your vision in flight.',
+    hint: 'About 70% of ISS astronauts show swelling at the back of the eye.',
     fn: 'Vision — essential for procedures, piloting and reading displays.',
     space:
       'Without gravity, body fluids shift toward the head. This can swell the optic disc and flatten the back of the eye, changing near vision (Spaceflight Associated Neuro-ocular Syndrome).',
@@ -80,7 +80,7 @@ export const SYSTEMS: BodySystem[] = [
     hint: 'Closed-cabin air quality shows up first in your blood oxygen.',
     fn: 'Bring oxygen into the blood and remove carbon dioxide.',
     space:
-      'In a sealed cabin CO₂ can build up, and spacewalk preparation changes pressure and oxygen levels. Low blood oxygen affects thinking before you feel breathless.',
+      'In a sealed cabin CO₂ can build up: NASA limits it to a 3 mmHg one-hour average, and crews report headaches between about 2.8 and 4.5 mmHg. Spacewalk preparation also changes pressure and oxygen levels. Low blood oxygen affects thinking before you feel breathless.',
     tips: [
       'Warm your hand and re-measure; cold fingers give false low readings.',
       'Check cabin CO₂ and airflow at your location; move to a ventilated area.',
@@ -134,7 +134,7 @@ export const SYSTEMS: BodySystem[] = [
     hint: 'Without loading, bones lose about 1–1.5% density per month.',
     fn: 'Support the body, allow movement and protect organs.',
     space:
-      'Without the load of gravity, weight-bearing bones lose roughly 1–1.5% of their density per month and muscles shrink. Daily resistance exercise is the main countermeasure.',
+      'On 4–6 month missions bones lose on average 1–1.5% of their density per month, and average strength and aerobic fitness drop 10–12% from pre-flight levels. ISS crews counter this with 1.5 hours of resistance and aerobic exercise per day.',
     tips: [
       'Complete today’s resistance session — hips, legs and spine first.',
       'If you missed a session, split it into two shorter ones.',
