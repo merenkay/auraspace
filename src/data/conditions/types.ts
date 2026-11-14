@@ -12,7 +12,11 @@ export type SourceInfo = { org: string; title: string; url: string }
 /** One sourced statement: plain-language text, the verbatim quote, and the source id. */
 export type Cited = { t: string; q: string; s: string }
 export type MedCaution = Cited & { tags: string[] }
-export type MedEvidence = { name: string; purpose: string; q: string; s: string; cautions: MedCaution[] }
+/**
+ * `rx`: prescription-only or issued by a clinician (shown as "only if prescribed").
+ * `only`: contexts where it may be offered at all (e.g. NASA onboard-kit medicines in space only).
+ */
+export type MedEvidence = { name: string; purpose: string; q: string; s: string; cautions: MedCaution[]; rx?: boolean; only?: Context[] }
 
 export type EvidenceKind = 'summary' | 'redflag' | 'symptom' | 'action' | 'dont' | 'escalate' | 'monitor' | 'prevention' | 'risk' | 'differential'
 export type ConditionEvidence = Partial<Record<EvidenceKind, Cited[]>> & { meds?: MedEvidence[] }
@@ -52,6 +56,11 @@ export type ConditionDef = {
   against?: Against[]
   /** Short line shown in "what this could be". */
   blurb: string
+  /**
+   * The sourced "what to do" items are self-care (rest, diet, fluids), not first aid: when a red-flag rule makes
+   * this an emergency they are not shown as "do this now" (the first step, getting help, is).
+   */
+  selfCareSteps?: boolean
 }
 
 export type Condition = ConditionDef & { ev: ConditionEvidence }

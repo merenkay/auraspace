@@ -1,7 +1,9 @@
-// The concentric-ring orb. While listening it follows the real microphone level (WebAudio AnalyserNode);
-// while speaking and thinking it moves by CSS only. Respects prefers-reduced-motion.
+// The concentric-ring orb. While listening it follows the real microphone level and while speaking the speech
+// envelope, both read from the shared voice presence store (src/lib/voice/presence.ts, metered by level.ts and
+// speech.ts), so the orb never opens a microphone stream of its own. Respects prefers-reduced-motion.
 import { useEffect, useRef } from 'react'
 import { useReducedMotion } from 'motion/react'
+import { getVoiceLevel } from '../../lib/voice/presence'
 import type { Phase } from './useVoiceAgent'
 
 export default function VoiceOrb({ phase, urgent }: { phase: Phase; urgent: boolean }) {
@@ -14,58 +16,14 @@ export default function VoiceOrb({ phase, urgent }: { phase: Phase; urgent: bool
       el?.style.setProperty('--lvl', '0')
       return
     }
-    // A second microphone stream next to speech recognition can break recognition on phones,
-    // so touch devices get a gentle synthetic pulse instead of the real level.
-    const coarse = window.matchMedia('(pointer: coarse)').matches
     let raf = 0
-    let stop = () => {}
-    let alive = true
-    if (coarse || !navigator.mediaDevices?.getUserMedia) {
-      const t0 = performance.now()
-      const tick = () => {
-        el.style.setProperty('--lvl', (0.18 + 0.12 * Math.sin((performance.now() - t0) / 260)).toFixed(3))
-        raf = requestAnimationFrame(tick)
-      }
-      tick()
-      stop = () => cancelAnimationFrame(raf)
-    } else {
-      void navigator.mediaDevices
-        .getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } })
-        .then((stream) => {
-          if (!alive) {
-            stream.getTracks().forEach((t) => t.stop())
-            return
-          }
-          const AC = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
-          const ac = new AC()
-          const an = ac.createAnalyser()
-          an.fftSize = 512
-          ac.createMediaStreamSource(stream).connect(an)
-          const buf = new Uint8Array(an.fftSize)
-          let smooth = 0
-          const tick = () => {
-            an.getByteTimeDomainData(buf)
-            let sum = 0
-            for (const b of buf) sum += ((b - 128) / 128) ** 2
-            const rms = Math.sqrt(sum / buf.length)
-            smooth = smooth * 0.7 + Math.min(1, rms * 5) * 0.3
-            el.style.setProperty('--lvl', smooth.toFixed(3))
-            raf = requestAnimationFrame(tick)
-          }
-          tick()
-          stop = () => {
-            cancelAnimationFrame(raf)
-            stream.getTracks().forEach((t) => t.stop()) // the microphone is released as soon as listening ends
-            void ac.close()
-          }
-        })
-        .catch(() => {
-          /* no level meter: the orb simply stays calm */
-        })
+    const tick = () => {
+      el.style.setProperty('--lvl', getVoiceLevel().toFixed(3))
+      raf = requestAnimationFrame(tick)
     }
+    tick()
     return () => {
-      alive = false
-      stop()
+      cancelAnimationFrame(raf)
       el.style.setProperty('--lvl', '0')
     }
   }, [phase, reduce])

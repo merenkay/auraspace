@@ -5,6 +5,8 @@
 // alternatives, our own end-of-utterance timing (endpoint.ts), transparent restarts with transcript stitching
 // when the browser ends a session early, push-to-talk, and vocabulary biasing where the browser supports it.
 import { HOLD_MAX_MS, silenceFor, STOP_GRACE_MS, TIMING, Transcript, type Alt, type ListenMode, type Timing } from './endpoint'
+import { startMicLevel } from './level'
+import { setDictationActive, setVoicePresence } from './presence'
 import { loadSettings, type VoiceLang } from './settings'
 
 export type RecError = 'unsupported' | 'denied' | 'no-speech' | 'network' | 'no-mic' | 'other'
@@ -44,6 +46,9 @@ function ctor(): RecCtor | null {
 export function recognitionSupported(): boolean {
   return ctor() !== null
 }
+
+// the 3D core and other visuals know at start-up whether voice exists at all (speech.ts sets it for speech output)
+if (recognitionSupported()) setVoicePresence({ available: true })
 
 export const ERROR_TEXT: Record<RecError, string> = {
   unsupported: 'This browser has no speech recognition. You can still type to AURA.',
@@ -373,18 +378,45 @@ export function createRecognizer(o: RecognizerOptions): Recognizer | null {
     } catch {
       s = null
     }
+    // the consultation's dictation is published as 'listening' with the real microphone level (presence.ts)
+    let stopLevel: (() => void) | null = null
+    const off = () => {
+      stopLevel?.()
+      stopLevel = null
+      setDictationActive(false)
+    }
     const l = createListener({
       lang: o.lang,
       mode: 'auto',
       timing: TIMING[s?.listen ?? 'normal'],
-      onStart: o.onStart,
+      onStart: () => {
+        setDictationActive(true)
+        stopLevel ??= startMicLevel()
+        o.onStart?.()
+      },
       onInterim: o.onInterim,
-      onFinal: (alts) => alts[0] && o.onFinal(alts[0].transcript),
-      onError: o.onError,
-      onEnd: o.onEnd,
+      onFinal: (alts) => {
+        off()
+        if (alts[0]) o.onFinal(alts[0].transcript)
+      },
+      onError: (e) => {
+        off()
+        o.onError?.(e)
+      },
+      onEnd: () => {
+        off()
+        o.onEnd?.()
+      },
     })
     if (!l) return null
-    return { start: () => l.start(), stop: () => l.finish('release'), abort: () => l.abort() }
+    return {
+      start: () => l.start(),
+      stop: () => l.finish('release'),
+      abort: () => {
+        off()
+        l.abort()
+      },
+    }
   }
   const C = ctor()
   if (!C) return null

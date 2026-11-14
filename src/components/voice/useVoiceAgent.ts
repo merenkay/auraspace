@@ -20,7 +20,12 @@ import { consultStep, crisisText, newConsult, type ConsultState } from '../../li
 import { HOLD_THRESHOLD_MS, TIMING, type Alt } from '../../lib/voice/endpoint'
 import { afterWake, BIAS_PHRASES } from '../../lib/voice/fuzzy'
 import { describeEntry, hasWake, NAV_LABEL, pathFor, validateValues, type Intent, type NavTarget, type Values } from '../../lib/voice/intents'
+import { startMicLevel } from '../../lib/voice/level'
 import { announceDataChanged, setPendingSystem } from '../../lib/voice/pending'
+import { setVoicePresence } from '../../lib/voice/presence'
+import { VoiceControl, type UiCommand, type UiReply } from '../../lib/voicecontrol'
+import { domEffects } from '../../lib/voicecontrol/dom'
+import { BARE_MIN } from '../../lib/assistant/route'
 import { conversational } from '../../lib/voice/prosody'
 import { createListener, forceRecognitionUnsupported, recognitionSupported, type Listener, type ListenWindow, type RecError } from '../../lib/voice/recognition'
 import { loadSettings, saveSettings, type VoiceSettings } from '../../lib/voice/settings'
@@ -68,6 +73,16 @@ export function useVoiceAgent(crewId: number | null) {
   const consultOpen = useRef(false)
   const autoClose = useRef(false)
   const mem = useRef(newMemory())
+  /** voice control of the page (press by name, numbers, scrolling, dictation) */
+  const vcRef = useRef<VoiceControl | null>(null)
+  const vc = () => (vcRef.current ??= new VoiceControl(domEffects))
+  const pageNames = (): string[] => {
+    try {
+      return vc().names()
+    } catch {
+      return []
+    }
+  }
 
   /* ---------- speaking ---------- */
 
@@ -139,11 +154,16 @@ export function useVoiceAgent(crewId: number | null) {
     if (!u) return say('Please sign in first.')
     const m = mem.current
     m.turn++
-    const und = understand(alts, { lang: s.lang, typed })
+    const und = understand(alts, { lang: s.lang, typed, names: pageNames() })
     const r = und.route
     const lang = und.lang === 'tr' ? 'tr-TR' : 'en-US'
     const ans = r.kind === 'voice' && r.intent.type === 'answer' ? r.intent.answer : null
 
+    // a page command is waiting: which of several (a number), or yes / no for a destructive press or a submit
+    if (vc().hasPending()) {
+      const reply = vc().answer(r.kind === 'ui' ? r.cmd : null, ans ?? (r.kind === 'voice' && r.intent.type === 'stop' ? 'no' : null))
+      if (reply) return sayUi(reply)
+    }
     // a spoken confirmation is pending: yes saves, anything else drops it
     if (pendingLog.current) {
       const p = pendingLog.current
@@ -185,7 +205,9 @@ export function useVoiceAgent(crewId: number | null) {
       case 'chat':
         return runChat(r.chat)
       case 'voice':
-        return runIntent(r.intent)
+        return runIntent(r.intent, heard)
+      case 'ui':
+        return runUi(r.cmd)
       default:
         mem.current.lastTopic = null
         return say(fallbackReply(mem.current))
@@ -199,7 +221,24 @@ export function useVoiceAgent(crewId: number | null) {
     return { subject: subjectMember?.name ?? null, address }
   }
 
-  const runIntent = async (intent: Intent): Promise<void> => {
+  /** Speak a page-control reply with its interface sound. */
+  const sayUi = (reply: UiReply) => {
+    if (reply.sfx) sfx(reply.sfx)
+    mem.current.lastTopic = 'page'
+    say(reply.say, { expectReply: reply.expectReply })
+  }
+
+  const runUi = async (cmd: UiCommand): Promise<void> => {
+    let reply: UiReply
+    try {
+      reply = vc().run(cmd)
+    } catch {
+      reply = { say: 'I could not do that on this page.', sfx: 'warn' }
+    }
+    sayUi(reply)
+  }
+
+  const runIntent = async (intent: Intent, heard = ''): Promise<void> => {
     const { user: u, mission: m, crewId: id } = live.current
     if (!u) return
     const { subject, address } = who()
@@ -264,6 +303,8 @@ export function useVoiceAgent(crewId: number | null) {
       case 'consult':
         return runConsult({ text: intent.text })
       case 'answer':
+        // nothing is pending: a word like “kaydet” or “tamam” may be the name of a button on screen
+        if (heard && vc().bareScore(heard) >= BARE_MIN) return runUi({ kind: 'press', target: heard, bare: true })
         return say(intent.answer === 'no' ? 'Understood.' : 'There is nothing waiting for an answer.')
       case 'repeat':
         return say(lastReply.current || 'I have not said anything yet.')
@@ -274,6 +315,8 @@ export function useVoiceAgent(crewId: number | null) {
       case 'help':
         return runChat({ type: 'capabilities' })
       case 'close':
+        // a dialog, sheet or menu is open: “close” means that, not the voice panel
+        if (vc().overlayOpen()) return runUi({ kind: 'closeOverlay' })
         say(vary(['Standing by.', 'I’ll be here.', 'Standing by. Say “hey AURA” or press Alt V when you need me.'], M.turn, 'close'))
         return void setTimeout(() => setOpen(false), 900)
       case 'greet':
@@ -666,6 +709,7 @@ export function useVoiceAgent(crewId: number | null) {
       pendingLog.current = null
       clarifyQ.current = null
       mem.current = newMemory()
+      vcRef.current?.reset()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
@@ -773,6 +817,8 @@ export function useVoiceAgent(crewId: number | null) {
         if (off) setError('unsupported')
       },
       reply: () => lastReply.current,
+      /** the control names voice control sees on this page */
+      controls: () => pageNames(),
     }
     return () => {
       delete w.__auraVoice
@@ -782,6 +828,17 @@ export function useVoiceAgent(crewId: number | null) {
 
   const phase: Phase = thinking ? 'thinking' : listening ? 'listening' : speaking ? 'speaking' : 'idle'
   const urgent = captions.length > 0 && captions[captions.length - 1].urgent === true
+  const lastAura = [...captions].reverse().find((c) => c.who === 'aura')?.text ?? ''
+
+  // the voice state for visual hosts (the 3D AURA core): every change, plus the microphone level while listening
+  useEffect(() => {
+    setVoicePresence({ available: recOk || ttsSupported(), open, phase, urgent, interim, caption: lastAura })
+  }, [recOk, open, phase, urgent, interim, lastAura])
+  useEffect(() => (phase === 'listening' ? startMicLevel() : undefined), [phase])
+  // another page: numbered badges and a waiting "which one?" belong to the old one
+  useEffect(() => {
+    vcRef.current?.reset()
+  }, [loc.pathname])
 
   return {
     phase,

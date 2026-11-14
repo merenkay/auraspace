@@ -3,6 +3,7 @@
 // voices (natural/neural first), plays a prosody plan (prosody.ts: chunks, pauses, gentle rate/pitch changes)
 // and handles interruption. Nothing here is medical: it just says what it is given.
 import { decimalWords, numberWords } from './numbers'
+import { setSpeechActive, setVoiceLevel, setVoicePresence } from './presence'
 import { prosody } from './prosody'
 
 export type Priority = 'normal' | 'urgent'
@@ -102,6 +103,36 @@ function loadVoices() {
 if (ttsSupported()) {
   loadVoices()
   window.speechSynthesis.addEventListener?.('voiceschanged', loadVoices)
+  setVoicePresence({ available: true })
+}
+
+/* ---------- presence: every speech path publishes "speaking" and a level envelope (presence.ts) ---------- */
+
+// Browsers do not expose the synthesised audio, so the level is an envelope: a ~3.4 Hz syllable rhythm while an
+// utterance plays, a short pulse on every word-boundary event (Edge and Safari fire them; some network voices do
+// not, then the rhythm alone carries it) and near-silence in the breaths between chunks.
+let lastBoundary = 0
+let envRaf = 0
+function publishSpeaking(on: boolean) {
+  setSpeechActive(on)
+  if (!on || envRaf || typeof requestAnimationFrame === 'undefined') {
+    if (!on) setVoiceLevel(0)
+    return
+  }
+  const t0 = performance.now()
+  const tick = (now: number) => {
+    if (!current && !queue.length) {
+      envRaf = 0
+      setVoiceLevel(0)
+      return
+    }
+    const t = (now - t0) / 1000
+    const syllable = 0.2 + 0.3 * Math.abs(Math.sin(t * Math.PI * 3.4)) * (0.75 + 0.25 * Math.sin(t * 1.7))
+    const pulse = 0.5 * Math.exp(-(now - lastBoundary) / 110)
+    setVoiceLevel(current ? Math.min(1, syllable + pulse) : 0.04)
+    envRaf = requestAnimationFrame(tick)
+  }
+  envRaf = requestAnimationFrame(tick)
 }
 
 /* ---------- guard: speech never outlives the page, and does not go on in a page nobody is looking at ---------- */
@@ -203,12 +234,16 @@ export function speakingUrgent(): boolean {
 
 function pump() {
   if (current || !queue.length) {
-    if (!current && !queue.length) onActivity?.(false)
+    if (!current && !queue.length) {
+      onActivity?.(false)
+      publishSpeaking(false)
+    }
     return
   }
   const job = queue.shift()!
   current = job
   onActivity?.(true)
+  publishSpeaking(true)
   const my = epoch
   let guard: ReturnType<typeof setTimeout> | undefined
   let finished = false
@@ -236,6 +271,9 @@ function pump() {
     u.volume = 1
     u.onend = done
     u.onerror = done
+    u.onboundary = () => {
+      lastBoundary = performance.now()
+    }
     // some engines never fire "end" (no voices installed, tab in background): do not stall the queue
     guard = setTimeout(done, 2500 + (job.text.length * 90) / job.rate)
     window.speechSynthesis.speak(u)
@@ -259,6 +297,7 @@ export function cancelSpeech() {
     }
   }
   if (had) onActivity?.(false)
+  publishSpeaking(false)
 }
 
 /**

@@ -50,6 +50,10 @@ export const VOCAB = [
   // Turkish (folded)
   'tansiyon', 'tansiyonum', 'nabiz', 'nabzim', 'oksijen', 'ates', 'atesim', 'seker', 'sekerim', 'uyku', 'uykum', 'kalp', 'kalbimi', 'akciger', 'akcigerler',
   'bobrek', 'bobrekler', 'beyin', 'kemik', 'kemikler', 'radyasyon', 'gecmis', 'ortam', 'antrenman', 'durum', 'uyari', 'uyarilar', 'puan', 'egzersiz', 'mililitre', 'bardak', 'raporu',
+  // symptoms of the extended knowledge base (2026-11)
+  'diarrhoea', 'diarrhea', 'constipation', 'constipated', 'appendix', 'migraine', 'phlegm', 'nosebleed', 'seizure', 'vertigo', 'palpitations', 'shingles',
+  'cellulitis', 'conjunctivitis', 'chilblains', 'toothache', 'heartburn', 'sprain', 'sprained',
+  'ishal', 'kabiz', 'migren', 'apandisit', 'balgam', 'nobet', 'zona',
 ]
 const VOCAB_KEYS = VOCAB.map((w) => ({ w, k: phoneticKey(w) }))
 
@@ -66,7 +70,9 @@ const KEEP = new Set(
     'radio ration ratio station nation relation radiator remind reminder minute minutes hours hour seconds second degrees degree celsius fahrenheit ' +
     'bir iki uc dort bes alti yedi sekiz dokuz on yirmi otuz kirk elli altmis yetmis seksen doksan yuz bin ' +
     'durum durumu durumum bugun yarin dun nasil nasilim neden simdi saat dakika gun hafta ay yil benim bana sana onu bunu sunu sey cok iyi kotu guzel ' +
-    'kalbim kalbi gozum gozler kas kaslar beyni uyu uyudum ates atesi seker sekeri su suyu sular bardak kalp'
+    'kalbim kalbi gozum gozler kas kaslar beyni uyu uyudum ates atesi seker sekeri su suyu sular bardak kalp ' +
+    'spring springs strain strained sprint sprang single singles migrate migrated migration numb numbness blocks block locked stolen sweeten swallow ' +
+    'vertical diary dairy appendices seizes seized vortex zone zones nobel noble'
   ).split(/\s+/),
 )
 for (const w of VOCAB) KEEP.add(w)
@@ -121,6 +127,19 @@ export const MISHEARD: [RegExp, string][] = [
   [/\b(?:oksjen|oxijen|oksigen|oksjin)(?=\w*\b)/g, 'oksijen'],
   [/\bseke rim\b/g, 'sekerim'],
   [/\bdurum rapor\b(?!u)/g, 'durum raporu'],
+  // the extended symptom vocabulary as recognisers mishear it
+  [/\b(?:dire rhea|die a rear|dia rear)\b/g, 'diarrhoea'],
+  [/\b(?:flem|flegm|phlem|phlegms)\b/g, 'phlegm'],
+  [/\b(?:sees your|see sure|seasure|seizer|seize your)\b(?! (?:honou?r|eyes))/g, 'seizure'],
+  [/\btooth (?:egg|ake|aches)\b/g, 'toothache'],
+  [/\bheart burns?\b/g, 'heartburn'],
+  [/\bnose bleeds?\b/g, 'nosebleed'],
+  [/\bpink (?:i|a)\b(?= *$)/g, 'pink eye'],
+  [/\b(?:chill ?blains|chill ?blanes|chill blames)\b/g, 'chilblains'],
+  [/\b(?:sell you light is|cellulite is|cellular itis)\b/g, 'cellulitis'],
+  [/\b(?:my grain|my grains|migrane)\b(?= (?:headache|attack|again)| *$)/g, 'migraine'],
+  [/\b(?:a pen dix|a pendix)\b/g, 'appendix'],
+  [/\b(?:conjunct ivitis|con junk tivitis)\b/g, 'conjunctivitis'],
 ]
 
 /* ---------- fillers ---------- */
@@ -207,4 +226,5 @@ export const BIAS_PHRASES = [
   'AURA', 'hey AURA', 'blood pressure', 'heart rate', 'oxygen saturation', 'SpO2', 'blood sugar', 'glucose', 'temperature', 'status report', 'alerts', 'health score',
   'diagnostics', 'history', 'environment', 'coach', 'overview', 'lungs', 'kidneys', 'radiation', 'millilitres of water', 'over', 'log', 'mood', 'exercise', 'sleep',
   'tansiyon', 'nabız', 'oksijen', 'ateş', 'şeker', 'uyku', 'durum raporu', 'kalp', 'akciğer', 'böbrek', 'geçmiş', 'ortam', 'antrenman', 'ruh halim',
+  'press', 'show numbers', 'scroll down', 'go back', 'details', 'diarrhoea', 'migraine', 'toothache', 'nosebleed', 'seizure', 'phlegm', 'ishal', 'migren', 'bas', 'tıkla',
 ]

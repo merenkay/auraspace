@@ -57,7 +57,7 @@ export function firstStep(urgency: Urgency, ctx: Context, delaySec = 0): string 
   return 'This can usually be looked after at home. Contact your doctor if it does not improve or gets worse.'
 }
 
-const MED_LINE = /aspirin|\bGTN\b|auto-injector|adrenaline|inhaler|\bpuffs?\b|paracetamol|ibuprofen|promethazine|painkiller|glucagon/i
+const MED_LINE = /aspirin|\bGTN\b|auto-injector|adrenaline|inhaler|\bpuffs?\b|paracetamol|ibuprofen|promethazine|painkiller|glucagon|decongestant|antihistamine|antacid|alginate|laxative|loperamide|pseudoephedrine|tamsulosin|emollient|\bNSAIDs?\b/i
 
 function items(c: Condition, kind: EvidenceKind, ctx: Context, opts: { dropMeds?: boolean; max?: number } = {}): PlanItem[] {
   const seen = new Set<string>()
@@ -84,7 +84,8 @@ export function carePlan(c: Condition, a: Assessment, ctx: Context, profile: Hea
     urgency,
     first: firstStep(urgency, ctx, delaySec),
     summary: items(c, 'summary', ctx, { max: 1 })[0] ?? null,
-    steps: items(c, 'action', ctx, { dropMeds: meds.length > 0 || c.id === 'stroke' }),
+    // in an emergency, self-care advice (rest, diet) is not "do this now"
+    steps: urgency === 'emergency' && c.selfCareSteps ? [] : items(c, 'action', ctx, { dropMeds: meds.length > 0 || c.id === 'stroke' }),
     donts: items(c, 'dont', ctx),
     meds,
     redflags: items(c, 'redflag', ctx),

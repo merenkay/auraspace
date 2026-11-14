@@ -72,6 +72,7 @@ export function adviseMeds(meds: MedEvidence[] | undefined, ctx: Context, profil
   const out: MedAdvice[] = []
   for (const m of meds ?? []) {
     if (ctx !== 'space' && spaceOnly(m.name)) continue
+    if (m.only && !m.only.includes(ctx)) continue
     const reasons: string[] = []
     const matched: MedCaution[] = []
     let avoid = false
@@ -94,6 +95,9 @@ export function adviseMeds(meds: MedEvidence[] | undefined, ctx: Context, profil
     if (!avoid && need && !profile?.medicines.includes(need)) {
       status = 'if-prescribed'
       reasons.push('Only if it has been prescribed for you (your record does not list it).')
+    } else if (!avoid && m.rx) {
+      status = 'if-prescribed'
+      reasons.push(ctx === 'space' ? 'Only as issued by the crew medical officer with the flight surgeon.' : 'Only if a doctor has prescribed it for you.')
     }
     if (!profile || !profile.updatedAt) {
       if (status === 'suggested') status = 'check-first'

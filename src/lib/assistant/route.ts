@@ -10,6 +10,7 @@ import type { Alt } from '../voice/endpoint'
 import { correct, detectLang, type Fix } from '../voice/fuzzy'
 import { describeEntry, NAV_LABEL, parseIntent, type Intent } from '../voice/intents'
 import type { VoiceLang } from '../voice/settings'
+import { MATCH_MIN, nameScore, parseUiCommand, type UiCommand } from '../voicecontrol'
 import { feelingOf, isCrisis, parseChat, type ChatIntent } from './chat'
 
 export type Choice = { label: string; route: Route }
@@ -18,7 +19,49 @@ export type Route =
   | { kind: 'voice'; intent: Intent }
   | { kind: 'chat'; chat: ChatIntent }
   | { kind: 'clarify'; question: string; options: Choice[] }
+  /** voice control of the page (src/lib/voicecontrol): press a control by name, scroll, type, ... */
+  | { kind: 'ui'; cmd: UiCommand }
   | { kind: 'unknown' }
+
+/** Options for routing. `names`: the names of the controls on screen now (a bare name can press one). */
+export type RouteOptions = { lang?: VoiceLang; names?: string[] }
+
+// "I", "my", "me" (and Turkish first-person endings) mark a statement about the body, never a page command
+const FIRST_PERSON = /\b(?:i|i'm|im|i've|ive|my|me|mine|myself|ben|bende|benim|bana)\b|\w(?:iyorum|uyorum|ıyorum|yorum|im|um)\b/
+/** Intents that already do what "open / show / select X" would mean; they win over pressing a control called X. */
+const DEDICATED = new Set(['nav', 'system', 'reading', 'status', 'alerts', 'score', 'log', 'logIncomplete', 'logUnsupported'])
+/** A bare phrase presses a control only when it matches a name on screen this well (and nothing else understood it). */
+export const BARE_MIN = 0.86
+
+function uiRoute(t: string, f: string, intent: Intent, names: string[] | undefined): Route | null {
+  const cmd = parseUiCommand(t)
+  if (!cmd) return null
+  // symptoms and feelings about one's own body go to the consultation engine, whatever verb they contain
+  const symptom = parseFindings(t).hits.some((h) => !h.negated)
+  // (dictation is the exception: "type I have a headache" writes those words into the focused field, where the
+  // consultation itself reads them; crisis words were already routed to the crisis path above)
+  if (symptom && cmd.kind !== 'type' && (FIRST_PERSON.test(f) || cmd.kind !== 'press')) return null
+  // verbs that dedicated intents also use ("check my blood pressure", "show the heart", "open history")
+  const shared = (cmd.kind === 'press' && cmd.soft) || cmd.kind === 'check' || cmd.kind === 'focus' || cmd.kind === 'expand'
+  if (shared && DEDICATED.has(intent.type)) return null
+  if (cmd.kind === 'press' && cmd.soft) {
+    // "show me a joke", "open the window": only a page command when a control of that name is on screen
+    if (parseChat(t)) return null
+    if (!names?.some((n) => nameScore(cmd.target, n) >= MATCH_MIN)) return null
+  }
+  // "number two" while nothing is numbered can still be a reading or a log ("two litres")
+  if (cmd.kind === 'number' && intent.type === 'log') return null
+  return { kind: 'ui', cmd }
+}
+
+function bareRoute(t: string, names: string[] | undefined): Route | null {
+  if (!names?.length) return null
+  const f = cleanF(t)
+  if (!f || words(f) > 5 || parseFindings(t).hits.some((h) => !h.negated)) return null
+  let best = 0
+  for (const n of names) best = Math.max(best, nameScore(t, n))
+  return best >= BARE_MIN ? { kind: 'ui', cmd: { kind: 'press', target: t, bare: true } } : null
+}
 
 /** Findings that a plain "I'm tired / I feel low / I can't sleep" statement may match; these get a kind reply with an offer. */
 const SOFT = new Set(['fatigue', 'low-mood', 'insomnia', 'recent-eva'])
@@ -58,6 +101,7 @@ export function meaningOf(r: Route): string {
     return `voice:${i.type}:${'key' in i ? i.key : 'system' in i ? i.system : 'target' in i ? i.target : 'answer' in i ? i.answer : ''}${i.type === 'log' ? JSON.stringify(i.values) : ''}`
   }
   if (r.kind === 'chat') return `chat:${r.chat.type}`
+  if (r.kind === 'ui') return `ui:${r.cmd.kind}:${'target' in r.cmd ? r.cmd.target : ''}`
   return r.kind
 }
 
@@ -71,7 +115,7 @@ const clarify = (options: Route[]): Route => {
 }
 
 /** One text → one meaning. */
-export function route(text: string, o: { lang?: VoiceLang } = {}): Route {
+export function route(text: string, o: RouteOptions = {}): Route {
   const t = text.trim()
   if (!t) return { kind: 'unknown' }
   // 1. safety: suicide / self-harm words always go to the urgent consultation path
@@ -80,6 +124,9 @@ export function route(text: string, o: { lang?: VoiceLang } = {}): Route {
   const intent = parseIntent(t, { lang: o.lang })
   // 2. control words (they answer whatever is pending)
   if (intent.type === 'stop' || intent.type === 'answer') return { kind: 'voice', intent }
+  // 2b. an explicit page command ("press Details", "scroll down", "Save'e bas"); a symptom statement never is one
+  const ui = uiRoute(t, f, intent, o.names)
+  if (ui) return ui
   // 3. symptoms go to the consultation engine; only a plain feeling statement gets a kind reply instead
   if (intent.type === 'consult') {
     const feel = feelingOf(t)
@@ -123,7 +170,12 @@ export function route(text: string, o: { lang?: VoiceLang } = {}): Route {
     const sys = parseIntent(`show ${f.replace(/^(?:how (?:is|are)|what about|check) (?:my |the )?/, '')}`, { lang: o.lang })
     if (sys.type === 'system' && sys.system) return { kind: 'voice', intent: sys }
   }
-  // 7. health commands
+  // 7. a control's name said on its own ("Details", "Ayrıntılar"), when it clearly matches one on screen
+  if (intent.type === 'unknown') {
+    const bare = bareRoute(t, o.names)
+    if (bare) return bare
+  }
+  // 8. health commands
   if (intent.type === 'greet') return { kind: 'chat', chat: { type: 'hello', wake: intent.wake } }
   if (intent.type === 'help') return { kind: 'chat', chat: { type: 'capabilities' } }
   if (intent.type !== 'unknown') return { kind: 'voice', intent }
@@ -139,6 +191,7 @@ function weight(r: Route): number {
   if (r.kind === 'crisis') return 1.4
   if (r.kind === 'unknown') return 0
   if (r.kind === 'clarify') return 0.7
+  if (r.kind === 'ui') return r.cmd.kind === 'press' && r.cmd.bare ? 0.9 : 1
   if (r.kind === 'chat') return r.chat.type === 'hello' || r.chat.type === 'ack' ? 0.6 : 0.92
   const t = r.intent.type
   if (t === 'consult') return r.intent.text ? 1.15 : 0.95
@@ -154,7 +207,7 @@ const confOf = (c: number, i: number) => (c > 0 ? c : i === 0 ? 0.8 : 0.45)
  * Score every alternative (after mis-hearing corrections) against the parsers and pick the best meaning.
  * `typed` skips the low-confidence question (typing is exact). `fallback` is the language setting.
  */
-export function understand(alts: Alt[], o: { lang?: VoiceLang; typed?: boolean } = {}): Understanding {
+export function understand(alts: Alt[], o: { lang?: VoiceLang; typed?: boolean; names?: string[] } = {}): Understanding {
   const fallback = o.lang === 'tr-TR' ? 'tr' : 'en'
   const list = alts.filter((a) => a.transcript.trim()).slice(0, 6)
   if (!list.length) return { route: { kind: 'unknown' }, text: '', heard: '', confidence: 0, lang: fallback, candidates: [] }
@@ -166,7 +219,7 @@ export function understand(alts: Alt[], o: { lang?: VoiceLang; typed?: boolean }
     if (c.fixes.length) variants.push(c)
     for (const v of variants) {
       const lang = detectLang(v.text, fallback)
-      const r = route(v.text, { lang: lang === 'tr' ? 'tr-TR' : 'en-US' })
+      const r = route(v.text, { lang: lang === 'tr' ? 'tr-TR' : 'en-US', names: o.names })
       const table = v.fixes.filter((x) => x.kind === 'table').length
       const fuzzy = v.fixes.filter((x) => x.kind === 'fuzzy').reduce((s, x) => s + 0.05 + 0.05 * x.dist, 0)
       const score = weight(r) * (0.55 + 0.45 * conf) - 0.03 * table - fuzzy - 0.02 * i

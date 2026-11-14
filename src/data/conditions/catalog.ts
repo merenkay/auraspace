@@ -1,6 +1,7 @@
 // Scoring definitions for each known condition. The medical content shown to people (summary, actions,
 // red flags, medicines, prevention) lives in evidence.json, where every line keeps its source's verbatim quote.
 // Weights, rules and factor choices below are AURA's own modelling choices built on that evidence.
+import { EXTENSION } from './catalogExt'
 import type { ConditionDef, ReadingTest } from './types'
 
 const ALL = ['space', 'polar', 'home'] as ConditionDef['contexts']
@@ -610,4 +611,5 @@ export const CONDITION_DEFS: ConditionDef[] = [
       { kind: 'profile', condition: 'depression', w: 1, label: 'Depression on record' },
     ],
   },
+  ...EXTENSION,
 ]

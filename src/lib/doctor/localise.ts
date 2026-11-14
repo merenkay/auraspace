@@ -24,6 +24,20 @@ export function localise(text: string, ctx: Context): string | null {
   if (ctx === 'polar' && /\b(?:drive|driving)\b/i.test(t)) return null
   // Earth phone-system details ("the call handler", "911", "emergency number") do not translate to a crew or station.
   if (/call handler|emergency number|\b911\b|\b112\b/i.test(t)) return null
+  // NHS routes ("an urgent GP appointment or NHS 111", a pharmacist, a dentist, the diabetes care team) become the one
+  // person who can actually be reached; whole phrases first, so the sentence stays grammatical
+  const doctor = ctx === 'space' ? 'the flight surgeon' : 'the station doctor'
+  const today = ctx === 'space' ? 'Tell the crew medical officer and contact the flight surgeon today' : 'See the station doctor today'
+  t = t
+    .replace(/\b(?:Ask for|Get) an urgent (?:GP|dentist) appointment,? or (?:get help from|get advice from|call|contact) NHS 111(?: now)?/gi, today)
+    .replace(/\bAsk your GP surgery for an urgent appointment or call NHS 111/gi, today)
+    .replace(/\bCall your diabetes care team now or get help from NHS 111/gi, ctx === 'space' ? 'Contact the flight surgeon now' : 'Contact the station doctor now')
+    .replace(/\b(?:Get help from|Call|Contact) NHS 111(?: now)?/g, ctx === 'space' ? 'Contact the flight surgeon' : 'Contact the station doctor')
+    .replace(/\b(?:contact|see|ask) (?:a|your) GP or call NHS 111/gi, `contact ${doctor}`)
+    .replace(/\byour (?:diabetes )?care team or GP surgery\b/gi, doctor)
+    .replace(/\b(?:a|your|the) (?:local )?pharmacist\b/gi, ctx === 'space' ? 'the crew medical officer' : 'the station doctor')
+    .replace(/\b(?:a|your|the) dentist\b/gi, ctx === 'space' ? 'the crew medical officer' : 'the station doctor')
+  t = cap(t)
   t = t
     .replace(/\b(?:call|dial|phone) (?:999|911|112)\b(?: straight away| now| immediately)?/gi, (m) => (m[0] === m[0].toUpperCase() ? `Alert ${contact} now` : `alert ${contact} now`))
     .replace(/\(999\)|\b999\b/g, ctx === 'space' ? 'the crew medical officer' : 'the station doctor')

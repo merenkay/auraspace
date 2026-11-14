@@ -182,6 +182,11 @@ function maxUrgency(a: Urgency, b: Urgency): Urgency {
   return URGENCY_RANK[a] >= URGENCY_RANK[b] ? a : b
 }
 
+/** The tier a well-matched candidate implies without a red-flag rule: its own tier when strong, capped at urgent otherwise. */
+function tierOf(c: Candidate): Urgency {
+  return c.strength === 'strong' ? c.condition.urgency : maxUrgency('selfcare', c.condition.urgency === 'emergency' ? 'urgent' : c.condition.urgency)
+}
+
 export function assess(input: EngineInput): Assessment {
   const now = input.now ?? Date.now()
   const yes = new Set(Object.entries(input.answers).filter(([, a]) => a === 'yes').map(([id]) => id))
@@ -207,15 +212,34 @@ export function assess(input: EngineInput): Assessment {
       ruleBased = true
       reasons.push(...new Set(urgentRules))
     }
-    const top = candidates[0]
-    if (top && top.strength !== 'weak') {
-      const tier = top.strength === 'strong' ? top.condition.urgency : maxUrgency('selfcare', top.condition.urgency === 'emergency' ? 'urgent' : top.condition.urgency)
+    const top = candidates.find((c) => c.strength !== 'weak')
+    if (top) {
+      const tier = tierOf(top)
       if (URGENCY_RANK[tier] > URGENCY_RANK[urgency]) reasons.push(`Best match: ${top.condition.name.toLowerCase()} (${top.strength} match)`)
       urgency = maxUrgency(urgency, tier)
+    }
+    // Every other well-matched candidate that explains something the leader does not keeps its own tier too, so a
+    // milder condition that happens to rank first (for example after the knowledge base grows) cannot hide it.
+    const topIds = new Set(top?.condition.findings.map((f) => f.id) ?? [])
+    for (const c of candidates) {
+      if (c === top || c.strength === 'weak' || !c.matched.some((m) => !topIds.has(m.id))) continue
+      const tier = tierOf(c)
+      if (URGENCY_RANK[tier] <= URGENCY_RANK[urgency]) continue
+      reasons.push(`Also possible: ${c.condition.name.toLowerCase()} (${c.strength} match)`)
+      urgency = tier
     }
     if (yes.size > 0 && noClearMatch) {
       urgency = maxUrgency(urgency, 'soon')
       reasons.push('No condition in AURA’s knowledge base matches well, so a professional should review your symptoms')
+    } else if (URGENCY_RANK[urgency] < URGENCY_RANK.soon) {
+      // self-care only when the best well-matched condition accounts for everything the person reported
+      const best = candidates.find((c) => c.strength !== 'weak')
+      const own = new Set(best?.condition.findings.map((f) => f.id) ?? [])
+      const unexplained = [...yes].filter((id) => !!FINDING_BY_ID[id] && !own.has(id))
+      if (unexplained.length) {
+        urgency = 'soon'
+        reasons.push(`The best match does not explain: ${unexplained.map((id) => label(id).toLowerCase()).join('; ')}. A professional should review your symptoms`)
+      }
     }
   }
   const strokeCand = candidates.find((c) => c.condition.id === 'stroke')
@@ -257,7 +281,9 @@ export function nextQuestion(candidates: Candidate[], input: EngineInput, yes: S
         if (!r.need?.some((g) => g.includes(id))) continue
         const others = r.need.filter((g) => !g.includes(id))
         const readingOk = !r.reading || anyMet(r.reading, input.readings, now) === true
-        if (readingOk && others.every((g) => g.some((x) => yes.has(x))) && others.length > 0) {
+        // a one-group rule ("bleeding that will not stop") counts once its condition's hallmark is already present
+        const plausible = others.length > 0 || c.condition.findings.some((f) => f.hallmark && yes.has(f.id))
+        if (readingOk && others.every((g) => g.some((x) => yes.has(x))) && plausible) {
           red += p[i] * 3
           redFor ||= c.condition.name.toLowerCase()
         }

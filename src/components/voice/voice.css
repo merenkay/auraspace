@@ -31,6 +31,30 @@
     bottom: 4.75rem; /* above the phone tab bar */
   }
 }
+/* the 3D AURA core is on screen (presence.hosted): a compact panel docked out of its way */
+/* desktop: top right, under the mission bar (the core sits lower in the right column, the composer on the left) */
+.vx-hud[data-docked='true'] {
+  top: 7.25rem;
+  bottom: auto;
+  right: 1rem;
+  width: min(21rem, calc(100vw - 2rem));
+}
+/* the core shows AURA's words: the docked panel keeps short, clamped captions (an emergency is never clamped) */
+.vx-hud[data-docked='true']:not([data-urgent='true']) .vx-log > p {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+@media (max-width: 767px) {
+  .vx-hud[data-docked='true'] {
+    top: auto;
+    left: 0.5rem;
+    right: 0.5rem;
+    width: auto;
+    bottom: 4.75rem; /* a slim bar above the phone tab bar */
+  }
+}
 
 /* HUD corner brackets */
 .vx-hud::before,

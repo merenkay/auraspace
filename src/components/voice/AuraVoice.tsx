@@ -2,10 +2,11 @@
 // Understanding is deterministic (src/lib/voice); speech in/out is the browser's Web Speech API.
 import { AudioLines, LoaderCircle, Mic, Send, SlidersHorizontal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { sfxEnabled, setSfxEnabled } from '../../lib/sfx'
 import { EXAMPLES, EXAMPLES_TR } from '../../lib/voice/intents'
+import { getVoicePresence, subscribeVoicePresence } from '../../lib/voice/presence'
 import { ERROR_TEXT } from '../../lib/voice/recognition'
 import { Checkbox, IconButton, Input, SPRING, Select, Tabs, cx } from '../ui'
 import ListenRing from './ListenRing'
@@ -40,6 +41,10 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
   const examples = v.settings.lang === 'tr-TR' ? EXAMPLES_TR : EXAMPLES
   const err = !v.recOk ? ERROR_TEXT.unsupported : v.error ? ERROR_TEXT[v.error] : null
   const emergency = v.urgent
+  // the 3D AURA core is on screen and is the face of the voice: the panel docks out of its way and goes compact
+  // (an emergency reply is always shown in full)
+  const hosted = useSyncExternalStore(subscribeVoicePresence, () => getVoicePresence().hosted, () => false)
+  const compact = hosted && !emergency
 
   // settings never hide an emergency reply, and start closed every time the HUD opens
   useEffect(() => {
@@ -67,6 +72,8 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                   role="region"
                   aria-label="AURA voice"
                   className="vx-hud"
+                  data-voice-panel=""
+                  data-docked={hosted}
                   data-urgent={emergency}
                   initial={{ opacity: 0, y: 18, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -160,6 +167,9 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                           <span className="font-medium text-soft">Privacy.</span> Spoken replies are generated on this device. Speech recognition is provided by your browser: in Chrome and Edge the audio is sent to the browser vendor’s service while you speak, so it needs internet. Without it, or in Firefox (no recognition), voice input is unavailable and typing still works. The microphone is open only while AURA is listening; with the wake word on, it stays open until you turn that off. AURA never records or stores audio.
                         </p>
                         <p>
+                          <span className="font-medium text-soft">Voice control.</span> Say “press” (or click, tap, open) and the name written on a button, tab, link or section, for example “press Details” or “Details’e bas”. When several share a name, AURA numbers them: say the number. “Show numbers” labels everything on screen. Also: “scroll down”, “scroll to Sources”, “go back”, “close”, “expand all”, “next tab”, “check” or “uncheck” a box, “focus Notes”, then “type …”, “clear”, “submit”, and “what can I press?”. Anything that deletes, signs out or confirms a dialog waits for your “yes”. Passwords are never typed or read. Describing a symptom always starts a consultation instead.
+                        </p>
+                        <p>
                           <span className="font-medium text-soft">Keys.</span> Alt+V opens or closes voice. With it open, tap Space to talk until you pause, or hold Space and release when you are done (when you are not typing). Press Space again, or “Done”, to finish early. Esc closes.
                         </p>
                       </div>
@@ -173,11 +183,15 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                     <>
 
                   <div className="flex items-start gap-4 px-4 pt-4">
-                    <VoiceOrb phase={v.phase} urgent={emergency} />
+                    {!hosted && <VoiceOrb phase={v.phase} urgent={emergency} />}
                     <div className="min-w-0 flex-1">
                       <div ref={logRef} className="vx-log space-y-2" role="log" aria-label="Conversation with AURA" aria-live="polite">
-                        {v.captions.length === 0 && !v.interim && <p className="text-sm leading-relaxed text-dim">Ask for a status report, a reading, a body system, or describe a symptom. You can type below.</p>}
-                        {v.captions.slice(emergency ? -1 : -4).map((c) =>
+                        {v.captions.length === 0 && !v.interim && (
+                          <p className="text-sm leading-relaxed text-dim">
+                            Ask for a status report, a reading, a body system, or describe a symptom. To use the page, say “press” and a button’s name, or “show numbers”. You can type below.
+                          </p>
+                        )}
+                        {v.captions.slice(emergency ? -1 : compact ? -2 : -4).map((c) =>
                           c.who === 'you' ? (
                             <p key={c.id} className="text-sm leading-relaxed text-dim">
                               <span className="sr-only">You: </span>
@@ -255,7 +269,8 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                     <IconButton variant="secondary" type="submit" icon={Send} label="Send" disabled={!text.trim()} className="shrink-0" />
                   </form>
 
-                  {!emergency && (
+                  {compact && <div className="h-3" />}
+                  {!emergency && !compact && (
                     <>
                   <div className="flex flex-wrap gap-1.5 px-4 pt-3" role="group" aria-label="Example phrases">
                     {examples.slice(0, 4).map((x) => (
