@@ -10,6 +10,7 @@ const LOADERS: [RegExp, () => Promise<unknown>][] = [
   [/^\/crew$/, () => import('../pages/Roster')],
   [/^\/environment/, () => import('../pages/Environment')],
   [/^\/reports/, () => import('../pages/Reports')],
+  [/^\/my-reports/, () => import('../pages/MyReports')],
 ]
 
 const done = new Set<string>()

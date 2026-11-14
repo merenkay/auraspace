@@ -4,7 +4,8 @@ import { Flag } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { Avatar, Badge, Card, PageHeader, ScoreRing, Skeleton, Stagger, StaggerItem, StatusIcon, StatusPill, cx, useMedia } from '../components/ui'
-import { evaluate, type Evaluation } from '../lib/health'
+import { STATUS_LABEL } from '../data/vitals'
+import { evaluate, timeAgo, type Evaluation } from '../lib/health'
 import { useSession } from '../lib/session'
 
 function CardSkeleton() {
@@ -84,10 +85,17 @@ export default function Roster() {
                   {ev ? (
                     <>
                       <div className="mt-4 flex justify-center sm:mt-5">
-                        {ev.hasData ? <ScoreRing score={ev.score} status={ev.overall} size={ring} /> : <p className="flex items-center text-sm text-dim" style={{ height: ring }}>No data yet</p>}
+                        {ev.scoreReady ? (
+                          <ScoreRing score={ev.score} status={ev.overall} size={ring} />
+                        ) : (
+                          <p className="flex flex-col items-center justify-center text-center text-sm text-dim" style={{ height: ring }}>
+                            {ev.hasData ? 'Insufficient data' : 'No data yet'}
+                            {ev.hasData && <span className="text-xs">{`${ev.quality.current} of ${ev.quality.expected} measurements current`}</span>}
+                          </p>
+                        )}
                       </div>
                       <div className="mt-3 flex justify-center sm:mt-4">
-                        <StatusPill status={ev.hasData ? ev.overall : null} />
+                        <StatusPill status={ev.overallShown} />
                       </div>
                       <ul className="mt-4 space-y-2 border-t border-line pt-4">
                         {ev.alerts.slice(0, 2).map((a) => (
@@ -99,6 +107,9 @@ export default function Roster() {
                           </li>
                         ))}
                         {ev.alerts.length === 0 && <li className="text-sm text-dim">No open alerts</li>}
+                        {ev.lastKnown.filter((o) => o.status !== 'ok').slice(0, 1).map((o) => (
+                          <li key={`old-${o.key}`} className="text-sm text-dim">{`Old reading: ${o.label.toLowerCase()} was ${STATUS_LABEL[o.status!].toLowerCase()} ${timeAgo(o.at)} — re-measure`}</li>
+                        ))}
                       </ul>
                       <EarlyWarningIndicator crewId={c.id} />
                     </>

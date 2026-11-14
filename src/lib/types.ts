@@ -41,6 +41,12 @@ export type ReportSummary = {
   score: number
   alerts: { title: string; level: Status }[]
   vitals: { label: string; value: string; status: Status }[]
+  /** False when too little current data for a score: `score` is then not a health score. Absent in older reports. */
+  scoreReady?: boolean
+  /** Measurement counts behind the score (tracked / any reading / current / old / never measured). */
+  data?: { expected: number; present: number; current: number; old: number; missing: number }
+  /** Readings older than their freshness window; `status` is the last known one. */
+  oldReadings?: { label: string; at: string; ageDays: number; status: Status }[]
 }
 
 export type Report = {
@@ -53,6 +59,10 @@ export type Report = {
   summary: ReportSummary
   reviewNote: string | null
   reviewedBy: string | null
+  /** When the reply was written (ISO, UTC). Server: from the optional reportread module; absent when it is not installed. */
+  reviewedAt?: string | null
+  /** When the crew member opened the reply (ISO, UTC). Null/absent = not read. Older than reviewedAt = the reply changed since. */
+  readAt?: string | null
 }
 
 export type Mission = {

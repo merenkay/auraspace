@@ -42,6 +42,8 @@ export interface Backend {
   reports(crewId?: number): Promise<Report[]>
   sendReport(crewId: number, summary: ReportSummary): Promise<Report>
   reviewReport(id: number, note: string): Promise<Report>
+  /** The signed-in crew member has read the replies to these of their own reports (self users only; other ids are ignored). */
+  markReportsRead(ids: number[]): Promise<void>
 }
 
 class ApiError extends Error {
@@ -154,9 +156,24 @@ function makeServer(mailReady: boolean, signupOpen?: boolean, demoOpen = true): 
     },
     tasks: (crewId) => call('tasks', { query: { crew: crewId } }),
     toggleTask: (crewId, taskId) => post('tasks/toggle', { crewId, taskId }),
-    reports: (crewId) => call<{ reports: Report[] }>('reports', { query: crewId ? { crew: crewId } : {} }).then((d) => d.reports),
+    reports: async (crewId) => {
+      // Reply time and read marker come from the optional reportread module (routes/reportread.php). If it is not
+      // deployed or not installed yet, the core list is returned unchanged and those two fields stay absent.
+      const query: Record<string, number> = crewId ? { crew: crewId } : {}
+      const [list, reads] = await Promise.all([
+        call<{ reports: Report[] }>('reports', { query }).then((d) => d.reports),
+        call<{ items: { reportId: number; reviewedAt: string | null; readAt: string | null }[] }>('reportread/list', { query }).then((d) => d.items).catch(() => null),
+      ])
+      if (!reads) return list
+      const byId = new Map(reads.map((x) => [x.reportId, x]))
+      return list.map((r) => {
+        const x = byId.get(r.id)
+        return x ? { ...r, reviewedAt: x.reviewedAt, readAt: x.readAt } : r
+      })
+    },
     sendReport: (crewId, summary) => post<{ report: Report }>('reports', { crewId, summary }).then((d) => d.report),
     reviewReport: (id, note) => post<{ report: Report }>('reports/review', { id, note }).then((d) => d.report),
+    markReportsRead: (ids) => post('reportread/mark', { ids }).then(() => undefined),
   }
 }
 
@@ -497,16 +514,30 @@ const demo: Backend = {
     const st = readStore()
     guardOwn(st, crewId)
     const name = CREW.find((x) => x.id === crewId)?.name ?? st.members.find((m) => m.crewId === crewId)?.name ?? 'Member'
-    const report: Report = { id: Date.now(), crewId, crewName: name, day: dayFor(st, crewId), createdAt: new Date().toISOString(), status: 'queued', summary, reviewNote: null, reviewedBy: null }
+    const report: Report = { id: Date.now(), crewId, crewName: name, day: dayFor(st, crewId), createdAt: new Date().toISOString(), status: 'queued', summary, reviewNote: null, reviewedBy: null, reviewedAt: null, readAt: null }
     writeStore({ ...st, reports: [report, ...st.reports] })
     return delay(report)
   },
   reviewReport: async (id, note) => {
     const st = readStore()
     if (st.user?.role !== 'surgeon') throw new ApiError('Not allowed', 403)
-    const reports = st.reports.map((r) => (r.id === id ? { ...r, status: 'reviewed' as const, reviewNote: note, reviewedBy: st.user?.name ?? 'Flight Surgeon' } : r))
+    // Mirrors POST reports/review: only reports of the simulated crew can be reviewed; anything else is "not found".
+    if (!st.reports.some((r) => r.id === id && CREW.some((c) => c.id === r.crewId))) throw new ApiError('Report not found', 404)
+    const now = new Date().toISOString()
+    const reports = st.reports.map((r) => (r.id === id ? { ...r, status: 'reviewed' as const, reviewNote: note.trim().slice(0, 1000), reviewedBy: st.user?.name ?? 'Flight Surgeon', reviewedAt: now } : r))
     writeStore({ ...st, reports })
     return delay(reports.find((r) => r.id === id)!)
+  },
+  markReportsRead: async (ids) => {
+    const st = readStore()
+    const u = st.user
+    // Mirrors POST reportread/mark: self users only; only their own reports that have a reply are marked.
+    if (!u || (u.role !== 'astronaut' && u.role !== 'member')) throw new ApiError('Not allowed for your role', 403)
+    const want = new Set(ids)
+    const now = new Date().toISOString()
+    const reports = st.reports.map((r) => (want.has(r.id) && r.crewId === u.crewId && r.status === 'reviewed' ? { ...r, readAt: now } : r))
+    writeStore({ ...st, reports })
+    await delay(null)
   },
 }
 

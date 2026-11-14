@@ -4,6 +4,10 @@ import { useNavigate } from 'react-router'
 import BodyViewer from '../components/BodyViewer'
 import EditVitalModal from '../components/EditVitalModal'
 import EarlyWarningBlock from '../components/early/EarlyWarningBlock'
+import ReportActions from '../components/reports/ReportActions'
+import HealthScoreCard from '../components/score/HealthScoreCard'
+import { BodySection, SaveStatus } from '../components/overview/BodySection'
+import { alertAction, describeSave } from '../components/overview/readingLogic'
 import SystemPanel from '../components/SystemPanel'
 import VitalCard from '../components/VitalCard'
 import {
@@ -25,43 +29,59 @@ import {
   PasswordInput,
   Row,
   Saved,
-  ScoreRing,
   Section,
   Skeleton,
   Stagger,
   StaggerItem,
   StatusPill,
-  StatusText,
-  SYSTEM_ICON,
   VITAL_ICON,
   useFlash,
+  cx,
+  useMedia,
+  useRememberedOpen,
 } from '../components/ui'
 import { CONTEXTS, vitalFor, vitalsFor, type Context } from '../data/contexts'
-import { MISSIONS, formatDelay } from '../data/missions'
+import { MISSIONS } from '../data/missions'
 import { SYSTEMS, SYSTEM_BY_ID, type SystemId } from '../data/systems'
 import { type VitalKey } from '../data/vitals'
-import type { Evaluation } from '../lib/health'
-import { seriesOf, summaryOf, timeAgo } from '../lib/health'
+import { seriesOf, timeAgo, type Evaluation } from '../lib/health'
 import { useCrewData, useSession } from '../lib/session'
 import { onUi } from '../lib/uiBus'
 import { DATA_CHANGED, takePendingSystem } from '../lib/voice/pending'
 import { actionFor } from '../lib/triage'
-import { Check, ChevronDown, Copy, Flame, FileText, Mail, MessageCircle, Plus, Printer, Trash2 } from 'lucide-react'
+import { ChevronDown, Flame, Plus, Trash2 } from 'lucide-react'
 
 const CARDS: VitalKey[] = ['bp', 'hr', 'temp', 'sleep', 'mood', 'exercise', 'water', 'spo2', 'glucose']
 
 export default function Overview({ crewId }: { crewId: number }) {
-  const { user, mission, crew, backend } = useSession()
+  const { user, mission, crew } = useSession()
   const data = useCrewData(crewId)
-  const [selected, setSelected] = useState<SystemId | null>(null)
+  const [selected, setSelectedState] = useState<SystemId | null>(null)
   const [editing, setEditing] = useState<VitalKey | null>(null)
+  // Phones: the 3D body is a folded section. The person's choice is remembered; selecting a system opens it
+  // for this visit without overwriting that choice.
+  const wide = useMedia('(min-width: 1024px)')
+  const phone = !useMedia('(min-width: 768px)')
+  const [bodyStored, setBodyStored] = useRememberedOpen('overview.body', false)
+  const [bodyAuto, setBodyAuto] = useState(false)
+  const bodyOpen = !phone || bodyStored || bodyAuto
+  const setSelected = (s: SystemId | null) => {
+    setSelectedState(s)
+    if (s) setBodyAuto(true)
+  }
+  // After a save: the evaluation before it, compared with the current one.
+  const [lastSave, setLastSave] = useState<{ key: VitalKey; before: Evaluation | null } | null>(null)
 
   // Voice: "show the heart" selects a system; a value logged by voice refreshes the data.
   const reloadData = data.reload
   useEffect(() => {
+    const pick = (s: SystemId | null) => {
+      setSelectedState(s)
+      if (s) setBodyAuto(true)
+    }
     const pending = takePendingSystem()
-    if (pending !== undefined) setSelected(pending)
-    const off = onUi('select-system', (d) => setSelected(d.system))
+    if (pending !== undefined) pick(pending)
+    const off = onUi('select-system', (d) => pick(d.system))
     const refresh = () => void reloadData()
     window.addEventListener(DATA_CHANGED, refresh)
     return () => {
@@ -69,10 +89,6 @@ export default function Overview({ crewId }: { crewId: number }) {
       window.removeEventListener(DATA_CHANGED, refresh)
     }
   }, [reloadData])
-  const [sent, setSent] = useState<string | null>(null)
-  const [sendError, setSendError] = useState(false)
-  const [sending, setSending] = useState(false)
-  const [printable, setPrintable] = useState(false)
   const [justSaved, flashSaved] = useFlash(2200)
   const member = crew.find((c) => c.id === crewId)
   const canEdit = user?.role === 'astronaut' || user?.role === 'member'
@@ -102,6 +118,9 @@ export default function Overview({ crewId }: { crewId: number }) {
     return Object.fromEntries(CARDS.filter((k) => ev.vitalStatus[k]).map((k) => [k, seriesOf(data.rows, ev.defByKey[k]!.primary, 14, day)])) as Partial<Record<VitalKey, ReturnType<typeof seriesOf>>>
   }, [ev, data.rows, day])
 
+  const saveOutcome = useMemo(() => (lastSave && ev && ev !== lastSave.before ? describeSave(lastSave.key, lastSave.before, ev) : null), [lastSave, ev])
+  const loggable = useMemo(() => vitalsFor(ctx).map((d) => d.key), [ctx])
+
   if (data.loading && !data.rows.length) return <OverviewSkeleton />
   if (data.error)
     return (
@@ -116,8 +135,11 @@ export default function Overview({ crewId }: { crewId: number }) {
       values={ev?.values ?? { sys: 120, dia: 78, hr: 65, spo2: 98, temp: 36.7, glucose: 90, sleep: 7, mood: 4, exercise: 30, vision: 5, water: 2 }}
       onClose={() => setEditing(null)}
       onSave={async (patch) => {
-        setEditing(null)
+        // Errors propagate: the dialog stays open and says the reading was not saved.
+        const before = ev
         await data.add(patch, 'manual', 'Manual entry')
+        setEditing(null)
+        setLastSave({ key: editing, before })
         flashSaved()
       }}
     />
@@ -139,116 +161,29 @@ export default function Overview({ crewId }: { crewId: number }) {
 
   const doneCount = data.tasks.filter((t) => t.done).length
   const cards = CARDS.filter((k) => ev.vitalStatus[k]).slice(0, 6)
-  const reason = ev.alerts[0] ? `Driven by ${ev.alerts.slice(0, 2).map((a) => a.title.split(' ').slice(0, 2).join(' ').toLowerCase()).join(' and ')}.` : 'Everything is within range.'
   const shownAlerts = ev.alerts.slice(0, 3)
-  const shownSystems = new Set(shownAlerts.map((a) => a.system))
-  // Systems that need a look but are not already covered by one of the alerts above.
-  const otherSystems = ev.systems.filter((s) => ev.systemMeasured[s.id] && ev.systemStatus[s.id] !== 'ok' && !shownSystems.has(s.id)).slice(0, 4)
 
-  const sendReport = async () => {
-    if (!backend) return
-    setSending(true)
-    setSendError(false)
-    try {
-      await backend.sendReport(crewId, summaryOf(ev))
-      if (ctx === 'space') {
-        setSent(`Report queued for the flight surgeon. Earliest arrival in ~${formatDelay(prof.delaySec)}; a reply takes at least ${formatDelay(prof.delaySec * 2)}.`)
-      } else {
-        setPrintable(true)
-      }
-    } catch {
-      setSendError(true)
-    } finally {
-      setSending(false)
-    }
-  }
+  // Blocks of the page. Wide screens keep the 3D body as the centrepiece (grid below); narrower screens stack them
+  // in the order a person acts on: alerts → latest measurements → score → body (folded on phones) → today.
+  const scoreBlock = (
+    <div className="space-y-4">
+      {/* Health-score card: src/components/score/HealthScoreCard.tsx */}
+      <div data-demo="score">
+        <HealthScoreCard ev={ev} excludeSystems={shownAlerts.map((a) => a.system)} onSelectSystem={setSelected} onLog={canEdit ? setEditing : undefined} />
+      </div>
 
-  return (
-    <>
-      <PageHeader eyebrow={canEdit ? greeting() : 'Crew member'} title={member?.name ?? user?.name ?? ''} status={<StatusPill status={ev.overall} announce />} />
+      {/* Send report + Ask AURA: src/components/reports/ReportActions.tsx */}
+      {canEdit && <ReportActions crewId={crewId} ev={ev} ctx={ctx} name={member?.name ?? user?.name ?? ''} day={mission?.day ?? 1} delaySec={prof.delaySec} />}
+    </div>
+  )
 
-      <div className="space-y-10">
-        {shownAlerts.length > 0 && (
-          // Alerts render immediately: never inside Stagger/Reveal.
-          <div className="space-y-3" aria-label="Alerts">
-            {shownAlerts.map((a) => (
-              <Notice
-                key={a.key}
-                tone={a.level}
-                title={a.title}
-                role={a.level === 'crit' ? 'alert' : undefined}
-                action={
-                  <Button size="sm" onClick={() => setSelected(a.system)}>
-                    Details<span className="sr-only"> for {a.title}</span>
-                  </Button>
-                }
-              >
-                {a.detail}
-              </Notice>
-            ))}
-            {ev.alerts.length > shownAlerts.length && <p className="text-sm text-dim">and {ev.alerts.length - shownAlerts.length} more. Open a body system below to see them.</p>}
-          </div>
-        )}
+  const viewer = (
+    <Card pad="none" className="relative h-[460px] overflow-hidden sm:h-[540px] lg:h-[660px]">
+      <BodyViewer statuses={ev.systemStatus} measured={ev.systemMeasured} summaries={summaries} selected={selected} onSelect={setSelected} heartRate={ev.values.hr} showRadiation={ev.showRad} />
+    </Card>
+  )
 
-        <EarlyWarningBlock rows={data.rows} crewId={crewId} />
-
-        <div className="grid gap-6 lg:grid-cols-12 lg:gap-8">
-          <div className="space-y-4 lg:col-span-5 lg:col-start-8 lg:row-start-1">
-            <Card>
-              <div className="flex items-center gap-5">
-                <div className="shrink-0">
-                  <ScoreRing score={ev.score} status={ev.overall} size={120} />
-                </div>
-                <div className="min-w-0">
-                  <p className="label">Health score</p>
-                  <p className="mt-1 text-[15px] font-semibold leading-snug text-ink">{reason}</p>
-                </div>
-              </div>
-              {otherSystems.length > 0 && (
-                <div className="mt-5">
-                  <p className="label mb-1">Also worth a look</p>
-                  <List>
-                    {otherSystems.map((s) => {
-                      const Icon = SYSTEM_ICON[s.id]
-                      return <Row key={s.id} title={s.name} leading={<Icon className="h-5 w-5" aria-hidden="true" />} trailing={<StatusText status={ev.systemStatus[s.id]} />} onClick={() => setSelected(s.id)} />
-                    })}
-                  </List>
-                </div>
-              )}
-              <Disclosure size="row" id="overview.score-how" title="How the score is calculated" className="mt-4 border-t border-line pt-2">
-                <p className="text-sm text-dim">100 minus 9 points per reading needing attention and 22 per urgent one. Rule-based, works offline; AURA explains it but never sets it.</p>
-              </Disclosure>
-            </Card>
-
-            {canEdit && (
-              <div className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
-                  <Button variant="primary" size="lg" icon={FileText} loading={sending} onClick={() => void sendReport()} full>
-                    {CONTEXTS[ctx].reportButton}
-                  </Button>
-                  <Button size="lg" icon={MessageCircle} to={`/crew/${crewId}/aura`} full>
-                    Ask AURA
-                  </Button>
-                </div>
-                {sent && (
-                  <Notice tone="ok" role="status">
-                    {sent}
-                  </Notice>
-                )}
-                {sendError && (
-                  <Notice tone="warn" role="alert" title="The report was not sent">
-                    Check your connection and try again.
-                  </Notice>
-                )}
-              </div>
-            )}
-          </div>
-
-          <Card pad="none" className="relative h-[460px] overflow-hidden sm:h-[540px] lg:col-span-7 lg:col-start-1 lg:row-span-2 lg:row-start-1 lg:h-[660px]">
-            <BodyViewer statuses={ev.systemStatus} measured={ev.systemMeasured} summaries={summaries} selected={selected} onSelect={setSelected} heartRate={ev.values.hr} showRadiation={ev.showRad} />
-          </Card>
-
-          <div className="lg:col-span-5 lg:col-start-8 lg:row-start-2">
+  const todayBlock = (
             <Section title="Today" action={<Badge icon={Flame}>{data.streak}-day streak</Badge>}>
               <div className="mb-3 flex items-center gap-3">
                 <Meter className="flex-1" value={doneCount} min={0} max={Math.max(1, data.tasks.length)} label="Tasks done today" />
@@ -296,17 +231,17 @@ export default function Overview({ crewId }: { crewId: number }) {
                 </Disclosure>
               )}
             </Section>
-          </div>
-        </div>
+  )
 
+  const measurementsBlock = (
         <Section
-          className="cv-auto"
+          className={wide ? 'cv-auto' : undefined}
           title="Latest measurements"
           action={
             canEdit ? (
               <>
                 <Saved show={justSaved} label="Reading saved" className="hidden sm:inline-flex" />
-                <AddMenu ctx={ctx} onPick={setEditing} />
+                {wide && <AddMenu ctx={ctx} onPick={setEditing} />}
               </>
             ) : undefined
           }
@@ -316,7 +251,8 @@ export default function Overview({ crewId }: { crewId: number }) {
               const d = ev.defByKey[k]!
               const m = ev.meta[d.primary]
               return (
-                <StaggerItem key={k}>
+                <StaggerItem key={k} className="h-full">
+                  <div className="h-full" data-demo={`vital-${k}`}>
                   <VitalCard
                     label={d.label}
                     value={d.display(ev.values)}
@@ -328,6 +264,7 @@ export default function Overview({ crewId }: { crewId: number }) {
                     trend={trends[k] ?? []}
                     onClick={canEdit ? () => setEditing(k) : undefined}
                   />
+                  </div>
                 </StaggerItem>
               )
             })}
@@ -336,6 +273,85 @@ export default function Overview({ crewId }: { crewId: number }) {
             <Notice className="mt-4">Mood and private check-ins are visible only to the astronaut and the flight surgeon.</Notice>
           )}
         </Section>
+  )
+
+  return (
+    <>
+      <PageHeader
+        eyebrow={canEdit ? greeting() : 'Crew member'}
+        title={member?.name ?? user?.name ?? ''}
+        status={<StatusPill status={ev.overallShown} announce />}
+        actions={canEdit ? <AddMenu ctx={ctx} onPick={setEditing} /> : undefined}
+      />
+
+      <SaveStatus outcome={saveOutcome} onDismiss={() => setLastSave(null)} />
+
+      <div className="space-y-10">
+        {shownAlerts.length > 0 && (
+          // Alerts render immediately: never inside Stagger/Reveal, never folded.
+          <div className="space-y-3" aria-label="Alerts">
+            {shownAlerts.map((a) => {
+              const act = canEdit ? alertAction(a, loggable) : null
+              const buttons = (
+                <span className={cx('flex gap-2', !wide && 'mt-3 flex-wrap')}>
+                  {act && (
+                    <Button size="sm" icon={Plus} onClick={() => setEditing(act.key)}>
+                      {act.label}
+                      <span className="sr-only"> for {a.title}</span>
+                    </Button>
+                  )}
+                  <Button size="sm" variant={act ? 'quiet' : 'secondary'} onClick={() => setSelected(a.system)}>
+                    Details<span className="sr-only"> for {a.title}</span>
+                  </Button>
+                </span>
+              )
+              // Wide screens: actions on the right as before; narrow: below the advice so the text keeps its width.
+              return (
+                <Notice key={a.key} tone={a.level} title={a.title} role={a.level === 'crit' ? 'alert' : undefined} action={wide ? buttons : undefined}>
+                  {a.detail}
+                  {!wide && buttons}
+                </Notice>
+              )
+            })}
+            {ev.alerts.length > shownAlerts.length && <p className="text-sm text-dim">and {ev.alerts.length - shownAlerts.length} more. Open a body system below to see them.</p>}
+          </div>
+        )}
+
+        <EarlyWarningBlock rows={data.rows} crewId={crewId} />
+
+        {wide ? (
+          <>
+            <div className="grid grid-cols-12 gap-8">
+              <div className="col-span-5 col-start-8 row-start-1">{scoreBlock}</div>
+              <div className="col-span-7 col-start-1 row-span-2 row-start-1" data-demo="body">
+                {viewer}
+              </div>
+              <div className="col-span-5 col-start-8 row-start-2">{todayBlock}</div>
+            </div>
+            {measurementsBlock}
+          </>
+        ) : (
+          <>
+            {measurementsBlock}
+            {scoreBlock}
+            {phone ? (
+              <BodySection
+                open={bodyOpen}
+                onToggle={(o) => {
+                  setBodyStored(o)
+                  if (!o) setBodyAuto(false)
+                }}
+                ev={ev}
+                onSelect={setSelected}
+              >
+                {viewer}
+              </BodySection>
+            ) : (
+              <div data-demo="body">{viewer}</div>
+            )}
+            {todayBlock}
+          </>
+        )}
 
         {user?.role === 'member' && <DeleteAccount />}
       </div>
@@ -355,7 +371,6 @@ export default function Overview({ crewId }: { crewId: number }) {
         />
       )}
       {editModal}
-      {printable && <PrintableReport ev={ev} name={member?.name ?? user?.name ?? ''} ctx={ctx} day={mission?.day ?? 1} onClose={() => setPrintable(false)} />}
     </>
   )
 }
@@ -486,57 +501,6 @@ function Welcome({ name, ctx, onLog }: { name: string; ctx: Context; onLog?: (k:
         <EmptyState title="No measurements yet" description="Nothing has been logged for this person." />
       )}
     </>
-  )
-}
-
-function PrintableReport({ ev, name, ctx, day, onClose }: { ev: Evaluation; name: string; ctx: Context; day: number; onClose: () => void }) {
-  const [copied, setCopied] = useState(false)
-  const s = summaryOf(ev)
-  const text = [
-    `AURA health summary — ${name}`,
-    `${new Date().toLocaleString()} · day ${day} of tracking · ${CONTEXTS[ctx].label}`,
-    `Overall: ${s.overall.toUpperCase()} · score ${s.score}/100`,
-    '',
-    'Readings:',
-    ...s.vitals.map((v) => `- ${v.label}: ${v.value} (${v.status})`),
-    '',
-    s.alerts.length ? 'Needs attention:' : 'No alerts.',
-    ...s.alerts.map((a) => `- ${a.title}`),
-    '',
-    'Self-reported and device readings; AURA does not diagnose.',
-  ].join('\n')
-  return (
-    <Dialog
-      open
-      wide
-      onClose={onClose}
-      title={`Report for your ${CONTEXTS[ctx].contact}`}
-      description="Copy it, email it or print it. AURA does not send this anywhere by itself."
-      footer={
-        <>
-          <Button
-            icon={copied ? Check : Copy}
-            onClick={() => {
-              void navigator.clipboard?.writeText(text)
-              setCopied(true)
-            }}
-          >
-            {copied ? 'Copied' : 'Copy text'}
-          </Button>
-          <Button icon={Mail} onClick={() => window.location.assign(`mailto:?subject=${encodeURIComponent('My AURA health summary')}&body=${encodeURIComponent(text)}`)}>
-            Email it
-          </Button>
-          <Button icon={Printer} onClick={() => window.print()}>
-            Print
-          </Button>
-          <Button variant="primary" onClick={onClose} data-autofocus>
-            Done
-          </Button>
-        </>
-      }
-    >
-      <pre data-print-report className="max-h-80 overflow-auto whitespace-pre-wrap rounded-xl border border-line bg-deep p-4 font-mono text-[13px] leading-relaxed text-soft">{text}</pre>
-    </Dialog>
   )
 }
 

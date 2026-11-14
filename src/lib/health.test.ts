@@ -3,6 +3,7 @@ import type { Context } from '../data/contexts'
 import type { FieldId, Values } from '../data/vitals'
 import { baselineOf, evaluate, latestOf, radiation, seriesOf, summaryOf, systemsFor, timeAgo } from './health'
 import type { Measurement } from './types'
+import { generateMeasurements, MISSION } from './demoData'
 
 let nextId = 1
 function row(metric: FieldId, value: number, day: number, at?: string, source = 'sim', device = 'x'): Measurement {
@@ -146,8 +147,9 @@ describe('evaluate: statuses and score', () => {
   })
 
   it('score never drops below 0', () => {
-    const worst = snapshot({ sys: 200, dia: 120, hr: 30, spo2: 80, temp: 40, glucose: 300, sleep: 2, mood: 1, exercise: 0, vision: 1, water: 0 })
-    const e = evaluate(worst, mission('space', 267)) // radiation urgent too
+    // readings logged on day 267 so they are current; radiation is urgent too
+    const worst = snapshot({ sys: 200, dia: 120, hr: 30, spo2: 80, temp: 40, glucose: 300, sleep: 2, mood: 1, exercise: 0, vision: 1, water: 0 }, 267)
+    const e = evaluate(worst, mission('space', 267))
     expect(e.score).toBe(0)
     expect(e.overall).toBe('crit')
   })
@@ -233,6 +235,111 @@ describe('evaluate: privacy', () => {
     expect(e.vitalStatus.mood).toBe('crit')
     expect(e.alerts.find((a) => a.key === 'mood')?.level).toBe('crit')
     expect(e.score).toBe(78)
+  })
+})
+
+describe('evaluate: data quality and freshness', () => {
+  it('missing data: nothing is scored, no numeric score is offered, every measurement is listed as missing', () => {
+    const e = evaluate([], mission('home'))
+    expect(e.quality).toMatchObject({ expected: 9, present: 0, current: 0, old: 0, missing: 9, sufficient: false })
+    expect(e.scoreReady).toBe(false)
+    expect(e.overallShown).toBeNull()
+    expect(e.quality.needs.join(' ')).toMatch(/Blood pressure.*not measured/)
+  })
+
+  it('a single normal measurement is "insufficient data", never 100/100 or "normal"', () => {
+    const e = evaluate([row('hr', 70, 142)], mission('home'))
+    expect(e.quality).toMatchObject({ present: 1, current: 1, missing: 8, sufficient: false })
+    expect(e.scoreReady).toBe(false)
+    expect(e.overallShown).toBeNull()
+    expect(e.alerts).toEqual([])
+    expect(e.quality.needs.join(' ')).toMatch(/Blood pressure/)
+    expect(summaryOf(e)).toMatchObject({ scoreReady: false, data: { expected: 9, current: 1, missing: 8 } })
+  })
+
+  it('a single abnormal measurement still alerts and sets the status, but gives no score', () => {
+    const e = evaluate([row('sys', 150, 142), row('dia', 95, 142)], mission('home'))
+    expect(e.scoreReady).toBe(false)
+    expect(e.alerts.map((a) => a.key)).toEqual(['bp'])
+    expect(e.overallShown).toBe('crit')
+  })
+
+  it('sufficiency: half of the tracked measurements current, including blood pressure and heart rate', () => {
+    const half = snapshot().filter((r) => ['sys', 'dia', 'hr', 'spo2', 'temp', 'sleep'].includes(r.metric)) // bp, hr, spo2, temp, sleep = 5 of 10
+    expect(evaluate(half, mission()).scoreReady).toBe(true)
+    const noHr = snapshot().filter((r) => r.metric !== 'hr')
+    const e = evaluate(noHr, mission())
+    expect(e.quality.current).toBe(9)
+    expect(e.scoreReady).toBe(false)
+    expect(e.quality.needs).toEqual([`${e.defByKey.hr!.label} (not measured yet)`])
+  })
+
+  it('old data: classified by mission day, not counted in the score, alerts or body-system colours', () => {
+    const rows = [...snapshot({}, 142), row('sys', 150, 130), row('dia', 95, 130)].filter((r) => !(['sys', 'dia'].includes(r.metric) && r.day === 142))
+    const e = evaluate(rows, mission())
+    const bp = e.quality.items.find((i) => i.key === 'bp')!
+    expect(bp).toMatchObject({ state: 'old', day: 130, ageDays: 12, maxAgeDays: 3, status: 'crit' })
+    expect(e.quality).toMatchObject({ current: 9, old: 1, missing: 0, present: 10 })
+    expect(e.vitalStatus.bp).toBe('crit') // last known status is kept...
+    expect(e.currentStatus.bp).toBeUndefined() // ...but it is not a current one
+    expect(e.alerts.find((a) => a.key === 'bp')).toBeUndefined()
+    expect(e.systemStatus.heart).toBe('ok')
+    expect(e.score).toBe(100)
+    expect(e.scoreReady).toBe(false) // blood pressure is required to be current
+    expect(e.overallShown).toBeNull()
+  })
+
+  it('an old abnormal reading is surfaced as last known (abnormal first), in the evaluation and in the report summary', () => {
+    // temperature old but normal (6 days), glucose old and high (22 days): the abnormal one is listed first
+    const rows = [...snapshot({}, 142).filter((r) => !['glucose', 'temp'].includes(r.metric)), row('glucose', 250, 120), row('temp', 36.6, 136)]
+    const e = evaluate(rows, mission())
+    expect(e.lastKnown.map((i) => i.key)).toEqual(['glucose', 'temp'])
+    expect(e.lastKnown[0].status).not.toBe('ok')
+    expect(e.lastKnown[1]).toMatchObject({ status: 'ok', ageDays: 6 })
+    expect(e.scoreReady).toBe(true)
+    expect(e.score).toBe(100)
+    expect(e.alerts.find((a) => a.key === 'glucose')).toBeUndefined()
+    const s = summaryOf(e)
+    expect(s.oldReadings?.map((o) => o.label)).toEqual(e.lastKnown.map((i) => i.label))
+    expect(s.vitals.find((v) => v.label === e.defByKey.glucose!.label)?.value).toMatch(/old: 22 days, last known/)
+  })
+
+  it('freshness windows: 3 days by default (the early-warning window), 7 for the weekly vision check', () => {
+    const at = (day: number) => evaluate([...snapshot({}, 142).filter((r) => !['hr', 'vision'].includes(r.metric)), row('hr', 65, day), row('vision', 5, day)], mission())
+    expect(at(139).quality.items.find((i) => i.key === 'hr')!.state).toBe('current')
+    expect(at(138).quality.items.find((i) => i.key === 'hr')!.state).toBe('old')
+    expect(at(135).quality.items.find((i) => i.key === 'vision')!.state).toBe('current')
+    expect(at(134).quality.items.find((i) => i.key === 'vision')!.state).toBe('old')
+  })
+
+  it('the simulated crew is unchanged when its data is current (crew 1: score 82, two alerts), late evening and early morning', () => {
+    const crew = (now: Date, id: number) =>
+      generateMeasurements(now)
+        .filter((m) => m.crewId === id)
+        .map((m, i) => ({ ...m, id: i + 1, metric: m.metric as FieldId }))
+    const sim = { context: 'space' as const, profileId: MISSION.profileId, day: MISSION.day }
+    const evening = evaluate(crew(new Date(2026, 10, 14, 23, 30), 1), sim)
+    expect(evening.score).toBe(82)
+    expect(evening.alerts).toHaveLength(2)
+    expect(evening.scoreReady).toBe(true)
+    expect(evening.quality).toMatchObject({ expected: 10, current: 10, old: 0, missing: 0 })
+    // 03:00: today's readings are not logged yet (glucose last on day 139, vision on 135) — still inside their windows
+    for (const id of [1, 2, 3, 4]) {
+      const early = evaluate(crew(new Date(2026, 10, 14, 3, 0), id), sim)
+      expect(early.quality.current, `crew ${id}`).toBe(10)
+      expect(early.scoreReady).toBe(true)
+    }
+    // Server demo: the mission day stays 142, so the readings stay current however many calendar days pass.
+    const twoWeeksLater = evaluate(crew(new Date(2026, 10, 1, 23, 30), 1), sim)
+    expect(twoWeeksLater.score).toBe(82)
+  })
+
+  it('privacy filter: the ground role does not count mood as expected, missing or old', () => {
+    const e = evaluate(snapshot({ mood: 1 }), mission(), true)
+    expect(e.quality.expected).toBe(9)
+    expect(e.quality.items.map((i) => i.key)).not.toContain('mood')
+    expect(e.lastKnown.map((i) => i.key)).not.toContain('mood')
+    expect(JSON.stringify(summaryOf(e))).not.toMatch(/Mood/i)
   })
 })
 

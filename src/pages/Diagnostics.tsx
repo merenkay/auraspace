@@ -89,7 +89,7 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
   const hasData = (id: SystemId) => ev.systemMeasured[id]
   const statusOf = (id: SystemId): Status | null => (hasData(id) ? ev.systemStatus[id] : null)
   const summaries = Object.fromEntries(
-    SYSTEMS.map((s) => [s.id, s.vitals.filter((k) => ev.vitalStatus[k]).map((k) => `${ev.defByKey[k]!.display(ev.values)} ${ev.defByKey[k]!.unit}`).join(' · ') || (s.id === 'radiation' ? `${ev.rad.dose.toFixed(0)} mSv` : 'No reading yet')]),
+    SYSTEMS.map((s) => [s.id, s.vitals.filter((k) => ev.vitalStatus[k]).map((k) => `${ev.defByKey[k]!.display(ev.values)} ${ev.defByKey[k]!.unit}`).join(' · ').concat(ev.systemStale[s.id] ? ' · old reading' : '') || (s.id === 'radiation' ? `${ev.rad.dose.toFixed(0)} mSv` : 'No reading yet')]),
   ) as Record<SystemId, string>
 
   const def = active ? (ev.defByKey[active] ?? VITAL_BY_KEY[active]) : null
@@ -162,7 +162,7 @@ export default function Diagnostics({ crewId }: { crewId: number }) {
                           data-sfx="tick"
                           className={cx('press rounded-2xl border p-4 text-left transition-colors', on ? 'border-ink bg-panel2' : 'border-line bg-panel hover:bg-panel2')}
                         >
-                          <Metric size="md" label={d.label} value={d.display(ev.values)} unit={d.unit} status={ev.vitalStatus[k]} hint={timeAgo(m?.at)} />
+                          <Metric size="md" label={d.label} value={d.display(ev.values)} unit={d.unit} status={ev.vitalStatus[k]} hint={ev.lastKnown.some((o) => o.key === k) ? `Old (${timeAgo(m?.at)}), last known · re-measure` : timeAgo(m?.at)} />
                           <p className="meta mt-1.5 break-words">{m?.device}</p>
                         </button>
                       )

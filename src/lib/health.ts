@@ -1,6 +1,7 @@
 // Deterministic health rules: latest values, statuses, alerts and score.
 // These never depend on the AI assistant.
 import { CONTEXTS, vitalsFor, type Context } from '../data/contexts'
+import { freshDaysFor, SCORE_MIN_SHARE, SCORE_REQUIRED } from '../data/freshness'
 import { CAREER_LIMIT_MSV, MISSIONS } from '../data/missions'
 import { SYSTEMS, type SystemId } from '../data/systems'
 import { FIELD_IDS, STATUS_RANK, VITAL_BY_KEY, worst, type FieldId, type Status, type Values, type VitalDef, type VitalKey } from '../data/vitals'
@@ -75,25 +76,91 @@ export function systemsFor(ctx: Context) {
   return SYSTEMS.filter((s) => !CONTEXTS[ctx].hiddenSystems.includes(s.id))
 }
 
+/** current: inside its freshness window; old: has a reading, but it is older than the window; missing: never measured. */
+export type Freshness = 'current' | 'old' | 'missing'
+
+export type DataItem = {
+  key: VitalKey
+  label: string
+  state: Freshness
+  /** Time of the reading (for a two-part reading such as blood pressure, the older part). */
+  at?: string
+  /** Mission day of the reading and its age in mission days. */
+  day?: number
+  ageDays?: number
+  /** Freshness window for this measurement (days, AURA rule). */
+  maxAgeDays: number
+  /** Status of the reading itself; for an old reading this is the last known status, not a current one. */
+  status?: Status
+}
+
+export type DataQuality = {
+  items: DataItem[]
+  /** Measurements tracked in this context (privacy filter applied). */
+  expected: number
+  /** Has any reading (current + old). */
+  present: number
+  current: number
+  old: number
+  missing: number
+  /** Enough current data for a numeric score (see src/data/freshness.ts). */
+  sufficient: boolean
+  /** Fewest current measurements a score needs. */
+  minCurrent: number
+  /** Plain-language list of what is still needed for a score; empty when sufficient. */
+  needs: string[]
+}
+
+/** Classifies every expected measurement as current / old / missing, on the mission clock (see src/data/freshness.ts). */
+export function dataQualityOf(defs: VitalDef[], meta: Latest['meta'], values: Values, today: number): DataQuality {
+  const items: DataItem[] = defs.map((d) => {
+    const maxAgeDays = freshDaysFor(d.key)
+    const parts = d.fields.map((f) => meta[f.id])
+    if (parts.some((p) => !p)) return { key: d.key, label: d.label, state: 'missing', maxAgeDays }
+    // A two-part reading is as old as its older part.
+    const oldest = parts.reduce((a, b) => (b!.day < a!.day || (b!.day === a!.day && ms(b!.at) < ms(a!.at)) ? b : a))!
+    const ageDays = Math.max(0, today - oldest.day)
+    return { key: d.key, label: d.label, state: ageDays <= maxAgeDays ? 'current' : 'old', at: oldest.at, day: oldest.day, ageDays, maxAgeDays, status: d.evaluate(values) }
+  })
+  const count = (s: Freshness) => items.filter((i) => i.state === s).length
+  const current = count('current')
+  const minCurrent = Math.ceil(items.length * SCORE_MIN_SHARE)
+  const needs: string[] = []
+  for (const k of SCORE_REQUIRED) {
+    const i = items.find((x) => x.key === k)
+    if (i && i.state !== 'current') needs.push(`${i.label} (${i.state === 'old' ? 'last reading is old' : 'not measured yet'})`)
+  }
+  const stillShort = minCurrent - current - needs.length
+  if (stillShort > 0) needs.push(`${stillShort} more current measurement${stillShort === 1 ? '' : 's'} of any kind (${current} of ${items.length} are current; a score needs ${minCurrent})`)
+  return { items, expected: items.length, present: items.length - count('missing'), current, old: count('old'), missing: count('missing'), sufficient: items.length > 0 && needs.length === 0, minCurrent, needs }
+}
+
 export function evaluate(rows: Measurement[], mission: EvalInput, hidePrivate = false) {
   const ctx = mission.context
   const { values, meta } = latestOf(rows)
   const defs = vitalsFor(ctx)
   const defByKey = Object.fromEntries(defs.map((d) => [d.key, d])) as Partial<Record<VitalKey, VitalDef>>
-  const vitals = defs.filter((d) => !(hidePrivate && d.private) && d.fields.every((f) => meta[f.id]))
+  const tracked = defs.filter((d) => !(hidePrivate && d.private))
+  const quality = dataQualityOf(tracked, meta, values, mission.day)
+  const fresh = new Set(quality.items.filter((i) => i.state === 'current').map((i) => i.key))
+  /** Every measured vital, current or old (cards show old ones with their age). */
+  const vitals = tracked.filter((d) => d.fields.every((f) => meta[f.id]))
+  /** Status of each measured vital's latest reading — for an old reading, its last known status. */
   const vitalStatus = Object.fromEntries(vitals.map((d) => [d.key, d.evaluate(values)])) as Partial<Record<VitalKey, Status>>
+  /** Only current readings drive the score, alerts, body-system colours and the overall status. */
+  const currentStatus = Object.fromEntries(vitals.filter((d) => fresh.has(d.key)).map((d) => [d.key, vitalStatus[d.key]!])) as Partial<Record<VitalKey, Status>>
   const rad = radiation(mission.profileId, mission.day)
   const showRad = ctx === 'space'
   const systems = systemsFor(ctx)
 
   const systemStatus = Object.fromEntries(
-    SYSTEMS.map((s) => [s.id, s.id === 'radiation' ? (showRad ? rad.status : 'ok') : worst(s.vitals.map((k) => vitalStatus[k] ?? 'ok'))]),
+    SYSTEMS.map((s) => [s.id, s.id === 'radiation' ? (showRad ? rad.status : 'ok') : worst(s.vitals.map((k) => currentStatus[k] ?? 'ok'))]),
   ) as Record<SystemId, Status>
 
   const alerts: Alert[] = []
   for (const d of vitals) {
-    const st = vitalStatus[d.key]!
-    if (st === 'ok') continue
+    const st = currentStatus[d.key]
+    if (!st || st === 'ok') continue
     const sys = SYSTEMS.find((s) => s.vitals.includes(d.key))?.id ?? 'heart'
     alerts.push({ key: d.key, level: st, title: `${d.label} ${d.display(values)} ${d.unit}`, detail: ACTION[d.key] ?? '', at: meta[d.primary]?.at, system: sys })
   }
@@ -108,18 +175,29 @@ export function evaluate(rows: Measurement[], mission: EvalInput, hidePrivate = 
 
   // 100 minus a fixed penalty per out-of-range reading (and radiation in space), so every point is explainable.
   const PENALTY: Record<Status, number> = { ok: 0, warn: 9, crit: 22 }
-  const penalty = Object.values(vitalStatus).reduce((s, st) => s + PENALTY[st!], 0) + (showRad ? PENALTY[rad.status] : 0)
+  // Only current readings count; missing and old ones add nothing (neither "normal" nor "bad").
+  const penalty = Object.values(currentStatus).reduce((s, st) => s + PENALTY[st!], 0) + (showRad ? PENALTY[rad.status] : 0)
+  /** Points from the current readings. Only meaningful as a "health score" when `scoreReady` is true. */
   const score = Math.max(0, 100 - penalty)
+  const scoreReady = quality.sufficient
   const overall: Status = worst(systems.map((s) => systemStatus[s.id]))
+  /** Overall status to show: null ("not enough data") when data are insufficient and nothing current is out of range. */
+  const overallShown: Status | null = scoreReady || overall !== 'ok' ? overall : null
 
-  // "ok" above also covers "nothing measured". These two let the UI say "no data yet" instead of "normal":
-  // hasData is false until at least one vital has a reading; systemMeasured is per body system.
+  // "ok" above also covers "nothing measured". These let the UI say "no data yet" instead of "normal":
+  // hasData is false until at least one vital has any reading; systemMeasured is true when a body system has a
+  // *current* reading; systemStale when it only has old ones.
   const hasData = vitals.length > 0
   const systemMeasured = Object.fromEntries(
-    SYSTEMS.map((s) => [s.id, s.id === 'radiation' ? showRad : s.vitals.some((k) => vitalStatus[k] !== undefined)]),
+    SYSTEMS.map((s) => [s.id, s.id === 'radiation' ? showRad : s.vitals.some((k) => currentStatus[k] !== undefined)]),
   ) as Record<SystemId, boolean>
+  const systemStale = Object.fromEntries(
+    SYSTEMS.map((s) => [s.id, s.id !== 'radiation' && !systemMeasured[s.id] && s.vitals.some((k) => vitalStatus[k] !== undefined)]),
+  ) as Record<SystemId, boolean>
+  /** Old readings, abnormal first: shown as "last known" with their time and a re-measure prompt, never as current. */
+  const lastKnown = quality.items.filter((i) => i.state === 'old').sort((a, b) => STATUS_RANK[b.status!] - STATUS_RANK[a.status!] || (a.ageDays ?? 0) - (b.ageDays ?? 0))
 
-  return { context: ctx, values, meta, vitals, defByKey, vitalStatus, systemStatus, systemMeasured, hasData, systems, alerts, score, overall, rad, showRad }
+  return { context: ctx, values, meta, vitals, defByKey, vitalStatus, currentStatus, systemStatus, systemMeasured, systemStale, hasData, systems, alerts, score, scoreReady, overall, overallShown, quality, lastKnown, rad, showRad }
 }
 
 export type Evaluation = ReturnType<typeof evaluate>
@@ -129,7 +207,13 @@ export function summaryOf(e: Evaluation): ReportSummary {
     overall: e.overall,
     score: e.score,
     alerts: e.alerts.map((a) => ({ title: a.title, level: a.level })),
-    vitals: e.vitals.map((d) => ({ label: d.label, value: `${d.display(e.values)} ${d.unit}`, status: e.vitalStatus[d.key]! })),
+    vitals: e.vitals.map((d) => {
+      const old = e.lastKnown.find((i) => i.key === d.key)
+      return { label: d.label, value: `${d.display(e.values)} ${d.unit}${old ? ` (old: ${old.ageDays} days, last known)` : ''}`, status: e.vitalStatus[d.key]! }
+    }),
+    scoreReady: e.scoreReady,
+    data: { expected: e.quality.expected, present: e.quality.present, current: e.quality.current, old: e.quality.old, missing: e.quality.missing },
+    oldReadings: e.lastKnown.map((i) => ({ label: i.label, at: i.at ?? '', ageDays: i.ageDays ?? 0, status: i.status! })),
   }
 }
 

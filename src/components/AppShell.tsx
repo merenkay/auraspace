@@ -1,4 +1,4 @@
-import { ChartLine, ChevronDown, ChevronLeft, CloudSun, Dumbbell, Ellipsis, FileText, HeartPulse, LogOut, MessagesSquare, Orbit, PersonStanding, UserRound, Users, type LucideIcon } from 'lucide-react'
+import { ChartLine, ChevronDown, ChevronLeft, CloudSun, Dumbbell, Ellipsis, FileText, HeartPulse, Inbox, LogOut, MessagesSquare, Orbit, PersonStanding, UserRound, Users, type LucideIcon } from 'lucide-react'
 import { motion } from 'motion/react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link, useLocation, useNavigate, useOutlet, useParams } from 'react-router'
@@ -11,11 +11,23 @@ import { CONTEXTS, type Context } from '../data/contexts'
 import { CAREER_LIMIT_MSV, MISSIONS, formatDelay } from '../data/missions'
 import { radiation } from '../lib/health'
 import { prefetchRoute, prefetchWhenIdle } from '../lib/prefetch'
+import { useUnreadReplies } from '../lib/reports/store'
 import { useSession } from '../lib/session'
 import type { User } from '../lib/types'
 import { Avatar, Button, CONTEXT_ICON, List, Logo, Meter, MotionRoot, PageTransition, Row, SPRING, Sheet, StatusIcon, cx, useContextAccent } from './ui'
 
-type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean }
+type NavItem = { to: string; label: string; icon: LucideIcon; end?: boolean; /** unread count shown next to the label (My reports) */ badge?: number }
+
+/** Count bubble for a nav item; the number is also read out ("2 new replies"). */
+function NavCount({ n, className }: { n?: number; className?: string }) {
+  if (!n) return null
+  return (
+    <span className={cx('inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-accent px-1 font-mono text-[11px] font-semibold leading-none text-space', className)}>
+      <span aria-hidden="true">{n}</span>
+      <span className="sr-only">{`, ${n} new ${n === 1 ? 'reply' : 'replies'}`}</span>
+    </span>
+  )
+}
 
 /** `primary` is the product navigation. `subject` appears for staff while they look at one crew member. */
 function navFor(user: User | null, crewId: string | undefined): { primary: NavItem[]; subject: NavItem[] } {
@@ -30,6 +42,8 @@ function navFor(user: User | null, crewId: string | undefined): { primary: NavIt
         { to: `${b}/coach`, label: CONTEXTS[user.context].activityTab, icon: Dumbbell },
         { to: `${b}/history`, label: 'History', icon: ChartLine },
         user.context === 'space' ? { to: '/environment', label: 'Environment', icon: Orbit } : { to: '/environment', label: 'Conditions', icon: CloudSun },
+        // Last, so the hand-control tab order and the phone bar (first four) stay as they were; on phones it sits under "More".
+        { to: '/my-reports', label: 'My reports', icon: Inbox },
       ],
       subject: [],
     }
@@ -70,7 +84,10 @@ export default function AppShell() {
   const ctx: Context = mission?.context ?? user?.context ?? 'space'
   useContextAccent(ctx)
 
-  const { primary, subject } = navFor(user, crewId)
+  const unread = useUnreadReplies()
+  const nav0 = navFor(user, crewId)
+  const subject = nav0.subject
+  const primary = unread ? nav0.primary.map((t) => (t.to === '/my-reports' ? { ...t, badge: unread } : t)) : nav0.primary
   const path = loc.pathname
 
   // Where the current page sits in the navigation: drives the direction of the page transition.
@@ -136,6 +153,7 @@ export default function AppShell() {
   const barItems = primary.length > 4 ? primary.slice(0, 4) : primary
   const overflow = primary.slice(barItems.length)
   const overflowActive = overflow.some((t) => isActive(t, path))
+  const overflowCount = overflow.reduce((n, t) => n + (t.badge ?? 0), 0)
 
   return (
     <MotionRoot>
@@ -157,6 +175,7 @@ export default function AppShell() {
                 return (
                   <Link key={t.to} to={t.to} onPointerEnter={() => prefetchRoute(t.to)} onFocus={() => prefetchRoute(t.to)} aria-current={on ? 'page' : undefined} className={cx('press relative flex shrink-0 items-center px-2 text-sm font-medium transition-colors lg:px-3', on ? 'text-ink' : 'text-dim hover:text-ink')}>
                     {t.label}
+                    <NavCount n={t.badge} className="ml-1.5" />
                     {on && <motion.span layoutId="nav-underline" transition={SPRING.snappy} className="absolute inset-x-3 -bottom-px h-0.5 bg-accent" />}
                   </Link>
                 )
@@ -264,6 +283,7 @@ export default function AppShell() {
               {overflowActive && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
               {overflow.length ? <Ellipsis className="h-5 w-5" aria-hidden="true" /> : <UserRound className="h-5 w-5" aria-hidden="true" />}
               <span>{overflow.length ? 'More' : 'Account'}</span>
+              <NavCount n={overflowCount} className="absolute left-1/2 top-1.5 ml-2" />
             </button>
           </div>
         </nav>
@@ -274,7 +294,7 @@ export default function AppShell() {
         {overflow.length > 0 && (
           <List className="mb-6">
             {overflow.map((t) => (
-              <Row key={t.to} to={t.to} title={t.label} leading={<t.icon className="h-5 w-5" aria-hidden="true" />} selected={isActive(t, path)} />
+              <Row key={t.to} to={t.to} title={t.label} leading={<t.icon className="h-5 w-5" aria-hidden="true" />} trailing={<NavCount n={t.badge} />} selected={isActive(t, path)} />
             ))}
           </List>
         )}
@@ -307,6 +327,7 @@ function BarLink({ item, active }: { item: NavItem; active: boolean }) {
       {active && <motion.span layoutId="bar-indicator" transition={SPRING.snappy} className="absolute inset-x-5 top-0 h-0.5 bg-accent" />}
       <item.icon className="h-5 w-5" aria-hidden="true" />
       <span className="max-w-full truncate px-1">{item.label}</span>
+      <NavCount n={item.badge} className="absolute left-1/2 top-1.5 ml-2" />
     </Link>
   )
 }

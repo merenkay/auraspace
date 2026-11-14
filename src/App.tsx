@@ -20,6 +20,7 @@ const Environment = lazy(() => import('./pages/Environment'))
 const History = lazy(() => import('./pages/History'))
 const Login = lazy(() => import('./pages/Login'))
 const Reports = lazy(() => import('./pages/Reports'))
+const MyReports = lazy(() => import('./pages/MyReports'))
 const Roster = lazy(() => import('./pages/Roster'))
 
 const isSelf = (r: Role) => r === 'astronaut' || r === 'member'
@@ -136,6 +137,7 @@ export default function App() {
           <Route path="/crew/:crewId/history" element={<CrewPage page={History} />} />
           <Route path="/environment" element={<Late><Environment /></Late>} />
           <Route path="/reports" element={<RequireAuth roles={['surgeon']}><Late><Reports /></Late></RequireAuth>} />
+          <Route path="/my-reports" element={<RequireAuth roles={['astronaut', 'member']}><Late><MyReports /></Late></RequireAuth>} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

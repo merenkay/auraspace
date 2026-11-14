@@ -60,13 +60,29 @@ export type BriefOpts = { address: string | null; hour: number; /** set when the
 
 export const NO_DATA = 'There are no readings yet, so I cannot say how things are. Log a measurement and ask me again.'
 
+/** "Not enough current data for a score: four of ten measurements are current." */
+function dataLine(ev: Evaluation): string {
+  const q = ev.quality
+  return `Not enough current data for a score: ${numberWords(q.current)} of ${numberWords(q.expected)} measurements ${q.current === 1 ? 'is' : 'are'} current.`
+}
+
+/** Old readings are mentioned as last known values (abnormal ones by name), never as current. */
+function oldLine(ev: Evaluation): string {
+  const old = ev.lastKnown
+  if (!old.length) return ''
+  const bad = old.filter((i) => i.status !== 'ok')
+  if (bad.length) return `Last known ${bad.map((i) => `${i.label.toLowerCase()} was ${STATUS_LABEL[i.status!].toLowerCase()}, ${timeAgo(i.at)}`).join('; ')}. That is old, so please re-measure.`
+  return `${countWord(old.length)} ${old.length === 1 ? 'reading is' : 'readings are'} old and not counted: ${old.map((i) => i.label.toLowerCase()).join(', ')}.`
+}
+
 export function statusBriefing(ev: Evaluation | null, o: BriefOpts): string {
   const head = lead(o.hour, o.address)
   const about = o.subject ? ` This is the briefing for ${o.subject}.` : ''
   if (!ev || !ev.hasData) return `${head}${about} ${NO_DATA}`
-  const parts = [head + about, `Health score ${numberWords(ev.score)}.`]
+  const parts = [head + about, ev.scoreReady ? `Health score ${numberWords(ev.score)}.` : `Health score unavailable. ${dataLine(ev)}`]
   if (!ev.alerts.length) {
-    parts.push(`All ${numberWords(ev.vitals.length)} readings I have are within range.`)
+    const n = ev.quality.current
+    parts.push(n ? `${n === 1 ? 'The one current reading I have is' : `All ${numberWords(n)} current readings I have are`} within range.` : 'None of the readings I have is current.')
   } else {
     const items = ev.alerts.map((a) => {
       const level = a.level === 'crit' ? 'urgent' : 'attention'
@@ -78,6 +94,8 @@ export function statusBriefing(ev: Evaluation | null, o: BriefOpts): string {
     const first = ev.alerts[0]
     if (first.detail) parts.push(`Suggested first step: ${first.detail}`)
   }
+  const old = oldLine(ev)
+  if (old) parts.push(old)
   return parts.join(' ')
 }
 
@@ -90,6 +108,8 @@ export function readingBriefing(ev: Evaluation | null, key: VitalKey, o: { subje
   const def = ev.defByKey[key]!
   const at = ev.meta[def.primary]?.at
   const head = `${cap(who)} ${name} is ${spokenValue(ev, key)}${at ? `, measured ${timeAgo(at).replace(/^today /, 'today at ')}` : ''}.`
+  const old = ev.lastKnown.find((i) => i.key === key)
+  if (old) return `${head} That reading is ${numberWords(old.ageDays ?? 0)} days old, so it is only the last known value${st === 'ok' ? '' : `, which was ${STATUS_LABEL[st].toLowerCase()}`}. Please re-measure.`
   const verdict = st === 'ok' ? 'That is within range.' : `Status: ${STATUS_LABEL[st].toLowerCase()}.`
   const alert = ev.alerts.find((a) => a.key === key)
   return [head, verdict, alert?.detail ? `Suggested step: ${alert.detail}` : ''].filter(Boolean).join(' ')
@@ -97,7 +117,7 @@ export function readingBriefing(ev: Evaluation | null, key: VitalKey, o: { subje
 
 export function alertsBriefing(ev: Evaluation | null): string {
   if (!ev || !ev.hasData) return `There are no readings yet, so there is nothing to alert on. ${NO_DATA}`
-  if (!ev.alerts.length) return 'No alerts. Every reading I have is within range.'
+  if (!ev.alerts.length) return ['No alerts.', ev.quality.current ? 'Every current reading I have is within range.' : 'None of the readings I have is current.', oldLine(ev)].filter(Boolean).join(' ')
   const n = ev.alerts.length
   const lines = ev.alerts.map((a) => `${a.level === 'crit' ? 'Urgent' : 'Attention'}: ${a.title}.`)
   return `${countWord(n)} ${n === 1 ? 'alert' : 'alerts'}. ${lines.join(' ')}`
@@ -106,7 +126,12 @@ export function alertsBriefing(ev: Evaluation | null): string {
 export function scoreBriefing(ev: Evaluation | null): string {
   if (!ev || !ev.hasData) return `There is no health score yet. ${NO_DATA}`
   const out = ev.alerts.map((a) => a.title)
-  return `Health score ${numberWords(ev.score)}. It starts at one hundred and loses points for every reading outside its range, more for urgent readings than for attention ones. ${out.length ? `Right now these count against it: ${out.join('; ')}.` : 'Nothing is counting against it right now.'} The thresholds are fixed rules, not an estimate by AI.`
+  if (!ev.scoreReady) {
+    const q = ev.quality
+    const flagged = out.length ? ` Current readings out of range: ${out.join('; ')}.` : ''
+    return `Health score unavailable. ${dataLine(ev)} A score needs ${numberWords(q.minCurrent)} current measurements, including blood pressure and heart rate. Missing and old readings are not counted as normal or as a problem.${flagged} The thresholds are fixed rules, not an estimate by AI.`
+  }
+  return `Health score ${numberWords(ev.score)}. It starts at one hundred and loses points for every current reading outside its range, more for urgent readings than for attention ones. ${out.length ? `Right now these count against it: ${out.join('; ')}.` : 'Nothing is counting against it right now.'} The thresholds are fixed rules, not an estimate by AI.`
 }
 
 export const HELP_TEXT =

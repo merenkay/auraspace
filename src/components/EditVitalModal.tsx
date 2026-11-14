@@ -6,7 +6,8 @@ import { Button, Dialog, Field, Input, Notice, StatusText, cx } from './ui'
 type Props = {
   def: VitalDef
   values: Values
-  onSave: (patch: Partial<Values>) => void
+  /** May return a promise: the dialog shows progress, and stays open with an error if it rejects. */
+  onSave: (patch: Partial<Values>) => void | Promise<void>
   onClose: () => void
 }
 
@@ -18,6 +19,8 @@ export default function EditVitalModal({ def, values, onSave, onClose }: Props) 
   const [draft, setDraft] = useState<Record<string, string>>(
     Object.fromEntries(def.fields.map((f) => [f.id, String(values[f.id])])),
   )
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
 
   const parsed: Partial<Values> = {}
   let valid = true
@@ -37,7 +40,7 @@ export default function EditVitalModal({ def, values, onSave, onClose }: Props) 
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button type="submit" form={formId} variant="primary" disabled={!valid}>
+          <Button type="submit" form={formId} variant="primary" disabled={!valid} loading={busy}>
             Save reading
           </Button>
         </>
@@ -46,11 +49,25 @@ export default function EditVitalModal({ def, values, onSave, onClose }: Props) 
       <form
         id={formId}
         className="space-y-5"
-        onSubmit={(e) => {
+        onSubmit={async (e) => {
           e.preventDefault()
-          if (valid) onSave(parsed)
+          if (!valid || busy) return
+          setErr(null)
+          setBusy(true)
+          try {
+            await onSave(parsed)
+          } catch (x) {
+            setErr(x instanceof Error && x.message ? x.message : 'Unknown error')
+          } finally {
+            setBusy(false)
+          }
         }}
       >
+        {err && (
+          <Notice tone="crit" role="alert" title="The reading was not saved">
+            Your entry is still here, so you can try again. ({err})
+          </Notice>
+        )}
         <Notice title="How to measure">{def.howTo}</Notice>
 
         {def.fields.map((f, i) => {

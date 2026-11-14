@@ -81,7 +81,7 @@ export const SCRIPT: Script = {
       {
         id: 'daily.score',
         target: or('[data-demo="score"]', { css: 'p', text: 'Health score', exact: true, closest: '.rounded-2xl' }),
-        callout: { title: 'Health score', text: '100 minus fixed points for each reading out of range. Every point can be explained.' },
+        callout: { title: 'Health score', text: '100 minus fixed points for each current reading out of range, shown only when enough data is current. Every point can be explained.' },
         caption: 'Commander Okafor starts her day. Her health score is plain arithmetic on her latest readings, not a guess.',
         duration: 5500,
         cue: 'select',
@@ -103,6 +103,8 @@ export const SCRIPT: Script = {
       },
       {
         id: 'daily.body',
+        // Phones fold the 3D body on the Overview: open it first (no toggle on wider screens, so it is skipped fast).
+        before: [{ type: 'set', target: '[data-demo="body-toggle"]', on: true, timeout: 400 }],
         target: VIEWER,
         callout: { title: '3D body', text: 'A real anatomy model. A system takes a colour only when it needs attention.' },
         caption: 'The same status, organ system by organ system, on a 3D model she can turn and open.',

@@ -2,23 +2,30 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Check, ChevronDown, Inbox, Send } from 'lucide-react'
 import { useEffect, useId, useState } from 'react'
 import { Badge, Button, EmptyState, Field, Input, Notice, PageHeader, Skeleton, Stagger, StaggerItem, StatusIcon, StatusPill, StatusText, statusLabel, DUR, EASE, cx } from '../components/ui'
+import Journey from '../components/reports/Journey'
+import { MISSIONS } from '../data/missions'
 import { timeAgo } from '../lib/health'
+import { loadReports } from '../lib/reports/store'
 import { useSession } from '../lib/session'
 import type { Report } from '../lib/types'
 
-const REPORT_BADGE: Record<Report['status'], string> = { queued: 'Queued', delivered: 'Delivered', reviewed: 'Reviewed' }
+// Stored status only. 'delivered' is never set by either backend; signal-delay steps are a labelled simulation (Journey).
+const REPORT_BADGE: Record<Report['status'], string> = { queued: 'Awaiting reply', delivered: 'Awaiting reply', reviewed: 'Replied' }
 
 export default function Reports() {
-  const { backend } = useSession()
+  const { backend, mission } = useSession()
   const [reports, setReports] = useState<Report[] | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const [open, setOpen] = useState<number | null>(null)
   // one draft reply per report, so text typed for one row never ends up in another
   const [notes, setNotes] = useState<Record<number, string>>({})
   const [failed, setFailed] = useState<number | null>(null)
   const uid = useId()
+  const delaySec = mission?.context === 'space' ? (MISSIONS.find((m) => m.id === mission.profileId)?.delaySec ?? 0) : 0
 
   useEffect(() => {
-    backend?.reports().then(setReports)
+    if (!backend) return
+    loadReports(backend).then(setReports, () => setLoadFailed(true))
   }, [backend])
 
   const header = <PageHeader eyebrow="Flight surgeon" title="Reports inbox" description="Reports sent by the crew. Open one to read it and send a reply." />
@@ -27,6 +34,11 @@ export default function Reports() {
     return (
       <div>
         {header}
+        {loadFailed ? (
+          <Notice tone="warn" role="alert" title="Reports could not be loaded">
+            Check your connection and reload the page.
+          </Notice>
+        ) : (
         <div role="status" aria-label="Loading reports" className="space-y-px border-y border-line">
           {[0, 1, 2].map((i) => (
             <div key={i} className="flex items-center gap-3 px-2 py-4">
@@ -36,6 +48,7 @@ export default function Reports() {
             </div>
           ))}
         </div>
+        )}
       </div>
     )
 
@@ -48,7 +61,10 @@ export default function Reports() {
       setNotes(({ [id]: _sent, ...rest }) => rest)
     } catch {
       setFailed(id)
+      return
     }
+    // The review answer has no reply time / read marker; reload to show the stored ones.
+    loadReports(backend).then(setReports, () => undefined)
   }
 
   return (
@@ -95,7 +111,7 @@ export default function Reports() {
                       <div className="px-2 pb-5 pt-4">
                         <div className="flex flex-wrap items-center gap-3">
                           <StatusPill status={r.summary.overall} />
-                          <span className="text-sm text-soft">Score {r.summary.score} / 100</span>
+                          <span className="text-sm text-soft">{r.summary.scoreReady === false ? `No score: insufficient data (${r.summary.data?.current ?? 0} of ${r.summary.data?.expected ?? '?'} measurements current)` : `Score ${r.summary.score} / 100`}</span>
                         </div>
                         <ul className="mt-4 grid border-t border-line sm:grid-cols-2 sm:gap-x-8">
                           {r.summary.vitals.map((v) => (
@@ -114,8 +130,8 @@ export default function Reports() {
                           </Notice>
                         )}
                         {r.status === 'reviewed' ? (
-                          <Notice tone="ok" title={`Reviewed by ${r.reviewedBy}`} className="mt-5">
-                            {r.reviewNote}
+                          <Notice tone="info" title={`Reply sent by ${r.reviewedBy ?? 'the flight surgeon'}`} className="mt-5">
+                            <span className="whitespace-pre-wrap">{r.reviewNote}</span>
                           </Notice>
                         ) : (
                           <form
@@ -129,10 +145,13 @@ export default function Reports() {
                               <Input autoComplete="off" enterKeyHint="send" value={notes[r.id] ?? ''} onChange={(e) => setNotes((n) => ({ ...n, [r.id]: e.target.value }))} placeholder="Reply to the crew member…" />
                             </Field>
                             <Button type="submit" variant="primary" icon={Send}>
-                              Mark reviewed
+                              Send reply
                             </Button>
                           </form>
                         )}
+                        <div className="mt-5 border-t border-line pt-4">
+                          <Journey report={r} delaySec={delaySec} perspective="surgeon" />
+                        </div>
                       </div>
                     </motion.div>
                   )}
