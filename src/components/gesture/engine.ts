@@ -74,6 +74,7 @@ export async function createDetector(): Promise<Detector> {
         minTrackingConfidence: 0.5,
       })
     let delegate: 'GPU' | 'CPU' = 'GPU'
+    let closed = false
     let lm: Awaited<ReturnType<typeof make>>
     try {
       lm = await make('GPU')
@@ -101,10 +102,16 @@ export async function createDetector(): Promise<Detector> {
         } catch {
           /* already gone */
         }
-        lm = await make('CPU')
+        const next = await make('CPU')
+        if (closed) {
+          next.close()
+          throw new Error('closed')
+        }
+        lm = next
         det.delegate = delegate = 'CPU'
       },
       close() {
+        closed = true
         try {
           lm.close()
         } catch {
@@ -130,6 +137,11 @@ export function runDetection(video: HTMLVideoElement, det: Detector, onFrame: (f
   let lastVideoTime = -1
   let avg = 15
   let lastT = 0
+  let count = 0
+  let triedCpu = false
+  const fail = (e: unknown) => {
+    if (!stopped) onError(e)
+  }
   const later = (ms: number) => {
     if (!stopped) timer = setTimeout(tick, ms)
   }
@@ -150,14 +162,24 @@ export function runDetection(video: HTMLVideoElement, det: Detector, onFrame: (f
           await det.degrade()
           return later(0)
         } catch (e2) {
-          return onError(e2)
+          return fail(e2)
         }
       }
-      return onError(e)
+      return fail(e)
     }
     const ms = performance.now() - t0
     avg = avg * 0.85 + ms * 0.15
     onFrame(frame, ms)
+    // a GPU path that turns out slow (weak or software GPU, busy with the 3D viewer): try the CPU path once
+    if (det.delegate === 'GPU' && !triedCpu && ++count >= 20 && avg > 80) {
+      triedCpu = true
+      try {
+        await det.degrade()
+        avg = 15
+      } catch (e) {
+        return fail(e)
+      }
+    }
     const interval = Math.min(1000, Math.max(33, avg * 2.5))
     later(Math.max(0, interval - (performance.now() - t0)))
   }

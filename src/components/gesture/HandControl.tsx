@@ -83,7 +83,7 @@ export default function HandControl() {
       {panel &&
         typeof document !== 'undefined' &&
         createPortal(
-          <div className="fixed right-4 top-16 z-[45] w-[min(360px,calc(100vw-32px))] rounded-xl shadow-overlay" data-hand-panel={panel.kind}>
+          <div className="fixed bottom-20 left-4 z-[45] w-[min(360px,calc(100vw-32px))] rounded-xl shadow-overlay md:bottom-4" data-hand-panel={panel.kind}>
             <Notice title={panel.title} role="status">
               <p>{panel.detail} Mouse, touch and keyboard work as usual.</p>
               <div className="mt-3 flex gap-2">

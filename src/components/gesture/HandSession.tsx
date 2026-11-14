@@ -494,7 +494,11 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
         <div className="flex items-center justify-between gap-2 px-1 pt-1.5">
           {phase === 'running' ? <LiveDot label={synthetic ? 'Simulated' : 'Live'} /> : <span className="text-xs text-dim">Starting</span>}
           <div className="-mr-1 flex">
-            <IconButton size="sm" icon={collapsed ? ChevronUp : ChevronDown} label={collapsed ? 'Show camera preview' : 'Hide camera preview'} onClick={() => (setCollapsed(!collapsed), savePrefs({ collapsed: !collapsed }))} />
+            <IconButton size="sm" icon={collapsed ? ChevronUp : ChevronDown} label={collapsed ? 'Show camera preview' : 'Hide camera preview'} onClick={() => {
+                setCollapsed(!collapsed)
+                savePrefs({ collapsed: !collapsed })
+              }}
+            />
             <IconButton size="sm" icon={CircleHelp} label="Hand gestures" aria-pressed={legend} onClick={() => toggleLegend(!legend)} />
             <IconButton size="sm" icon={X} label="Turn off hand control" onClick={() => statusRef.current({ state: 'off' })} />
           </div>
