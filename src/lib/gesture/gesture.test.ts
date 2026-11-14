@@ -261,6 +261,26 @@ describe('interaction state machine', () => {
     expect(count(tp, 'swipe')).toBe(0)
   })
 
+  it('a swipe is still recognised when detection runs at only 15 frames per second', () => {
+    const p = new GesturePipeline()
+    let t = 0
+    const types: string[] = []
+    const feed = (x: number) => {
+      t += 1000 / 15
+      types.push(...p.push(frame(t, [{ ...OPEN, x }])).events.map((e) => e.type))
+    }
+    for (let k = 0; k < 6; k++) feed(0.7)
+    for (let k = 1; k <= 3; k++) feed(0.7 - (0.32 * k) / 3) // 200 ms sweep = 3 frames
+    expect(types).toContain('swipe')
+  })
+
+  it('a single-frame jump of the hand is not a swipe', () => {
+    const p = new GesturePipeline()
+    const tl = play(p, timeline(), 400, hold({ ...OPEN, x: 0.6 }))
+    play(p, tl, 400, hold({ ...OPEN, x: 0.35 }))
+    expect(count(tl, 'swipe')).toBe(0)
+  })
+
   it('a fist held for 0.7 s fires once; a brief fist does nothing', () => {
     const p = new GesturePipeline()
     const tl = play(p, timeline(), 300, hold(OPEN))

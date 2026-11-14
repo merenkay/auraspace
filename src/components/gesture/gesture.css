@@ -181,7 +181,7 @@
   transition: opacity 0.16s ease-out;
 }
 .hand-cursor[data-present='false'] {
-  opacity: 0;
+  opacity: 0 !important;
 }
 .hand-cursor svg {
   overflow: visible;
@@ -234,9 +234,6 @@
 .hand-cursor[data-mode='drag'] .hc-outer,
 .hand-cursor[data-mode='depth'] .hc-outer {
   stroke-dasharray: 3 5;
-}
-.hand-cursor[data-mode='idle'] {
-  opacity: 0.35;
 }
 .hand-cursor-label {
   position: absolute;
@@ -296,6 +293,8 @@
 }
 .hand-preview {
   position: relative;
+  /* nothing to press here: the mouse (and the hand cursor) reach what lies underneath */
+  pointer-events: none;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   border-radius: 8px;
@@ -345,17 +344,23 @@
   pointer-events: none;
 }
 
+/* phones: a panel under the header that scrolls, clear of the camera dock; desktop: bottom-right corner */
 .hand-legend {
   position: fixed;
+  left: 16px;
   right: 16px;
-  bottom: 80px;
+  top: 64px;
   z-index: 45;
-  width: 288px;
-  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 64px - 340px);
+  overflow-y: auto;
 }
 @media (min-width: 768px) {
   .hand-legend {
+    left: auto;
+    top: auto;
     bottom: 16px;
+    width: 288px;
+    max-height: calc(100dvh - 140px);
   }
 }
 

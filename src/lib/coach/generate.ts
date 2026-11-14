@@ -6,10 +6,10 @@ import type { AgeBand } from '../../data/conditions/types'
 import { CONTEXTS, type Context } from '../../data/contexts'
 import { FOCUS_BY_ID, WEEKDAY } from '../../data/coach/catalog'
 import { EXERCISES, EXERCISE_BY_ID, type Exercise } from '../../data/coach/exercises'
-import type { CoachRuleId } from '../../data/coach/sources'
+import { FOCUS_RULES, type CoachRuleId } from '../../data/coach/sources'
 import { adaptFromLogs, plannedStep, type AdaptResult } from './adapt'
-import { addDays, daysBetween, weekdayOf } from './profile'
-import { TAG_LABEL, type Safety } from './safety'
+import { addDays, daysBetween } from './profile'
+import type { Safety } from './safety'
 import type { Dose, FocusId, Level, Pattern, PlannedExercise, PlannedSession, Restriction, SessionLog, SessionPart, SessionType, Substitution, TrainingProfile, Week } from './types'
 
 export type GenerateInput = {
@@ -242,7 +242,10 @@ export function generateProgramme({ training, safety, today, logs, ageBand = nul
     B = 0
     rules.add('spaceSchedule').add('spaceResistive').add('spaceAerobic')
   }
-  for (const f of focus) rules.add(RX[f].basis)
+  for (const f of focus) {
+    rules.add(RX[f].basis)
+    for (const r of FOCUS_RULES[f]) rules.add(r)
+  }
   if (safety.lightOnly) {
     S = 0
     adjustments.push({ text: `Strength work is paused: light activity only until your ${contact} has reviewed your recent assessment.`, rule: true })
@@ -265,11 +268,18 @@ export function generateProgramme({ training, safety, today, logs, ageBand = nul
   const impactAll = focus.includes('bone') && !space
 
   // ---- adaptation from the log
-  const capNow = plannedStep(blockNumber, weekIndex)
-  const adapt = adaptFromLogs(logs, { caution: safety.caution, cap: capNow, contact, since: training.startedAt })
+  // The week holding the next session to do uses the step earned from the log; later weeks preview the block plan
+  // (at most one step per week beyond it, none while a caution is active). Nothing steps up without a logged session.
+  const nextOffset = (() => {
+    const d0 = daysBetween(blockStart, today)
+    for (let k = d0; k < 28; k++) if (positions.includes(k % 7)) return k
+    return 27
+  })()
+  const activeWeek = Math.min(4, Math.floor(nextOffset / 7) + 1)
+  const adapt = adaptFromLogs(logs, { caution: safety.caution, cap: plannedStep(blockNumber, activeWeek), contact, since: training.startedAt })
   const stepForWeek = (w: number) => {
-    if (w <= weekIndex) return w === weekIndex ? adapt.step : plannedStep(blockNumber, w)
-    return safety.caution ? adapt.step : Math.min(plannedStep(blockNumber, w), adapt.step + (w - weekIndex))
+    if (w <= activeWeek) return adapt.step
+    return safety.caution || adapt.logged === 0 ? adapt.step : Math.min(plannedStep(blockNumber, w), adapt.step + (w - activeWeek))
   }
 
   const picker: Picker = { ctx, equipment: training.equipment, blocked: safety.blocked, subs: [] }
@@ -367,7 +377,8 @@ export function generateProgramme({ training, safety, today, logs, ageBand = nul
       const t2Day = focus.includes('bone') ? n % 3 !== 2 : n % 2 === 0
       const pref = space
         ? (e: Exercise) => (t2Day ? e.needs.includes('t2') : e.needs.includes('cevis'))
-        : (e: Exercise) => (focus.includes('joints') ? e.needs.includes('bike') || e.id === 'walk-brisk' : focus.includes('bone') ? e.contra.includes('standing') : true)
+        : (e: Exercise) =>
+            primary === 'glucose' ? e.id === 'walk-after-meal' : focus.includes('joints') ? e.needs.includes('bike') || e.id === 'walk-brisk' : focus.includes('bone') ? e.contra.includes('standing') && e.id !== 'walk-after-meal' : e.id !== 'walk-after-meal'
       let e: Exercise | null = null
       let hard = wantHard && !safety.lightOnly
       if (hard) {
@@ -382,6 +393,7 @@ export function generateProgramme({ training, safety, today, logs, ageBand = nul
       }
       if (e) aerobicItems.push({ exerciseId: e.id, dose: doseFor(e, level, sp.dose, safety.lightOnly ? Math.min(capVal ?? 4, 4) : capVal, aerobicMin, hard) })
       rules.add(space ? (e?.needs.includes('t2') ? 't2Dose' : 'cevisDose') : 'talkTest')
+      if (e?.id === 'walk-after-meal') rules.add('dmPostMeal')
       if (hard) rules.add('effortScale')
     }
 
@@ -417,6 +429,8 @@ export function generateProgramme({ training, safety, today, logs, ageBand = nul
     if (space) why = focus.includes('bone') && aerobicItems[0]?.exerciseId.startsWith('t2') ? ['Treadmill and resistance volume were the key countermeasure factors for bone and muscle in flight.', 'spaceVolume'] : ['Daily resistive and aerobic exercise is the NASA flight countermeasure for muscle, bone and fitness.', 'spaceStrengthStd']
     for (const c of comp) for (const f of focus) if (!why && WHY[f][c]) why = WHY[f][c]!
     if (safety.lightOnly) why = [`Light movement keeps you active while your ${contact} reviews your recent assessment.`, 'anyAmount']
+    // The "all major muscle groups" wording is cited from CDC's older-adult page; younger station crews get the adult guideline.
+    if (why && why[1] === 'allMuscles' && ctx !== 'home' && !older) why = ['Strength work on at least 2 days a week is part of the adult activity guideline.', 'adultsWeekly']
     if (why) rules.add(why[1])
 
     return {
@@ -522,5 +536,3 @@ export function todaySummary(p: Programme, holdReason?: string | null): string {
   return `${done ? 'Done today' : 'Today'}: ${s.title.toLowerCase()}, about ${s.minutes} minutes, ${items.length} exercise${items.length === 1 ? '' : 's'}${first ? `, starting with ${first.toLowerCase()}` : ''}.`
 }
 
-export { TAG_LABEL }
-export const weekdayOfDate = weekdayOf

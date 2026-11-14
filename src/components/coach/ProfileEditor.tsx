@@ -54,7 +54,7 @@ export function ProfileEditor({ open, onClose, context, initial, suggestions, on
                     <span className="block">
                       <span className="flex flex-wrap items-center gap-2 text-[15px] text-ink">
                         {f.label}
-                        {s && <Badge tone="accent">Suggested</Badge>}
+                        {s && <Badge>Suggested</Badge>}
                         {on && p.focus[0] === f.id && <Badge>Leads the plan</Badge>}
                       </span>
                       <span className="mt-0.5 block text-sm text-dim">{f.what}</span>
@@ -68,9 +68,7 @@ export function ProfileEditor({ open, onClose, context, initial, suggestions, on
         </fieldset>
 
         <div>
-          <p className="text-[15px] font-semibold text-ink" id="lvl">
-            Fitness level
-          </p>
+          <p className="text-[15px] font-semibold text-ink">Fitness level</p>
           <Tabs className="mt-2" label="Fitness level" value={p.level} onChange={(v: Level) => set('level', v)} options={LEVELS.map((l) => ({ value: l.id, label: l.label }))} full />
           {level && <p className="mt-2 text-sm text-dim">{level.what}</p>}
         </div>

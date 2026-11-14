@@ -2,7 +2,7 @@
 // (stop / caution / adjust from profile, latest assessment and readings) and turns them, plus the person's
 // movement limitations, into exercise restrictions the generator must respect. Missing data is listed as
 // "not checked", never treated as normal.
-import { CHOICE_LABEL, type HealthProfile } from '../../data/conditions/profile'
+import type { HealthProfile } from '../../data/conditions/profile'
 import { CONTEXTS, type Context } from '../../data/contexts'
 import { LIMIT_LABEL } from '../../data/coach/catalog'
 import type { CoachRuleId } from '../../data/coach/sources'
@@ -120,21 +120,3 @@ export function buildSafety({ context, ev, profile, latest, sleepAvg, training, 
     cooldownMin,
   }
 }
-
-/** Human label for a restriction tag (used in substitution reasons). */
-export const TAG_LABEL: Record<ContraTag | Joint, string> = {
-  'spinal-flexion': 'forward bending of the spine',
-  impact: 'impact',
-  'unsupported-balance': 'balance without support',
-  standing: 'standing',
-  floor: 'getting down to the floor',
-  isometric: 'sustained holds',
-  vigorous: 'vigorous effort',
-  knee: 'knee load',
-  hip: 'hip load',
-  shoulder: 'shoulder load',
-  wrist: 'wrist load',
-  back: 'back load',
-}
-
-export const conditionLabel = (id: string) => CHOICE_LABEL[id] ?? id

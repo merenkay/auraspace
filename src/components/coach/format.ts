@@ -3,7 +3,7 @@ import { EXERCISE_BY_ID } from '../../data/coach/exercises'
 import type { Dose, PlannedExercise } from '../../lib/coach/types'
 
 export function effortText(e: [number, number]) {
-  const word = e[1] <= 4 ? 'light' : e[1] <= 6 ? 'moderate' : 'hard'
+  const word = e[1] <= 4 ? 'light' : e[1] <= 6 ? 'moderate' : e[0] <= 6 ? 'moderate to hard' : 'hard'
   return `effort ${e[0]}–${e[1]} of 10 (${word})`
 }
 

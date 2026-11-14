@@ -48,7 +48,8 @@ const HIDDEN_OFF_MS = 60_000
 const NO_HAND_OFF_MS = 5 * 60_000
 const NOTE_MS = 1600
 
-function hintFor(s: GestureState, dark: boolean): string {
+function hintFor(s: GestureState, dark: boolean, slow: boolean): string {
+  if (slow && s.quality === 'ok') return 'This device is slow for hand tracking: expect a delay'
   if (dark) return 'Too dark: add some light in front of you'
   switch (s.quality) {
     case 'no-hand':
@@ -88,7 +89,8 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
   const [phase, setPhase] = useState<'intro' | 'starting' | 'running'>(() => (prefs.current.intro || synthetic ? 'starting' : 'intro'))
   const [loading, setLoading] = useState('Starting the camera')
   const [collapsed, setCollapsed] = useState(!!prefs.current.collapsed)
-  const [legend, setLegend] = useState(!prefs.current.legendHidden)
+  // the legend opens by itself on wide screens until it is dismissed; on phones it waits for the help button
+  const [legend, setLegend] = useState(() => !prefs.current.legendHidden && window.matchMedia?.('(min-width: 768px)').matches !== false)
   const [hint, setHint] = useState('Move your hand into view')
   const [note, setNote] = useState<string | null>(null)
 
@@ -107,11 +109,13 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
   collapsedRef.current = collapsed
   const hintRef = useRef(hint)
   const dark = useRef(false)
+  const slow = useRef(false)
   const noteUntil = useRef(0)
   const noteText = useRef('')
   const noteTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const noHandSince = useRef<number | null>(null)
   const lastView = useRef<DriverView | null>(null)
+  const palette = useRef({ accent: '', soft: '', n: 0 })
 
   const showNote = useCallback((text: string) => {
     noteText.current = text
@@ -224,9 +228,14 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
     const sh = aspect > boxAspect ? h : w / aspect
     const ox = (w - sw) / 2
     const oy = (h - sh) / 2
-    const css = getComputedStyle(cv)
-    const accent = css.getPropertyValue('--color-accent').trim() || '#92c1fd'
-    const soft = css.getPropertyValue('--color-soft').trim() || '#c7c4bd'
+    // theme colours, re-read about once a second (the accent follows the profile)
+    const pal = palette.current
+    if (!pal.accent || ++pal.n % 30 === 0) {
+      const css = getComputedStyle(cv)
+      pal.accent = css.getPropertyValue('--color-accent').trim() || '#92c1fd'
+      pal.soft = css.getPropertyValue('--color-soft').trim() || '#c7c4bd'
+    }
+    const { accent, soft } = pal
     for (const hand of s.hands) {
       const P = hand.landmarks.map((p) => ({ x: ox + (1 - p.x) * sw, y: oy + p.y * sh }))
       ctx.strokeStyle = hand.primary ? accent : soft
@@ -265,7 +274,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       lastView.current = v
       paint(v)
       drawSkeleton(v.state, frame.aspect ?? 4 / 3)
-      const h = hintFor(v.state, dark.current)
+      const h = hintFor(v.state, dark.current, slow.current)
       if (h !== hintRef.current) {
         hintRef.current = h
         setHint(h)
@@ -285,7 +294,9 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
     driver.current = drv
     let video: HTMLVideoElement | null = null
     let stop = () => {}
+    const stats = { frames: 0, hands: 0, lastMs: 0, avgMs: 0 }
     if (r?.stream && r.det) {
+      const det = r.det
       video = document.createElement('video')
       video.muted = true
       video.playsInline = true
@@ -293,11 +304,34 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       video.srcObject = r.stream
       videoBox.current?.appendChild(video)
       void video.play().catch(() => undefined)
-      stop = runDetection(video, r.det, handle, () => statusRef.current({ state: 'error', kind: 'model' }))
+      stop = runDetection(
+        video,
+        det,
+        (f, ms) => {
+          stats.frames++
+          stats.hands += f.hands.length ? 1 : 0
+          stats.lastMs = ms
+          stats.avgMs = stats.avgMs ? stats.avgMs * 0.9 + ms * 0.1 : ms
+          slow.current = stats.frames > 10 && stats.avgMs > 150
+          handle(f)
+        },
+        () => statusRef.current({ state: 'error', kind: 'model' }),
+      )
     }
     emitUi('hud', { on: true, source: 'hand' })
     sfx('open')
     statusRef.current({ state: 'active' })
+
+    // room at the end of the page, so content at the very bottom can be scrolled out from under the camera dock
+    const body = document.body
+    const padBefore = body.style.paddingBottom
+    const dock = document.querySelector<HTMLElement>('.hand-dock')
+    const pad = () => {
+      if (dock) body.style.paddingBottom = `${dock.offsetHeight + 24}px`
+    }
+    pad()
+    const ro = typeof ResizeObserver !== 'undefined' && dock ? new ResizeObserver(pad) : null
+    if (ro && dock) ro.observe(dock)
 
     const sample = document.createElement('canvas')
     const light = setInterval(() => {
@@ -313,10 +347,12 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
 
     // dev-only frame injector: window.__auraHand.feed(frame) / .play(steps) / .view()
     const w = window as unknown as { __auraHand?: Record<string, unknown> }
+    let playT = 0
     if (import.meta.env.DEV) {
       const hook = (w.__auraHand ??= {})
       hook.feed = (frame: RawFrame) => handle(frame)
       hook.events = () => drv.log.splice(0)
+      hook.stats = () => ({ ...stats, delegate: r?.det?.delegate ?? 'synthetic', video: video ? `${video.videoWidth}x${video.videoHeight}` : null })
       hook.view = () => {
         const v = lastView.current
         return v && { mode: v.state.mode, pose: v.state.pose, px: v.px, target: v.target, armed: v.armed, confirm: v.confirm, quality: v.state.quality, hands: v.state.hands.length }
@@ -332,6 +368,8 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
           return { x: tip.x - (ref[8].x - 0.5), y: tip.y - (ref[8].y - 0.5) }
         }
         let prev: DevStep | null = null
+        // frames carry virtual timestamps 33 ms apart, so a busy (headless) browser cannot stretch a gesture
+        let vt = Math.max(performance.now(), playT + 33)
         for (const s of steps) {
           const n = Math.max(1, Math.round(s.ms / 33))
           for (let k = 1; k <= n; k++) {
@@ -345,7 +383,9 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
               const p2 = aim(lerp(prev?.x2, s.x2), lerp(prev?.y2, s.y2))
               hands.push({ landmarks: synthHand({ pose: s.pose2, x: p2.x, y: p2.y, size, side: 'left' }), handedness: 'Right' })
             }
-            handle({ t: performance.now(), aspect: 4 / 3, hands })
+            handle({ t: vt, aspect: 4 / 3, hands })
+            playT = vt
+            vt += 33
             await sleep(33)
           }
           prev = s
@@ -356,6 +396,8 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
 
     return () => {
       stop()
+      ro?.disconnect()
+      body.style.paddingBottom = padBefore
       clearInterval(light)
       clearTimeout(hiddenTimer)
       clearTimeout(noteTimer.current)
@@ -373,6 +415,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
       if (import.meta.env.DEV && w.__auraHand) {
         delete w.__auraHand.feed
         delete w.__auraHand.events
+        delete w.__auraHand.stats
         delete w.__auraHand.play
         delete w.__auraHand.view
       }

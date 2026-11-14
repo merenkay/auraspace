@@ -103,7 +103,7 @@ export const DEFAULT_OPTIONS: GestureOptions = {
   depthOn: 1.18,
   fistMs: 700,
   swipeMinDist: 0.22,
-  swipeMaxMs: 280,
+  swipeMaxMs: 320,
   swipeCooldownMs: 800,
   idleMs: 2500,
   lostGraceMs: 160,
@@ -118,6 +118,8 @@ type Track = {
   filters: OneEuro[]
   lm: Pt[]
   f: Features
+  /** palm centre before smoothing (for fast gestures) */
+  rawPalm: { x: number; y: number }
   side: HandSide | null
   pose: Pose
   raw: Pose
@@ -228,6 +230,7 @@ export class GesturePipeline {
         filters: Array.from({ length: 63 }, () => new OneEuro(minCutoff, beta, dCutoff)),
         lm: [],
         f: features(good[i].landmarks, aspect),
+        rawPalm: centre(good[i].landmarks),
         side: null,
         pose: 'none',
         raw: 'none',
@@ -244,6 +247,7 @@ export class GesturePipeline {
       const h = good[i]
       tr.lm = h.landmarks.map((p, k) => ({ x: tr.filters[k * 3].filter(p.x, t), y: tr.filters[k * 3 + 1].filter(p.y, t), z: tr.filters[k * 3 + 2].filter(p.z, t) }))
       tr.f = features(tr.lm, aspect)
+      tr.rawPalm = centre(h.landmarks)
       tr.side = sideOf(h.handedness, this.o.inputMirrored) ?? tr.side
       tr.raw = classify(tr.f, tr.raw === 'pinch', this.o.pose)
       const { pose, changed } = tr.deb.push(tr.raw)
@@ -277,6 +281,7 @@ export class GesturePipeline {
       this.cancelPress(ev)
       this.endZoom(ev)
       this.steady = null
+      this.swipeHist = []
       primary = fresh.find((tr) => tr.side === 'right') ?? fresh[0]
       this.primaryId = primary.id
     }
@@ -397,17 +402,22 @@ export class GesturePipeline {
       }
     }
 
-    // ---- swipe: a quick horizontal sweep of the open palm --------------------------------------------
-    const palmX = this.o.inputMirrored ? f.palm.x : 1 - f.palm.x
-    this.swipeHist.push({ t, x: palmX, y: f.palm.y, open: primary.pose === 'open' && !this.press && !this.zoom })
+    // ---- swipe: a quick horizontal sweep of the open palm ----------------------------------------------
+    // Measured on the unsmoothed palm (smoothing would eat a fast flick); the sweep must span at least
+    // three frames, so a single-frame landmark jump is never a swipe.
+    const palm = primary.rawPalm
+    const palmX = this.o.inputMirrored ? palm.x : 1 - palm.x
+    this.swipeHist.push({ t, x: palmX, y: palm.y, open: primary.pose === 'open' && !this.press && !this.zoom })
     while (this.swipeHist.length && t - this.swipeHist[0].t > this.o.swipeMaxMs) this.swipeHist.shift()
     if (t >= this.swipeUntil && primary.pose === 'open' && !this.press && !this.zoom) {
       let i = this.swipeHist.length - 1
       while (i > 0 && this.swipeHist[i - 1].open) i--
       const a = this.swipeHist[i]
       const dx = palmX - a.x
-      const dy = f.palm.y - a.y
-      if (Math.abs(dx) >= this.o.swipeMinDist && Math.abs(dy) <= 0.6 * Math.abs(dx)) {
+      const dy = palm.y - a.y
+      let maxStep = 0
+      for (let k = i + 1; k < this.swipeHist.length; k++) maxStep = Math.max(maxStep, Math.abs(this.swipeHist[k].x - this.swipeHist[k - 1].x))
+      if (i <= this.swipeHist.length - 3 && maxStep <= 0.7 * Math.abs(dx) && Math.abs(dx) >= this.o.swipeMinDist && Math.abs(dy) <= 0.6 * Math.abs(dx)) {
         ev.push({ type: 'swipe', dir: dx > 0 ? 'right' : 'left' })
         this.swipeUntil = t + this.o.swipeCooldownMs
         this.swipeHist = []

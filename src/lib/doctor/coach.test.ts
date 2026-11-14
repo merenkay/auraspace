@@ -23,6 +23,14 @@ describe('coach programme', () => {
     expect(ids).toEqual(expect.arrayContaining(['glucose', 'asthma', 'balance', 'sleep', 'stones']))
     for (const i of plan.items.filter((x) => !x.rule)) expect(i.source?.url, i.id).toMatch(/^https:/)
   })
+  it('heart conditions ask for clearance before strength work, with a source; pregnancy is a labelled AURA rule', () => {
+    const profile = { ...emptyProfile(), conditions: ['angina', 'pregnancy'] }
+    const plan = buildCoachPlan({ context: 'home', ev: null, profile, latest: null, sleepAvg: null, now: NOW })
+    const cardiac = plan.items.find((i) => i.id === 'cardiac-clearance')!
+    expect(cardiac.level).toBe('caution')
+    expect(cardiac.source?.url).toMatch(/^https:/)
+    expect(plan.items.find((i) => i.id === 'pregnancy')?.rule).toBe(true)
+  })
   it('does nothing without data, and never mentions raising loads', () => {
     const plan = buildCoachPlan({ context: 'space', ev: null, profile: null, latest: null, sleepAvg: null, now: NOW })
     expect(plan.items).toHaveLength(0)

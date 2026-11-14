@@ -130,7 +130,7 @@ export default function App() {
           <Route path="/crew/:crewId" element={<CrewPage page={Overview} />} />
           <Route path="/crew/:crewId/diagnostics" element={<CrewPage page={Diagnostics} roles={['astronaut', 'member', 'surgeon']} />} />
           <Route path="/crew/:crewId/aura" element={<CrewPage page={Aura} roles={['astronaut', 'member', 'surgeon']} />} />
-          <Route path="/crew/:crewId/coach" element={<CrewPage page={Coach} roles={['astronaut', 'member']} />} />
+          <Route path="/crew/:crewId/coach" element={<CrewPage page={Coach} roles={['astronaut', 'member', 'surgeon']} />} />
           <Route path="/crew/:crewId/history" element={<CrewPage page={History} />} />
           <Route path="/environment" element={<Late><Environment /></Late>} />
           <Route path="/reports" element={<RequireAuth roles={['surgeon']}><Late><Reports /></Late></RequireAuth>} />

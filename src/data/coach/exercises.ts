@@ -150,7 +150,7 @@ export const EXERCISES: Exercise[] = [
   // ------------------------------------------------------------------ core (no loaded forward bending unless tagged)
   { id: 'wall-plank', name: 'Wall plank', kind: 'strength', pattern: 'core', rung: 1, muscles: ['abdomen', 'shoulders'], purpose: ['back', 'fitness'], contexts: HOME_POLAR, needs: ['wall'], contra: ['isometric', 'standing'], stress: ['shoulder'],
     steps: ['Stand facing a wall and place your forearms on it at shoulder height.', 'Walk your feet back until your body is in a straight line.', 'Hold while breathing normally, then walk back in.'],
-    cues: ['Breathe throughout — never hold your breath.', 'Stop as soon as your body sags.'], easier: 'Stand closer to the wall.', harder: 'Walk your feet further back.', dose: { reps: [2, 3], setsMax: 1 }, source: null },
+    cues: ['Breathe throughout — never hold your breath.', 'Stop as soon as your body sags.'], easier: 'Stand closer to the wall.', harder: 'Walk your feet further back.', dose: { reps: [2, 3], setsMax: 1, unit: 'holds' }, source: null },
   { id: 'bird-dog', name: 'Bird dog', kind: 'strength', pattern: 'core', rung: 2, muscles: ['back', 'abdomen', 'hips'], purpose: ['back', 'fitness'], contexts: HOME_POLAR, needs: [], contra: ['floor'], stress: ['wrist'],
     steps: ['Kneel on all fours, hands under shoulders, knees under hips.', 'Reach one arm forward and the opposite leg back until both are level with your body.', 'Return and switch sides.'],
     cues: ['Keep your back flat like a table.', 'Move slowly and breathe.'], easier: 'Move only the leg.', harder: 'Pause for 2 breaths at full reach.', dose: { reps: [5, 10], perSide: true, setsMax: 3 }, source: null },
@@ -204,6 +204,9 @@ export const EXERCISES: Exercise[] = [
   { id: 'walk-brisk', name: 'Brisk walk', kind: 'aerobic', pattern: 'aerobic', rung: 1, muscles: ['legs'], purpose: ['fitness', 'bp', 'glucose', 'mood', 'sleep', 'back', 'bone'], contexts: HOME_POLAR, needs: [], contra: ['standing'], stress: [],
     steps: ['Walk indoors (a corridor, around the house or station) or outside if it is safe.', 'Walk briskly enough that your breathing quickens.'],
     cues: ['Moderate: you can talk, but not sing.'], easier: 'Split it into 10-minute bouts.', harder: 'Walk faster or add stairs.', dose: { timed: true, setsMax: 1 }, source: 'cdc-intensity' },
+  { id: 'walk-after-meal', name: 'Walk after a meal', kind: 'aerobic', pattern: 'aerobic', rung: 1, muscles: ['legs'], purpose: ['glucose'], contexts: HOME_POLAR, needs: [], contra: ['standing'], stress: [],
+    steps: ['Plan this session for shortly after a main meal.', 'Walk at a comfortable, brisk pace indoors or outside.'],
+    cues: ['If you use insulin or diabetes tablets, check your blood sugar and carry something sugary.'], easier: 'Walk more slowly or in two shorter bouts.', harder: 'Walk a little faster.', dose: { timed: true, setsMax: 1 }, source: 'ada-pa' },
   { id: 'bike-steady', name: 'Exercise bike, steady', kind: 'aerobic', pattern: 'aerobic', rung: 1, muscles: ['legs'], purpose: ['fitness', 'bp', 'glucose', 'mood', 'joints'], contexts: HOME_POLAR, needs: ['bike'], contra: [], stress: [],
     steps: ['Set the seat so your knee is slightly bent at the bottom of the pedal stroke.', 'Pedal at a steady, moderate pace.'],
     cues: ['Moderate: you can talk, but not sing.'], easier: 'Lower the resistance.', harder: 'Raise the resistance a little.', dose: { timed: true, setsMax: 1 }, source: 'cdc-intensity' },

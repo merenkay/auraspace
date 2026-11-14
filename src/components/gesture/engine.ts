@@ -121,7 +121,8 @@ export async function createDetector(): Promise<Detector> {
 /**
  * Runs detection on new camera frames at most 30 times a second, as ordinary tasks between rendered frames
  * (never inside requestAnimationFrame, so the 3D viewer's render loop is not held up). When detection is slow
- * the rate drops so it never takes more than about 40 % of the main thread; while the page is hidden it pauses.
+ * the rate drops so it takes at most about 40 % of the main thread (down to 1 frame a second on a very slow
+ * device); while the page is hidden it pauses.
  */
 export function runDetection(video: HTMLVideoElement, det: Detector, onFrame: (f: RawFrame, ms: number) => void, onError: (e: unknown) => void): () => void {
   let stopped = false
@@ -157,7 +158,7 @@ export function runDetection(video: HTMLVideoElement, det: Detector, onFrame: (f
     const ms = performance.now() - t0
     avg = avg * 0.85 + ms * 0.15
     onFrame(frame, ms)
-    const interval = Math.min(110, Math.max(33, avg * 2.5))
+    const interval = Math.min(1000, Math.max(33, avg * 2.5))
     later(Math.max(0, interval - (performance.now() - t0)))
   }
   later(0)

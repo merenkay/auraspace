@@ -32,10 +32,11 @@ export type CoachResult = { suggestions: FocusSuggestionFull[]; training: Traini
 
 export function buildCoach(input: CoachInput): CoachResult {
   const { context, ev, rows, profile, latest, sleepAvg, day, today, logs, now } = input
-  const saved = !!input.training
-  const draftLimits = input.training?.limits ?? []
-  const suggestions = suggestFocus({ context, ev, rows, profile, latest, day, limits: draftLimits, now })
-  const training = input.training ? cleanTrainingProfile({ ...input.training, context }, context, today) : defaultTrainingProfile(context, suggestions, today)
+  // A profile saved for another context (equipment, schedule) does not carry over: start from suggestions again.
+  const stored = input.training && input.training.context === context ? input.training : null
+  const saved = !!stored
+  const suggestions = suggestFocus({ context, ev, rows, profile, latest, day, limits: stored?.limits ?? [], now })
+  const training = stored ? cleanTrainingProfile(stored, context, today) : defaultTrainingProfile(context, suggestions, today)
   const safety = buildSafety({ context, ev, profile, latest, sleepAvg, training, now })
   const recovering = suggestions.some((s) => s.why.some((w) => w.ruleId === 'bedRest'))
   const programme = generateProgramme({ training, safety, today, logs, ageBand: profile?.ageBand ?? null, conditions: profile?.conditions ?? [], recovering })

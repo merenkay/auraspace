@@ -42,6 +42,7 @@ function navFor(user: User | null, crewId: string | undefined): { primary: NavIt
           { to: b, label: 'Overview', icon: HeartPulse, end: true },
           { to: `${b}/diagnostics`, label: 'Diagnostics', icon: PersonStanding },
           { to: `${b}/aura`, label: 'AURA', icon: MessagesSquare },
+          { to: `${b}/coach`, label: 'Coach', icon: Dumbbell },
           { to: `${b}/history`, label: 'History', icon: ChartLine },
         ]
       : [

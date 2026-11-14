@@ -126,6 +126,7 @@ export const COACH_RULES = {
   dmGap: R('dmGap', 'ada-pa', 'Do not let more than 2 days pass between exercise sessions.', 'Daily exercise, or at least not allowing more than 2 days to elapse between exercise sessions, is recommended to enhance insulin action.'),
   dmResistance: R('dmResistance', 'ada-pa', 'Resistance exercise 2–3 times a week on non-consecutive days.', 'Adults with diabetes should engage in 2–3 sessions/week of resistance exercise on nonconsecutive days.'),
   dmSitting: R('dmSitting', 'ada-pa', 'Break up sitting with light activity every 30 minutes.', 'Prolonged sitting should be interrupted with bouts of light activity every 30 min for blood glucose benefits'),
+  dmPostMeal: R('dmPostMeal', 'ada-pa', 'With type 2 diabetes, walking after meals improves blood-sugar control.', 'interrupting prolonged sitting with 15 min of postmeal walking'),
   dmOrder: R('dmOrder', 'ada-pa', 'Doing resistance before aerobic exercise in one session lowers the risk of a hypo (type 1 diabetes).', 'performing resistance exercise first results in less hypoglycemia than when aerobic exercise is performed first'),
   moodGroup: R('moodGroup', 'nice-ng222', 'For depression, a programme of moderate aerobic exercise, usually more than once a week for 10 weeks, is a recommended option.', 'Usually consists of more than 1 session per week for 10 weeks.'),
   moodModerate: R('moodModerate', 'nice-ng222', 'It includes moderate-intensity aerobic exercise.', 'Includes moderate intensity aerobic exercise.'),
@@ -141,7 +142,7 @@ export type CoachRuleId = keyof typeof COACH_RULES
 
 export const ruleSource = (id: CoachRuleId): CoachSource => COACH_SOURCES[COACH_RULES[id].s]
 
-/** The sources that matter most for each focus area (shown under "Why this plan"). */
+/** The core guidance for each focus area (always listed under "How this plan was built"). */
 export const FOCUS_RULES: Record<FocusId, CoachRuleId[]> = {
   muscle: ['sarcopeniaRT', 'setsReps', 'noConsecutive', 'muscleDisuse', 'sarcopeniaProtein'],
   bone: ['boneResistImpact', 'boneProgressive', 'boneSets', 'boneExtension', 'boneImpactDose'],
