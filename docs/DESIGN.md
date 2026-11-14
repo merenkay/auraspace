@@ -311,3 +311,25 @@ Work top to bottom on your page; search for each pattern.
 - **Sound (optional):** `data-sfx="tick|select|confirm"` on an element plays that tone on click (`src/lib/sfx.ts`; silent unless the person turned sounds on). Primary buttons get `select`, tabs and nav `tick`.
 
 **Phones.** Long forms pin their one primary action above the bottom bar: `sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] md:static`. Tables become stacked rows below `sm`. Charts on phones use `minTickGap={48}` and a larger active dot (r 7) for touch.
+
+## 13. The AURA core (voice presence)
+
+The one object in the app that is allowed to keep moving, because it stands for a live process: the voice assistant. Design canvas (Claude Design): https://claude.ai/artifact/8fA92Bbs3vXCfcPovt1x5o. Code: `src/components/aura/core/` (`model.ts` is the pose table and the single source for the 3D scene, the flat fallback and the tests).
+
+- **What it is.** An instrument, not a face: a fixed tick ring (the reference; it never moves), three rings (the posture), a geodesic lattice of points (the person's voice) and a nucleus (AURA's voice). Flat hairlines of constant pixel width on the page background; no card, floor, halo, glow, blur or gradient.
+- **Colour.** Greys (`edge`, `dim`, `soft`, `ink`) draw the object. `accent` marks only the live parts and follows the profile. `crit` appears only in the urgent state, always together with the octagon frame and the word "Urgent" (shape + word + colour, §7). Nothing is accented when voice is off.
+- **Six states, six shapes** (each also has a word next to it; the transcript and AURA's sentence are shown as text):
+
+| State | Shape | Motion | Driven by |
+|---|---|---|---|
+| Ready (idle) | Three rings at three tilts, small nucleus | Rings drift, one turn in 70 to 120 s; nucleus breathes 4 % every 6 s; 30 fps | `phase: 'idle'` |
+| Listening | Rings flat toward you, concentric; nucleus opens hollow | Lattice and inner ring swell with the microphone level (rise 60 ms, settle 300 ms) | `phase: 'listening'` + `getVoiceLevel()` |
+| Working on it | Rings as gimbals at right angles, lattice drawn in, accent arc on the outer ring | Gimbals turn steadily; the arc travels once every 2.4 s | `phase: 'thinking'` |
+| Speaking | Rings level and nested like ripples; nucleus large and filled | Nucleus swells with speech energy; rings follow outward, 80 ms apart | `phase: 'speaking'` + `getVoiceLevel()` |
+| Urgent | Octagon frame locks round the core; rings square up; red replaces accent | Appears at once; three slow pulses, then still (§6). Never flashes | `urgent: true`, or an emergency result on the page |
+| Voice is off | Rings parked edge-on and dashed, nucleus hollow | None | `available: false` |
+
+- **Exceptions to §6 and §11, and their limits.** The idle drift and the level-driven motion loop, as `LiveDot` does, because they show something live. They stop whenever nothing is live: voice off, urgent after its pulses, reduced motion (the same six shapes as still poses), off screen, hidden tab. A new state swings the rings in about 400 ms; urgent is never eased in.
+- **Place.** It is the counterpart of the conversation: a sticky panel beside the thread from `lg`, one compact row (72 px core, state, one line, mic button) above the thread on phones. **A result always comes first:** once the assessment is shown the core takes a 13 rem column beside it from `xl` and otherwise moves below the result, so the emergency banner and its steps are never pushed down or covered. It is not shown in the flight surgeon's read-only walk-through.
+- **Input.** Tap / click / Enter on the core, or the "Talk to AURA" button, starts a conversation. Drag (or arrow keys) turns it, Ctrl + scroll / pinch / + − zooms between 0.7× and 1.6× inside the fixed tick ring, 0 or the reset button brings it home. With hand control: pinch-drag turns, two pinching hands zoom, a fist resets, a pinch-tap talks. Turning never changes what AURA is doing, and typing always works without it.
+- **Without WebGL** (missing or context lost) a flat SVG of the same pose takes its place and every control keeps working.

@@ -12,8 +12,9 @@ import { parseIntent } from '../../lib/voice/intents'
 import { createRecognizer, recognitionSupported, type Recognizer } from '../../lib/voice/recognition'
 import { loadSettings, saveSettings } from '../../lib/voice/settings'
 import { cancelSpeech, speak, ttsSupported } from '../../lib/voice/speech'
-import { Button, DUR, EASE, IconButton, Logo, Meter, Notice, Textarea, cx } from '../ui'
+import { Button, DUR, EASE, IconButton, Logo, Meter, Notice, Textarea, cx, useMedia } from '../ui'
 import AssessmentView from './AssessmentView'
+import AuraCore from './core/AuraCore'
 import Disclosure from './Disclosure'
 import { assessWithEnvironment, CabinAirNotice, environmentLine, EnvironmentNotes, useCabinContext, useCabinPrefill } from '../cabinlink'
 
@@ -52,7 +53,15 @@ function Message({ t, first }: { t: Turn; first: boolean }) {
 
 export type SaveHandler = (a: Assessment, answers: Answers) => Promise<void>
 
-export default function Consultation({ ctx, readings, profile, delaySec, firstName, onSave }: { ctx: Context; readings: Readings; profile: HealthProfile | null; delaySec: number; firstName: string; onSave?: SaveHandler }) {
+/**
+ * `presence`: show the AURA core (the 3D voice presence) as the counterpart of the conversation: beside the
+ * thread on wide screens, a compact strip above it on phones. Once a result is shown the result comes first:
+ * the core keeps a narrow column beside it on very wide screens and otherwise moves below it, so an emergency
+ * banner and its steps are never pushed down or covered.
+ */
+export default function Consultation({ ctx, readings, profile, delaySec, firstName, onSave, presence = false }: { ctx: Context; readings: Readings; profile: HealthProfile | null; delaySec: number; firstName: string; onSave?: SaveHandler; presence?: boolean }) {
+  const wide = useMedia('(min-width: 1024px)')
+  const xwide = useMedia('(min-width: 1280px)')
   const greeting = () => turn('aura', `Hello${firstName ? ` ${firstName}` : ''}. Tell me what is bothering you, in your own words — or pick from the list below.`, 'I work offline from a knowledge base of known conditions and official sources. I can say what your symptoms are consistent with, not diagnose.')
   const [turns, setTurns] = useState<Turn[]>(() => [greeting()])
   const [answers, setAnswers] = useState<Answers>({})
@@ -227,8 +236,8 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
     </div>
   )
 
-  return (
-    <div className="space-y-10">
+  const main = (
+    <div key="main" className="min-w-0 space-y-10">
       {done ? (
         <Disclosure size="row" title={`Conversation (${turns.length} messages)`} className="max-w-2xl border-b border-line">
           {thread}
@@ -352,6 +361,22 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
           />
         </div>
       )}
+    </div>
+  )
+
+  if (!presence) return main
+
+  // One instance of the core for every layout (it owns a WebGL context): only its place and size change.
+  const beside = done ? xwide : wide
+  const core = (
+    <aside key="core" className={cx('min-w-0', beside && 'sticky top-24 self-start')}>
+      <AuraCore variant={!beside ? 'strip' : done ? 'side' : 'panel'} listening={dictating} urgent={done && a.urgency === 'emergency'} />
+    </aside>
+  )
+  return (
+    <div className={cx(beside ? (done ? 'grid grid-cols-[minmax(0,1fr)_13rem] items-start gap-10' : 'grid grid-cols-[minmax(0,42rem)_minmax(0,1fr)] items-start gap-10') : cx('flex flex-col', done ? 'gap-6' : 'gap-4'))}>
+      {/* the strip sits above the thread on phones; everywhere else the conversation or the result comes first */}
+      {!beside && !done ? [core, main] : [main, core]}
     </div>
   )
 }

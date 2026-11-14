@@ -102,7 +102,8 @@ export default function Aura({ crewId }: { crewId: number }) {
                       You can run a consultation for {person?.name ?? 'this crew member'} to see how AURA reasons, but only they can save it to their record.
                     </Notice>
                   )}
-                  <Consultation ctx={ctx} readings={readings} profile={profile} delaySec={delaySec} firstName={firstName} onSave={self ? onSave : undefined} />
+                  {/* The AURA core is the person's own voice presence: it is left out of the surgeon's read-only walk-through. */}
+                  <Consultation ctx={ctx} readings={readings} profile={profile} delaySec={delaySec} firstName={firstName} onSave={self ? onSave : undefined} presence={self} />
                 </div>
               ))}
             {view === 'explain' &&
