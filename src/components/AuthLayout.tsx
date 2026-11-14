@@ -1,7 +1,8 @@
 import { Database, HardDrive } from 'lucide-react'
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import type { Context } from '../data/contexts'
+import { OTP_LENGTH, backspaceAt, enteredDigits, fillDigits, onlyDigits } from '../lib/otp'
 import { useSession } from '../lib/session'
 import OfflineBadge from './OfflineBadge'
 import { Button, Logo, MotionRoot, Notice, Stagger, StaggerItem, controlCls, cx, useContextAccent } from './ui'
@@ -73,13 +74,31 @@ export const inputCls = `${controlCls} mt-1.5 h-11`
 export const primaryBtn = 'h-12 w-full rounded-lg bg-ink font-medium text-space transition-colors hover:bg-white disabled:opacity-45'
 
 /**
- * Six digit boxes that behave like one field: type, paste, Backspace and arrow keys all work,
- * and the code is announced to password managers as a one-time code. `invalid` shakes the row once.
+ * Six digit boxes that behave like one field: typing advances, Backspace steps back, arrows/Home/End move,
+ * paste and OS one-time-code autofill fill from the current box. `invalid` shakes the row once.
+ * The value stays one contiguous digit string (no gaps); the editing rules live in lib/otp.ts.
  */
 export function CodeInput({ value, onChange, disabled, invalid = false, autoFocus = false }: { value: string; onChange: (v: string) => void; disabled?: boolean; invalid?: boolean; autoFocus?: boolean }) {
   const refs = useRef<(HTMLInputElement | null)[]>([])
-  const digits = value.replace(/\D/g, '').slice(0, 6)
-  const focus = (i: number) => refs.current[Math.max(0, Math.min(5, i))]?.focus()
+  const digits = onlyDigits(value).slice(0, OTP_LENGTH)
+  // The newest code, updated before React re-renders, so a focus move made in the same event sees it.
+  const latest = useRef(digits)
+  useLayoutEffect(() => {
+    latest.current = digits
+    // After a re-render the focused box's content changed: select it so the next digit overwrites.
+    const a = document.activeElement
+    if (a instanceof HTMLInputElement && refs.current.includes(a)) a.select()
+  }, [digits])
+  const focus = (i: number) => {
+    const el = refs.current[Math.max(0, Math.min(OTP_LENGTH - 1, i))]
+    el?.focus()
+    el?.select()
+  }
+  const commit = (r: { code: string; focus: number }) => {
+    latest.current = r.code
+    if (r.code !== digits) onChange(r.code)
+    focus(r.focus)
+  }
   const group = useRef<HTMLDivElement>(null)
   // A refused code shakes the row once (skipped when the OS asks for reduced motion).
   useEffect(() => {
@@ -92,53 +111,62 @@ export function CodeInput({ value, onChange, disabled, invalid = false, autoFocu
 
   return (
     <div ref={group} role="group" aria-label="6-digit verification code" className="flex gap-2">
-      {Array.from({ length: 6 }, (_, i) => (
+      {Array.from({ length: OTP_LENGTH }, (_, i) => (
         <input
           key={i}
           ref={(el) => {
             refs.current[i] = el
           }}
+          type="text"
           inputMode="numeric"
           pattern="[0-9]*"
           autoComplete={i === 0 ? 'one-time-code' : 'off'}
-          aria-label={`Digit ${i + 1} of 6`}
+          aria-label={`Digit ${i + 1} of ${OTP_LENGTH}`}
           aria-invalid={invalid || undefined}
-          maxLength={6}
           disabled={disabled}
           value={digits[i] ?? ''}
           onFocus={(e) => {
             // The code is one string: never leave a gap before the caret.
-            if (i > digits.length) focus(digits.length)
+            const n = latest.current.length
+            if (i > n) focus(n)
             else e.target.select()
           }}
           onPaste={(e) => {
-            const t = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-            if (!t) return
+            const t = onlyDigits(e.clipboardData.getData('text'))
             e.preventDefault()
-            onChange(t)
-            focus(t.length)
+            if (t) commit(fillDigits(latest.current, i, t))
           }}
           onKeyDown={(e) => {
+            const n = latest.current.length
             if (e.key === 'Backspace') {
               e.preventDefault()
-              if (digits[i]) onChange(digits.slice(0, i) + digits.slice(i + 1))
-              else if (i > 0) onChange(digits.slice(0, i - 1) + digits.slice(i))
-              focus(digits[i] ? i : i - 1)
+              commit(backspaceAt(latest.current, i))
+            } else if (e.key === 'Delete') {
+              e.preventDefault()
+              if (latest.current[i]) commit({ code: latest.current.slice(0, i) + latest.current.slice(i + 1), focus: i })
             } else if (e.key === 'ArrowLeft') {
               e.preventDefault()
               focus(i - 1)
             } else if (e.key === 'ArrowRight') {
               e.preventDefault()
-              focus(Math.min(i + 1, digits.length))
+              focus(Math.min(i + 1, n))
+            } else if (e.key === 'Home') {
+              e.preventDefault()
+              focus(0)
+            } else if (e.key === 'End') {
+              e.preventDefault()
+              focus(n)
             }
           }}
           onChange={(e) => {
-            const typed = e.target.value.replace(/\D/g, '')
-            if (!typed) return
-            // More than one digit arrives when a password manager or the keyboard suggestion fills the code.
-            const next = typed.length > 1 ? typed.slice(0, 6) : (digits.slice(0, i) + typed + digits.slice(i + 1)).slice(0, 6)
-            onChange(next)
-            focus(typed.length > 1 ? next.length : i + 1)
+            // One keystroke, or the whole code when the OS / a password manager autofills it into this box.
+            const typed = enteredDigits(e.target.value, latest.current[i], e.target.selectionStart)
+            if (!typed) {
+              // Non-digit typed (or a mobile keyboard cleared the box): keep the shown digit.
+              e.target.value = latest.current[i] ?? ''
+              return
+            }
+            commit(fillDigits(latest.current, i, typed))
           }}
           className={cx(
             'h-14 min-w-0 flex-1 rounded-lg border bg-deep text-center font-mono text-2xl font-medium text-ink transition-colors disabled:opacity-50',
