@@ -1,8 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { CHUNK_ERROR, reloadForNewBuild } from '../lib/recover'
 import { Logo, Button } from './ui'
 
-const CHUNK_ERROR = /dynamically imported module|importing a module script failed|failed to fetch|loading chunk|loading css chunk/i
-const RELOAD_FLAG = 'aura.chunk-reload'
 
 type Props = {
   children: ReactNode
@@ -26,17 +25,8 @@ export default class AppErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: ErrorInfo) {
     console.error('AURA render error', error, info.componentStack)
     // A page chunk that no longer exists means a new version was deployed while this tab was open.
-    // Reload once to pick it up; the flag prevents a reload loop if the server is simply unreachable.
-    if (CHUNK_ERROR.test(error.message) && navigator.onLine) {
-      try {
-        if (!sessionStorage.getItem(RELOAD_FLAG)) {
-          sessionStorage.setItem(RELOAD_FLAG, '1')
-          window.location.reload()
-        }
-      } catch {
-        /* storage blocked: the recovery screen below is enough */
-      }
-    }
+    // Reload to pick it up; reloadForNewBuild() refuses to loop if the server is simply unreachable.
+    if (CHUNK_ERROR.test(error.message)) reloadForNewBuild()
   }
 
   componentDidUpdate(prev: Props) {

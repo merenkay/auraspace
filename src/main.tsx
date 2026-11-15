@@ -3,8 +3,12 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router'
 import App from './App'
 import AppErrorBoundary from './components/AppErrorBoundary'
+import { installChunkRecovery } from './lib/recover'
 import { SessionProvider } from './lib/session'
 import './index.css'
+
+// A tab that outlived a deploy asks for chunks that no longer exist: reload once to pick up the current build.
+installChunkRecovery()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
