@@ -17,6 +17,8 @@ export type CaptionBarProps = {
   chapters: ChapterInfo[]
   presenter: boolean
   sound: boolean
+  /** Sound is on but the browser is still waiting for a first click or key press before it may play. */
+  soundHint?: boolean
   /** Text shown instead of the caption for a moment (e.g. "Press Esc again to leave"). */
   notice: string | null
   onToggle: () => void
@@ -30,7 +32,7 @@ export type CaptionBarProps = {
   onExit: () => void
 }
 
-const CaptionBar = forwardRef<HTMLDivElement, CaptionBarProps>(function CaptionBar({ snap, chapters, presenter, sound, notice, onToggle, onBack, onNext, onSeek, onSpeed, onSound, onPresenter, onRestart, onExit }, ref) {
+const CaptionBar = forwardRef<HTMLDivElement, CaptionBarProps>(function CaptionBar({ snap, chapters, presenter, sound, soundHint, notice, onToggle, onBack, onNext, onSeek, onSpeed, onSound, onPresenter, onRestart, onExit }, ref) {
   // Touch screens have no hover: a tap on the caption shows the controls for a few seconds.
   const [peek, setPeek] = useState(false)
   useEffect(() => {
@@ -111,6 +113,7 @@ const CaptionBar = forwardRef<HTMLDivElement, CaptionBarProps>(function CaptionB
               {snap.speed}×
             </button>
             <span className="flex-1" />
+            {soundHint && <span className="mr-1 text-xs text-soft">Click or press a key for sound</span>}
             <IconButton size="sm" icon={sound ? Volume2 : VolumeX} label={sound ? 'Sound and spoken narration: on' : 'Sound and spoken narration: off'} aria-pressed={sound} onClick={() => onSound(!sound)} className={sound ? 'text-ink' : undefined} />
             <IconButton size="sm" icon={MonitorPlay} label={presenter ? 'Presenter mode: on (controls hide, timer shown)' : 'Presenter mode: off'} aria-pressed={presenter} onClick={() => onPresenter(!presenter)} className={presenter ? 'text-ink' : undefined} />
             <IconButton size="sm" icon={RotateCcw} label="Start again" onClick={onRestart} />

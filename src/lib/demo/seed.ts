@@ -111,7 +111,9 @@ export function buildSeed(now = new Date(), real: { sfx?: string | null; voice?:
     assessments: {},
   }
   const seed: Record<string, string> = { [KEYS.store]: JSON.stringify(store), [KEYS.clinic]: JSON.stringify(clinic) }
-  if (real.sfx === '1' || real.sfx === '0') seed[KEYS.sfx] = real.sfx
+  // The tour is a presentation: it starts with sound and spoken narration on, whatever the person's own setting is
+  // (M or the speaker button turns it off; the choice lives only inside the sandbox and is gone when the tour ends).
+  seed[KEYS.sfx] = '1'
   if (real.voice) {
     try {
       seed[KEYS.voice] = JSON.stringify({ ...(JSON.parse(real.voice) as object), wake: false, readConsult: false })

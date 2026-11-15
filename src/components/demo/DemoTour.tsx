@@ -32,6 +32,22 @@ export default function DemoTour() {
   const [marks, setMarks] = useState<Mark[]>([])
   const [inset, setInset] = useState(150)
   const [notice, setNotice] = useState<string | null>(null)
+  // Browsers only let a page make sound after the person has clicked or pressed a key on it. The tour is its own
+  // page load, so until that first gesture the narration is silent: say so next to the speaker button.
+  const [awaitingGesture, setAwaitingGesture] = useState(() => {
+    const ua = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation
+    return ua ? !ua.hasBeenActive : false
+  })
+  useEffect(() => {
+    if (!awaitingGesture) return
+    const done = () => setAwaitingGesture(false)
+    window.addEventListener('pointerdown', done, { once: true, capture: true })
+    window.addEventListener('keydown', done, { once: true, capture: true })
+    return () => {
+      window.removeEventListener('pointerdown', done, { capture: true })
+      window.removeEventListener('keydown', done, { capture: true })
+    }
+  }, [awaitingGesture])
   const barRef = useRef<HTMLDivElement | null>(null)
   const markId = useRef(0)
 
@@ -199,6 +215,7 @@ export default function DemoTour() {
           chapters={engine.chapters}
           presenter={presenter}
           sound={sound}
+          soundHint={sound && awaitingGesture}
           notice={notice}
           onToggle={() => engine.toggle()}
           onBack={() => engine.back()}
