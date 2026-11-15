@@ -1,0 +1,50 @@
+# Single-page app routing for Apache (Hostinger): serve index.html for unknown paths,
+# but leave real files, the PHP API and the static folders alone.
+Options -Indexes
+DirectoryIndex index.html
+
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  # The PHP API is never rewritten.
+  RewriteRule ^api/ - [L]
+  # Static folders: a missing file must be a real 404, not index.html (an HTML page served as a JS chunk,
+  # a 3D model or a sample zip only produces a confusing error).
+  RewriteRule ^(assets|models|samples|icons|mediapipe)/ - [L]
+  # App-shell files (service worker, manifest, offline page, icon): served as files, a missing one is a 404.
+  RewriteRule ^(sw\.js|manifest\.webmanifest|offline\.html|favicon\.svg)$ - [L]
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+  RewriteRule ^ index.html [L]
+</IfModule>
+
+<IfModule mod_mime.c>
+  AddType model/gltf-binary .glb
+  AddType application/wasm .wasm
+  AddType application/manifest+json .webmanifest
+</IfModule>
+
+<IfModule mod_deflate.c>
+  AddOutputFilterByType DEFLATE text/html text/css application/javascript application/json image/svg+xml
+</IfModule>
+
+<IfModule mod_expires.c>
+  ExpiresActive On
+  ExpiresByType application/javascript "access plus 1 year"
+  ExpiresByType text/css "access plus 1 year"
+  ExpiresByType model/gltf-binary "access plus 1 week"
+</IfModule>
+
+# The app shell must always be revalidated: a long-lived sw.js or index.html would pin users to an old build.
+# (Applies after the SPA rewrite too, since /login etc. are served from index.html.) Hashed files in /assets/
+# keep the 1-year lifetime from the rules above.
+<FilesMatch "^(sw\.js|index\.html|manifest\.webmanifest|offline\.html)$">
+  <IfModule mod_expires.c>
+    ExpiresActive Off
+  </IfModule>
+  <IfModule mod_headers.c>
+    Header unset Expires
+    Header set Cache-Control "no-cache"
+  </IfModule>
+</FilesMatch>

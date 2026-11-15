@@ -1,0 +1,1 @@
+var e=new EventTarget;function t(t,n){e.dispatchEvent(new CustomEvent(t,{detail:n}))}function n(t,n){let r=e=>n(e.detail);return e.addEventListener(t,r),()=>e.removeEventListener(t,r)}var r;function i(e){r=e}function a(){let e=r;return r=void 0,e}var o=`aura:data-changed`,s=()=>window.dispatchEvent(new Event(o));export{t as a,a as i,s as n,n as o,i as r,o as t};

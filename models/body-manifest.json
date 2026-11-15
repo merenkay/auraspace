@@ -1,0 +1,300 @@
+{
+  "files": [
+    {
+      "file": "body.glb",
+      "bytes": 2457712,
+      "layers": [
+        "layer_skeleton",
+        "layer_organs",
+        "layer_arteries",
+        "layer_veins",
+        "layer_nerves",
+        "layer_muscles",
+        "layer_skin"
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "name": "sys_bones",
+      "system": "bones",
+      "layer": "skeleton",
+      "label": "Skeleton",
+      "triangles": 160000,
+      "file": "body.glb",
+      "color": "#e6dcc3",
+      "sourceElements": 286,
+      "sourceTriangles": 657088
+    },
+    {
+      "name": "sys_brain",
+      "system": "brain",
+      "layer": "organs",
+      "label": "Brain",
+      "triangles": 33996,
+      "file": "body.glb",
+      "color": "#e3a9a6",
+      "sourceElements": 103,
+      "sourceTriangles": 460716
+    },
+    {
+      "name": "sys_eyes",
+      "system": "eyes",
+      "layer": "organs",
+      "label": "Eyes",
+      "triangles": 6000,
+      "file": "body.glb",
+      "color": "#f1efe8",
+      "sourceElements": 22,
+      "sourceTriangles": 288058
+    },
+    {
+      "name": "sys_heart",
+      "system": "heart",
+      "layer": "organs",
+      "label": "Heart",
+      "triangles": 32000,
+      "file": "body.glb",
+      "color": "#a3312c",
+      "sourceElements": 84,
+      "sourceTriangles": 140244
+    },
+    {
+      "name": "sys_lungs",
+      "system": "lungs",
+      "layer": "organs",
+      "label": "Lungs & Airways",
+      "triangles": 30000,
+      "file": "body.glb",
+      "color": "#e19b97",
+      "sourceElements": 128,
+      "sourceTriangles": 150614,
+      "notes": [
+        "lung lobe surfaces taken from BodyParts3D 3.0 (release 4.0 has only the bronchial trees)"
+      ]
+    },
+    {
+      "name": "sys_metabolism",
+      "system": "metabolism",
+      "layer": "organs",
+      "label": "Digestive & Metabolic Organs",
+      "triangles": 48000,
+      "file": "body.glb",
+      "color": "#c97f63",
+      "sourceElements": 108,
+      "sourceTriangles": 293444
+    },
+    {
+      "name": "sys_renal",
+      "system": "renal",
+      "layer": "organs",
+      "label": "Kidneys & Urinary Tract",
+      "triangles": 8000,
+      "file": "body.glb",
+      "color": "#8f3b37",
+      "sourceElements": 6,
+      "sourceTriangles": 9944
+    },
+    {
+      "name": "sys_immune",
+      "system": "immune",
+      "layer": "organs",
+      "label": "Spleen & Thymus (Immune)",
+      "triangles": 3410,
+      "file": "body.glb",
+      "color": "#7a3d5e",
+      "sourceElements": 3,
+      "sourceTriangles": 3410
+    },
+    {
+      "name": "sys_arteries",
+      "system": "arteries",
+      "layer": "arteries",
+      "label": "Arteries",
+      "triangles": 65996,
+      "file": "body.glb",
+      "color": "#c42b2b",
+      "sourceElements": 581,
+      "sourceTriangles": 937996
+    },
+    {
+      "name": "sys_veins",
+      "system": "veins",
+      "layer": "veins",
+      "label": "Veins",
+      "triangles": 45000,
+      "file": "body.glb",
+      "color": "#2f5aa8",
+      "sourceElements": 384,
+      "sourceTriangles": 930034
+    },
+    {
+      "name": "sys_nerves",
+      "system": "nerves",
+      "layer": "nerves",
+      "label": "Nerves & Spinal Cord",
+      "triangles": 9996,
+      "file": "body.glb",
+      "color": "#f0cf4f",
+      "sourceElements": 42,
+      "sourceTriangles": 56124,
+      "notes": [
+        "includes a generated spinal-cord approximation (tube along the BodyParts3D vertebral canal); BodyParts3D 4.0 has no spinal cord or peripheral nerve meshes besides the orbital/optic nerves"
+      ]
+    },
+    {
+      "name": "sys_muscles",
+      "system": "muscles",
+      "layer": "muscles",
+      "label": "Skeletal Muscles",
+      "triangles": 110000,
+      "file": "body.glb",
+      "color": "#b4473f",
+      "sourceElements": 438,
+      "sourceTriangles": 2458658
+    },
+    {
+      "name": "sys_skin",
+      "system": "skin",
+      "layer": "skin",
+      "label": "Skin",
+      "triangles": 29924,
+      "file": "body.glb",
+      "color": "#dfb498",
+      "sourceElements": 3,
+      "sourceTriangles": 207632
+    }
+  ],
+  "layers": [
+    {
+      "name": "layer_skeleton",
+      "layer": "skeleton",
+      "label": "Skeleton",
+      "children": [
+        "sys_bones"
+      ]
+    },
+    {
+      "name": "layer_organs",
+      "layer": "organs",
+      "label": "Organs",
+      "children": [
+        "sys_brain",
+        "sys_eyes",
+        "sys_heart",
+        "sys_lungs",
+        "sys_metabolism",
+        "sys_renal",
+        "sys_immune"
+      ]
+    },
+    {
+      "name": "layer_arteries",
+      "layer": "arteries",
+      "label": "Arteries",
+      "children": [
+        "sys_arteries"
+      ]
+    },
+    {
+      "name": "layer_veins",
+      "layer": "veins",
+      "label": "Veins",
+      "children": [
+        "sys_veins"
+      ]
+    },
+    {
+      "name": "layer_nerves",
+      "layer": "nerves",
+      "label": "Nerves",
+      "children": [
+        "sys_nerves"
+      ]
+    },
+    {
+      "name": "layer_muscles",
+      "layer": "muscles",
+      "label": "Muscles",
+      "children": [
+        "sys_muscles"
+      ]
+    },
+    {
+      "name": "layer_skin",
+      "layer": "skin",
+      "label": "Skin",
+      "children": [
+        "sys_skin"
+      ]
+    }
+  ],
+  "totalTriangles": 582322,
+  "boundingBox": {
+    "min": [
+      -0.3335,
+      0,
+      -0.146
+    ],
+    "max": [
+      0.3335,
+      1.7195,
+      0.146
+    ],
+    "size": [
+      0.667,
+      1.7195,
+      0.292
+    ]
+  },
+  "units": "m",
+  "up": "+Y",
+  "front": "+Z",
+  "left": "+X (subject's left)",
+  "orientationChecks": [
+    {
+      "check": "heart is anterior (+Z) of thoracic spine",
+      "pass": true
+    },
+    {
+      "check": "sternum is anterior (+Z) of thoracic spine",
+      "pass": true
+    },
+    {
+      "check": "eyes are anterior (+Z) of brain centre",
+      "pass": true
+    },
+    {
+      "check": "heart lies on the subject's left (+X)",
+      "pass": true
+    },
+    {
+      "check": "liver lies on the subject's right (-X)",
+      "pass": true
+    },
+    {
+      "check": "brain above heart above heels (+Y up)",
+      "pass": true
+    },
+    {
+      "check": "big toes are anterior (+Z) of heels",
+      "pass": true
+    },
+    {
+      "check": "highest point (Skin, y=1.719 m) is above the brain centroid",
+      "pass": true
+    }
+  ],
+  "compression": "EXT_meshopt_compression + KHR_mesh_quantization (decode with three/examples/jsm/libs/meshopt_decoder.module.js)",
+  "source": {
+    "name": "BodyParts3D",
+    "version": "4.0 (2013-06-19; polygon reduction rate 99%, is-a + part-of OBJ sets) + lung lobes from 3.0 (2011-09-15)",
+    "url": "https://dbarchive.biosciencedbc.jp/en/bodyparts3d/download.html",
+    "generated": [
+      "approximate spinal cord in sys_nerves (not BodyParts3D data)"
+    ]
+  },
+  "attribution": "BodyParts3D, © The Database Center for Life Science licensed under CC Attribution-Share Alike 2.1 Japan",
+  "attributionCurrentLicense": "BodyParts3D, © The Database Center for Life Science licensed under CC Attribution 4.0 International",
+  "license": "CC BY-SA 2.1 JP (derivative work; see ATTRIBUTION.md)"
+}

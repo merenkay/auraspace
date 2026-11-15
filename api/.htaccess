@@ -1,0 +1,11 @@
+# Only index.php and install.php are public entry points.
+# (routes/ and schema/ have their own deny-all .htaccess; the helper files below are denied here.)
+<FilesMatch "^(lib\.php|mail\.php|config\.local\.php|seed\.json)$">
+  <IfModule mod_authz_core.c>
+    Require all denied
+  </IfModule>
+  <IfModule !mod_authz_core.c>
+    Order allow,deny
+    Deny from all
+  </IfModule>
+</FilesMatch>
