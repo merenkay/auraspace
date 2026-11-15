@@ -18,7 +18,7 @@ export const OPTIONAL_TARGETS = {
 export const CLOSING = {
   project: 'AURA — Full Body Diagnostics',
   tagline: 'Your health, wherever help is far away.',
-  team: '',
+  team: 'Team Son KargaBurunlar',
   event: 'NASA Space Apps Challenge 2026',
 }
 
