@@ -9,7 +9,7 @@
 // capture). What AURA adds around it: the measured microphone level (level.ts + vad.ts) keeps a listen open while
 // someone is still audibly speaking and explains a listen that gave no words ("sound but no words" v. "no signal");
 // an always-on wake-word session restarts with back-off and steps aside while AURA itself is speaking.
-import { HOLD_MAX_MS, holdForVoice, retryDelay, silenceWindow, STOP_GRACE_MS, TIMING, Transcript, WAKE_RETRY, type Alt, type ListenMode, type Timing, type VoiceNow } from './endpoint'
+import { BARE_HEY, HOLD_MAX_MS, holdForVoice, retryDelay, silenceWindow, STOP_GRACE_MS, TIMING, Transcript, WAKE_RETRY, type Alt, type ListenMode, type Timing, type VoiceNow } from './endpoint'
 import { startMicLevel, startMicMonitor, type MicMonitor } from './level'
 import { setDictationActive, setVoicePresence } from './presence'
 import { loadSettings, type VoiceLang } from './settings'
@@ -134,6 +134,24 @@ export function holdRecognition(): () => void {
   }
 }
 
+let wakePauses = 0
+/**
+ * Pause only the always-on wake-word listener until the returned function is called. Another recogniser (the
+ * consultation's dictation) uses it: browsers run one recognition session at a time, so a wake listener that keeps
+ * restarting next to it would cut the dictation off, and the dictation would cut the wake listener off.
+ */
+export function pauseWakeListening(): () => void {
+  wakePauses++
+  for (const fn of [...holdListeners]) fn()
+  let done = false
+  return () => {
+    if (done) return
+    done = true
+    wakePauses = Math.max(0, wakePauses - 1)
+    for (const fn of [...holdListeners]) fn()
+  }
+}
+
 /** AURA's own speech as the listener sees it: `active` = speaking now or within the tail after (SELF_VOICE_TAIL_MS). */
 export type SpeechGate = { active: () => boolean; subscribe: (fn: (speaking: boolean) => void) => () => void }
 const SPEECH_GATE: SpeechGate = { active: () => selfVoice(), subscribe: subscribeSpeech }
@@ -158,8 +176,16 @@ export type ListenerOptions = {
   maxAlternatives?: number
   /** Domain phrases for recognition biasing. */
   phrases?: string[]
-  /** Wake mode: an utterance only counts once this returns true for the transcript. */
+  /** Wake mode: an utterance only counts once this returns true for the transcript (tested from each phrase on). */
   wakeTest?: (text: string) => boolean
+  /** Wake mode: a phrase that is only a short wake word ("hey"); it wakes under the standalone rule (BARE_HEY). */
+  bareWake?: (phrase: string) => boolean
+  /** Wake mode, awake: true while only the wake phrase has been heard (wait the longer first window for the command). */
+  wakeOnly?: (text: string) => boolean
+  /** Wake mode: the wake phrase was just heard ('name' = "hey AURA" / "AURA", 'bare' = a standalone "hey"). */
+  onWake?: (how: 'name' | 'bare') => void
+  /** Wake mode: woken, but it ended without an utterance to hand over (nothing followed, or AURA began to speak). */
+  onWakeLost?: () => void
   /** Listening began (once per start(), not on the transparent restarts). */
   onStart?: () => void
   onInterim?: (text: string) => void
@@ -230,8 +256,17 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
   let restartT: ReturnType<typeof setTimeout> | undefined
   let resumeT: ReturnType<typeof setTimeout> | undefined
   let watchT: ReturnType<typeof setTimeout> | undefined
+  let staleT: ReturnType<typeof setTimeout> | undefined
+  let bareT: ReturnType<typeof setTimeout> | undefined
   let unsubs: (() => void)[] = []
   let finishReason: 'silence' | 'release' | 'cap' | 'tap' = 'silence'
+  // the plain-"hey" wake: when words were last heard, the quiet before the newest phrase, the cool-down
+  let lastSpeechAt = -Infinity
+  let lastText = ''
+  let phraseN = 0
+  let phraseGap = Infinity
+  let bareUntil = 0
+  let wokeBare = false
 
   const clearTimers = () => {
     clearTimeout(silenceT)
@@ -239,17 +274,21 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
     clearTimeout(graceT)
     clearTimeout(restartT)
     clearTimeout(watchT)
+    clearTimeout(staleT)
+    clearTimeout(bareT)
   }
   /** the listen is over for good: give the microphone meter back and stop watching speech / page events */
   const cleanup = () => {
     clearTimeout(resumeT)
     clearTimeout(watchT)
+    clearTimeout(staleT)
+    clearTimeout(bareT)
     mon?.stop()
     mon = null
     for (const u of unsubs) u()
     unsubs = []
   }
-  const blocked = () => holds > 0 || (mode === 'wake' && !!gate?.active())
+  const blocked = () => holds > 0 || (mode === 'wake' && (wakePauses > 0 || !!gate?.active()))
   const counting = () => mode === 'auto' || (mode === 'wake' && awake)
   const windowOff = () => o.onWindow?.({ deadline: null, total: 0, heard: tr.heard(), mode })
   const voiceNow = (): VoiceNow | null => {
@@ -261,7 +300,9 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
     clearTimeout(silenceT)
     holding = false
     if (!counting() || finishing) return windowOff()
-    const ms = silenceWindow(timing, tr.heard(), sens)
+    // woken by the wake phrase alone: the person is about to say the command, give them the longer first window
+    const heard = tr.heard() && !(mode === 'wake' && o.wakeOnly?.(tr.text()))
+    const ms = silenceWindow(timing, heard, sens)
     windowMs = ms
     silenceT = setTimeout(silenceOut, ms)
     o.onWindow?.({ deadline: Date.now() + ms, total: ms, heard: tr.heard(), mode })
@@ -280,6 +321,60 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
     holding = false
     finish('silence')
   }
+  const resetTr = () => {
+    tr.reset()
+    phraseN = 0
+    lastText = ''
+  }
+
+  /* ----- wake mode ----- */
+
+  /** The newest phrase from which the wake test passes (the wake word starts in it), or -1. */
+  const wakeAt = (phrases: string[]): number => {
+    if (!o.wakeTest) return -1
+    for (let i = phrases.length - 1; i >= 0; i--) if (o.wakeTest(phrases.slice(i).join(' '))) return i
+    return -1
+  }
+  /** The plain-"hey" rule (BARE_HEY): the newest phrase alone, after quiet, followed by a pause, not in cool-down. */
+  const considerBare = (phrases: string[]) => {
+    const last = phrases[phrases.length - 1] ?? ''
+    if (!o.bareWake || !o.bareWake(last) || phraseGap < BARE_HEY.GAP_MS || Date.now() < bareUntil) return
+    const n = phrases.length
+    bareT = setTimeout(
+      () => {
+        if (!want || awake || suspended || !rec || finishing) return
+        const now = tr.phrases()
+        if (now.length !== n || !o.bareWake?.(now[n - 1] ?? '') || Date.now() < bareUntil) return
+        wakeUp('bare', n - 1)
+      },
+      tr.lastFinal() ? BARE_HEY.FINAL_PAUSE_MS : BARE_HEY.PAUSE_MS,
+    )
+  }
+  /** The wake phrase was heard: from its phrase on, this is an utterance for AURA. */
+  const wakeUp = (how: 'name' | 'bare', phrase: number) => {
+    clearTimeout(bareT)
+    tr.trimTo(phrase)
+    awake = true
+    wokeBare = how === 'bare'
+    if (wokeBare) bareUntil = Date.now() + BARE_HEY.COOLDOWN_MS
+    startedAt = Date.now()
+    readSensitivity()
+    mon?.mark()
+    armCap()
+    o.onWake?.(how)
+    o.onInterim?.(tr.text())
+    if (!finishing) armSilence()
+  }
+  /** A session that has gone quiet for good without ending (the browser can leave one hanging): replace it. */
+  const armStale = (r: Rec) => {
+    clearTimeout(staleT)
+    staleT = setTimeout(() => {
+      if (rec !== r || !want || awake || finishing) return
+      fails = 0
+      restartFresh()
+    }, WAKE_RETRY.STALE_SESSION_MS)
+  }
+
   const armCap = () => {
     clearTimeout(capT)
     if (mode === 'wake' && !awake) return
@@ -298,6 +393,7 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
       if (rec !== r) return
       liveRec = r
       clearTimeout(watchT)
+      if (mode === 'wake') armStale(r)
       if (!announced) {
         announced = true
         o.onStart?.()
@@ -305,6 +401,7 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
     }
     r.onresult = (e) => {
       if (rec !== r || delivered) return
+      if (mode === 'wake') armStale(r)
       tr.update(e.results)
       const text = tr.text()
       if (!text) return
@@ -314,17 +411,27 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
       netReported = false
       wordsAt = Date.now()
       if (mode === 'wake' && !awake) {
-        if (!o.wakeTest?.(text)) {
+        const phrases = tr.phrases()
+        // the quiet before the newest phrase (the plain-"hey" wake must not come out of the middle of a conversation)
+        if (phrases.length !== phraseN) {
+          phraseGap = wordsAt - lastSpeechAt
+          phraseN = phrases.length
+        }
+        if (text !== lastText) {
+          lastText = text
+          lastSpeechAt = wordsAt
+        }
+        clearTimeout(bareT)
+        const at = wakeAt(phrases)
+        if (at < 0) {
           o.onInterim?.(text)
+          considerBare(phrases)
           // keep memory bounded while waiting for the wake word
           if (Array.from(e.results).every((x) => x.isFinal) && e.results.length > 6) restartFresh()
           return
         }
-        awake = true
-        startedAt = Date.now()
-        readSensitivity()
-        mon?.mark()
-        armCap()
+        wakeUp('name', at)
+        return
       }
       o.onInterim?.(text)
       if (!finishing) armSilence()
@@ -366,7 +473,9 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
         return o.onEnd?.()
       }
       // The browser stopped on its own (a pause, "no-speech", the ~60 s limit): keep what we heard and go on.
-      tr.seal()
+      // waiting for the wake word, nothing needs stitching (and chatter must not pile up across sessions)
+      if (mode === 'wake' && !awake) resetTr()
+      else tr.seal()
       rec = null
       if (mode === 'wake') {
         const short = Date.now() - sessionAt < WAKE_RETRY.SHORT_SESSION_MS
@@ -453,7 +562,7 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
   }
 
   const restartFresh = () => {
-    tr.reset()
+    resetTr()
     const old = rec
     rec = null
     try {
@@ -476,10 +585,12 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
       } catch {
         /* not running */
       }
+      const woke = awake
       awake = false
       finishing = false
-      tr.reset()
+      resetTr()
       windowOff()
+      if (woke) o.onWakeLost?.()
     }
     clearTimeout(resumeT)
     resumeT = setTimeout(resume, 150)
@@ -538,9 +649,12 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
       const woke = awake
       awake = false
       finishing = false
-      tr.reset()
+      resetTr()
+      // the plain-"hey" cool-down runs from the end of what it woke for
+      if (woke && wokeBare) bareUntil = Date.now() + BARE_HEY.COOLDOWN_MS
       if (woke) act?.learn(alts.length > 0)
       if (woke && alts.length) o.onFinal(alts, finishReason)
+      else if (woke) o.onWakeLost?.()
       if (want) restartT = setTimeout(() => want && begin(), 150)
       return
     }
@@ -593,7 +707,7 @@ export function createListener(o: ListenerOptions, deps: ListenerDeps = {}): Lis
       netFails = 0
       netDown = false
       netReported = false
-      tr.reset()
+      resetTr()
       startedAt = Date.now()
       wordsAt = startedAt
       readSensitivity()
@@ -662,10 +776,14 @@ export function createRecognizer(o: RecognizerOptions): Recognizer | null {
     }
     // the consultation's dictation is published as 'listening' with the real microphone level (presence.ts)
     let stopLevel: (() => void) | null = null
+    // one recognition session at a time: the wake-word listener steps aside while this dictation runs
+    let resumeWake: (() => void) | null = null
     const off = () => {
       stopLevel?.()
       stopLevel = null
       setDictationActive(false)
+      resumeWake?.()
+      resumeWake = null
     }
     const l = createListener({
       lang: o.lang,
@@ -692,7 +810,10 @@ export function createRecognizer(o: RecognizerOptions): Recognizer | null {
     })
     if (!l) return null
     return {
-      start: () => l.start(),
+      start: () => {
+        resumeWake ??= pauseWakeListening()
+        l.start()
+      },
       stop: () => l.finish('release'),
       abort: () => {
         off()

@@ -33,15 +33,17 @@ export class Transcript {
   /** segments kept from earlier browser sessions (each: the alternatives for that stretch of speech) */
   private kept: Alt[][] = []
   /** the current browser session's results */
-  private live: { alts: Alt[]; final: boolean }[] = []
+  private live: { alts: Alt[]; final: boolean; idx: number }[] = []
+  /** the current session's results before this index were dropped (trimTo) */
+  private skip = 0
 
   /** Replace the current session's view with the browser's full results list (continuous mode keeps them all). */
   update(results: ArrayLike<ResultLike>) {
-    const next: { alts: Alt[]; final: boolean }[] = []
-    for (let i = 0; i < results.length; i++) {
+    const next: { alts: Alt[]; final: boolean; idx: number }[] = []
+    for (let i = this.skip; i < results.length; i++) {
       const r = results[i]
       const alts = Array.from({ length: r.length }, (_, j) => norm(r[j])).filter((a) => a.transcript)
-      if (alts.length) next.push({ alts, final: r.isFinal })
+      if (alts.length) next.push({ alts, final: r.isFinal, idx: i })
     }
     this.live = next
   }
@@ -50,11 +52,39 @@ export class Transcript {
   seal() {
     for (const s of this.live) this.kept.push(s.alts)
     this.live = []
+    this.skip = 0
   }
 
   reset() {
     this.kept = []
     this.live = []
+    this.skip = 0
+  }
+
+  /** The best transcript of each heard phrase (segment), oldest first. */
+  phrases(): string[] {
+    return this.segments().map((s) => s[0]?.transcript ?? '')
+  }
+
+  /** The newest phrase is final (the recogniser closed it after a pause). */
+  lastFinal(): boolean {
+    const l = this.live[this.live.length - 1]
+    return l ? l.final : this.kept.length > 0
+  }
+
+  /** Forget the phrases before index `i` (chatter before the wake word); later updates of this session skip them. */
+  trimTo(i: number) {
+    if (i <= 0) return
+    const k = this.kept.length
+    if (i <= k) {
+      this.kept = this.kept.slice(i)
+      return
+    }
+    this.kept = []
+    const drop = i - k
+    const first = this.live[drop]
+    this.skip = first ? first.idx : (this.live[this.live.length - 1]?.idx ?? this.skip - 1) + 1
+    this.live = this.live.slice(drop)
   }
 
   private segments(): Alt[][] {
@@ -152,6 +182,25 @@ export const WAKE_RETRY = {
   NET_MAX_MS: 30_000,
   /** start() answered with neither a start nor an error for this long: drop the session and try again */
   START_WATCHDOG_MS: 4000,
+  /** a running session that neither reports anything nor ends for this long has silently died: replace it
+   *  (the browser ends a healthy silent session itself after roughly 5-60 s) */
+  STALE_SESSION_MS: 75_000,
+} as const
+
+/**
+ * The plain-"hey" wake (fuzzy.ts isBareHey). "Hey" is an everyday word, so it only wakes AURA when it is said on its
+ * own: the heard phrase is nothing but "hey", it began after at least GAP_MS of quiet (not the middle of a
+ * conversation), and no further word followed within PAUSE_MS (the recogniser's first interim of "hey John, ..."
+ * is a bare "hey" too: the pause tells the two apart). After a bare-hey wake the next one waits COOLDOWN_MS.
+ * Too eager in a noisy room: raise GAP_MS / PAUSE_MS, or switch "also a plain Hey" off in the voice settings.
+ * Too deaf: lower PAUSE_MS (not below ~400 ms).
+ */
+export const BARE_HEY = {
+  GAP_MS: 800,
+  PAUSE_MS: 700,
+  /** a phrase the recogniser already closed as just "hey" needs only this much more quiet */
+  FINAL_PAUSE_MS: 250,
+  COOLDOWN_MS: 8000,
 } as const
 
 /** Delay before restarting: `fails` = consecutive sessions that ended at once, or network errors in a row. */

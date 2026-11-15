@@ -188,18 +188,94 @@ export function correct(text: string): { text: string; fixes: Fix[] } {
 
 /* ---------- wake word ---------- */
 
-/** "AURA" as recognisers hear it. */
+/** "AURA" as recognisers hear it (used by intents.ts to strip a leading wake word from a command). */
 export const WAKE_WORDS = '(?:aura|aurora|ora|laura|orah|aurah|awra|oura|hora|auro|or a|our a)'
-const WAKE_AT = new RegExp(`(?:^|\\b)(?:(?:hey|hi|ok|okay|hello|selam|merhaba)[\\s,]+)?${WAKE_WORDS}\\b[\\s,.:!?-]*`)
+
+/*
+ * Waking AURA from what the always-on listener hears (English and Turkish recognition, interim or final, any case
+ * or punctuation). Three strengths, so chatter does not wake it:
+ *  - STRONG spellings of the name ("aura", "avra", ...) are not everyday words: they wake anywhere in an utterance;
+ *  - WEAK spellings ("ora", "laura", "hora", "aurora", "or a" ...) are real words or names (Turkish "ora" = "there"):
+ *    they wake only after a greeting ("hey ora") or at the start of a phrase ("Ora, what's my pulse");
+ *  - after a greeting, any word that sounds like the name (phoneticKey within one edit of "aura" / "ora") wakes too:
+ *    "hey aira", "hey oara", "selam aurra".
+ * A plain "hey" is handled separately (isBareHey + the standalone rule in recognition.ts).
+ */
+const WAKE_STRONG = new Set(['aura', 'auraa', 'aurah', 'aurra', 'awra', 'avra', 'ahura', 'auras'])
+const WAKE_WEAK = new Set(['oprah', 'ora', 'orah', 'orra', 'oura', 'laura', 'lora', 'lorra', 'hora', 'aurora', 'auro', 'ura', 'oora', 'aora'])
+/** two-word spellings of the name */
+const WAKE_WEAK2 = new Set(['or a', 'our a', 'a ura', 'aw ra', 'o ra', 'au ra'])
+/** words in front of the name: "hey", "hi", "ok", "hello", "selam", "merhaba" and how recognisers spell them */
+const WAKE_GREET = new Set(['hey', 'heyy', 'heey', 'hay', 'hei', 'hej', 'ey', 'hi', 'ok', 'okay', 'okey', 'hello', 'helo', 'hallo', 'selam', 'merhaba', 'alo'])
+/** greeting and name heard as one word: "heyaura", "heyora", "hayora", "okaura" */
+const WAKE_JOINED = /^(?:hey|hay|hei|ey|hi|ok|okay)(?:aura|avra|awra|ora|oura|laura|aurora)$/
+/** a plain "hey" as recognisers spell it (English: hey, hay; Turkish: hey, ey, hay) */
+const HEY = new Set(['hey', 'heyy', 'heey', 'hay', 'hei', 'hej', 'ey'])
+const NAME_KEYS = ['aura', 'ora'].map(phoneticKey)
+
+const wakeKey = (w: string) => fold(w).replace(/[^a-z0-9]/g, '')
+const soundsLikeName = (w: string) => {
+  if (w.length < 3 || w.length > 6 || !/^[aeiouhl]/.test(w)) return false
+  const k = phoneticKey(w)
+  return NAME_KEYS.some((n) => editDistance(k, n) <= 1) && !/^(?:are|era|our|all|ale|oil|ali|ara|ola|ela|hla|ore|ire)$/.test(w)
+}
+
+export type WakeMatch = { how: 'name'; rest: string; at: number }
+
+/** The first spoken "AURA" (with or without a greeting) in `text`, and the words after it; null when there is none. */
+export function matchWake(text: string): WakeMatch | null {
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  const keys = words.map(wakeKey)
+  const rest = (end: number) => words.slice(end).join(' ').replace(/^[\s,.:;!?-]+/, '')
+  /** length (in words) of a name starting at i: 1 or 2, 0 = none; weak/fuzzy spellings only when allowed */
+  const nameAt = (i: number, weakOk: boolean): number => {
+    const k = keys[i]
+    if (!k) return 0
+    if (WAKE_STRONG.has(k)) return 1
+    if (!weakOk) return 0
+    if (i + 1 < keys.length && WAKE_WEAK2.has(`${k} ${keys[i + 1]}`)) return 2
+    if (WAKE_WEAK.has(k)) return 1
+    return 0
+  }
+  for (let i = 0; i < words.length; i++) {
+    const k = keys[i]
+    if (!k) continue
+    // a greeting, then the name (any strength, or anything that sounds like it)
+    if (WAKE_GREET.has(k) && i + 1 < words.length) {
+      const n = nameAt(i + 1, true) || (soundsLikeName(keys[i + 1]) ? 1 : 0)
+      if (n) return { how: 'name', rest: rest(i + 1 + n), at: i }
+    }
+    if (WAKE_JOINED.test(k)) return { how: 'name', rest: rest(i + 1), at: i }
+    // the start of a phrase: the first word, or the first after . ! ?
+    const phraseStart = i === 0 || /[.!?]$/.test(words[i - 1])
+    const n = nameAt(i, phraseStart)
+    if (n) return { how: 'name', rest: rest(i + n), at: i }
+  }
+  return null
+}
 
 /** Text after the first wake word anywhere in the utterance (wake mode hears chatter before it); null when absent. */
 export function afterWake(text: string): string | null {
-  const words = text.trim().split(/\s+/)
-  const f = fold(text)
-  const m = WAKE_AT.exec(f)
-  if (!m) return null
-  const end = f.slice(0, m.index + m[0].length).split(/\s+/).filter(Boolean).length
-  return words.slice(Math.min(end, words.length)).join(' ').replace(/^[\s,.:!?-]+/, '')
+  return matchWake(text)?.rest ?? null
+}
+
+/** One heard phrase that is only a plain "hey" ("Hey!", "hey hey", "Ey.", "hay"): a candidate for the bare wake. */
+export function isBareHey(phrase: string): boolean {
+  const keys = phrase.trim().split(/\s+/).map(wakeKey).filter(Boolean)
+  return keys.length >= 1 && keys.length <= 2 && keys.every((k) => HEY.has(k))
+}
+
+/**
+ * What the person asked after waking AURA: the words after "hey AURA" / "AURA", or after a leading plain "hey"
+ * (the bare wake). Empty when they only said the wake phrase.
+ */
+export function wakeRest(text: string): string {
+  const m = matchWake(text)
+  if (m) return m.rest
+  const words = text.trim().split(/\s+/).filter(Boolean)
+  let i = 0
+  while (i < words.length && i < 2 && HEY.has(wakeKey(words[i]))) i++
+  return words.slice(i).join(' ').replace(/^[\s,.:;!?-]+/, '')
 }
 
 /* ---------- language guess ---------- */

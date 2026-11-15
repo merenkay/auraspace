@@ -1,6 +1,6 @@
 // Mounted once in the AppShell header. Renders the voice button and, through a portal, the voice HUD.
 // Understanding is deterministic (src/lib/voice); speech in/out is the browser's Web Speech API.
-import { AudioLines, LoaderCircle, Mic, Send, SlidersHorizontal, X } from 'lucide-react'
+import { AudioLines, Ear, EarOff, LoaderCircle, Mic, Send, SlidersHorizontal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
 import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
@@ -12,6 +12,7 @@ import { Checkbox, IconButton, Input, SPRING, Select, Tabs, cx } from '../ui'
 import ListenRing from './ListenRing'
 import InputLevel from './InputLevel'
 import { useVoiceAgent, type Phase } from './useVoiceAgent'
+import type { WakeIssue } from '../../lib/voice/wake'
 import VoiceOrb from './VoiceOrb'
 import './voice.css'
 
@@ -19,6 +20,22 @@ import './voice.css'
 const MicSettings = lazy(() => import('./MicCheck'))
 
 const PHASE_LABEL: Record<Phase, string> = { idle: 'Standing by', listening: 'Listening', thinking: 'Working', speaking: 'Speaking' }
+
+/** The header indicator of the wake word (the states the person can act on). */
+const WAKE_PILL: Record<'off' | 'unarmed' | 'listening' | 'paused' | 'blocked', { short: string; title: string }> = {
+  off: { short: 'Hey AURA off', title: '“Hey AURA” is off. Tap to listen for it.' },
+  unarmed: { short: 'Hey AURA', title: 'Tap to start listening for “hey AURA”. Browsers need one tap before the microphone may open.' },
+  listening: { short: 'Hey AURA', title: 'Listening for “hey AURA”. Tap to stop.' },
+  paused: { short: 'Hey AURA', title: 'Listening for “hey AURA” (paused while a command is heard). Tap to stop.' },
+  blocked: { short: 'Mic blocked', title: 'The browser did not allow the microphone, so “hey AURA” cannot listen. Tap to try again.' },
+}
+const WAKE_ISSUE_TEXT: Record<WakeIssue, string> = {
+  denied: 'The browser blocked the microphone (or wants a tap first). Allow it in the site settings, then tap the microphone.',
+  'no-mic': 'No microphone was found.',
+  unsupported: 'This browser has no speech recognition (for example Firefox). Use Chrome or Edge, or type.',
+  network: 'Speech recognition needs an internet connection in this browser. Still trying.',
+  other: 'Speech recognition stopped unexpectedly. Tap the microphone to try again.',
+}
 
 export default function AuraVoice({ crewId }: { crewId: number | null }) {
   const v = useVoiceAgent(crewId)
@@ -42,6 +59,12 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
   }
 
   const Icon = v.phase === 'thinking' ? LoaderCircle : v.phase === 'speaking' ? AudioLines : Mic
+  // the wake word's indicator: hidden in the tour, without recognition, or signed out
+  const st = v.wake.status
+  const ws = st === 'tour' || st === 'unsupported' || st === 'signed-out' ? null : st
+  const showWakePill = ws !== null && v.recOk
+  const wakeHint = !v.recOk ? 'This browser has no speech recognition (Firefox, for example): you can type, or use Chrome or Edge.' : st === 'blocked' ? WAKE_PILL.blocked.title : st === 'unarmed' ? 'Tap once, then you can say “hey AURA” any time.' : st === 'listening' ? 'Listening for “hey AURA”.' : ''
+  const heard = v.wake.heard
   const examples = v.settings.lang === 'tr-TR' ? EXAMPLES_TR : EXAMPLES
   const err = !v.recOk ? ERROR_TEXT.unsupported : v.error ? ERROR_TEXT[v.error] : null
   const emergency = v.urgent
@@ -59,14 +82,38 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
 
   return (
     <>
-      <IconButton
-        icon={Icon}
-        label={v.open ? 'Close AURA voice (Alt+V)' : 'Talk to AURA (Alt+V)'}
-        aria-pressed={v.open}
-        data-phase={v.phase}
-        onClick={v.toggle}
-        className={cx('vx-btn relative', v.open && 'text-accent', v.phase === 'thinking' && '[&_svg]:animate-spin motion-reduce:[&_svg]:animate-none')}
-      />
+      <span className="relative inline-flex items-center gap-1">
+        <IconButton
+          icon={Icon}
+          label={v.open ? 'Close AURA voice (Alt+V)' : wakeHint ? `Talk to AURA (Alt+V). ${wakeHint}` : 'Talk to AURA (Alt+V)'}
+          aria-pressed={v.open}
+          data-phase={v.phase}
+          data-wake={ws}
+          onClick={v.toggle}
+          className={cx('vx-btn relative', v.open && 'text-accent', v.phase === 'thinking' && '[&_svg]:animate-spin motion-reduce:[&_svg]:animate-none')}
+        />
+        {showWakePill && ws && (
+          <button
+            type="button"
+            className="vx-wake"
+            data-state={ws}
+            aria-pressed={ws === 'listening' || ws === 'paused'}
+            title={WAKE_PILL[ws].title}
+            aria-label={WAKE_PILL[ws].title}
+            onClick={() => {
+              if (ws === 'listening' || ws === 'paused') v.setWake(false)
+              else if (ws === 'off') v.setWake(true)
+              // blocked: a tap on the microphone is the deliberate retry (the browser asks again or explains)
+              else if (ws === 'blocked') v.startPtt()
+              else v.armWake()
+            }}
+          >
+            {ws === 'blocked' ? <EarOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Ear className="h-3.5 w-3.5" aria-hidden="true" />}
+            <span className="vx-wake-dot" aria-hidden="true" />
+            <span className="hidden sm:inline">{WAKE_PILL[ws].short}</span>
+          </button>
+        )}
+      </span>
       {typeof document !== 'undefined' &&
         createPortal(
           <AnimatePresence>
@@ -104,7 +151,61 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                   {settingsOpen && (
                     <div className="space-y-3 px-4 py-4" role="group" aria-label="Voice settings">
                       <Checkbox label="Speak replies aloud" checked={v.settings.speak} onChange={(e) => v.update({ speak: e.target.checked })} />
-                      <Checkbox label="Wake word: say “AURA” or “hey AURA” (keeps the microphone open)" checked={v.settings.wake} disabled={!v.recOk} onChange={(e) => v.update({ wake: e.target.checked })} />
+                      <div className="rounded-lg border border-line px-3 pb-3" data-wake-settings="">
+                        <Checkbox
+                          label="Wake word: say “hey AURA” any time, on every page (the microphone stays open while this is on)"
+                          checked={v.settings.wake && st !== 'tour'}
+                          disabled={!v.recOk || st === 'tour'}
+                          onChange={(e) => v.setWake(e.target.checked)}
+                        />
+                        {v.settings.wake && st !== 'tour' && v.recOk && (
+                          <>
+                            <p className="mb-1.5 text-sm text-dim">Wake on</p>
+                            <Tabs
+                              label="Wake on"
+                              value={v.settings.wakeHey ? 'hey' : 'name'}
+                              onChange={(x) => v.update({ wakeHey: x === 'hey' })}
+                              options={[
+                                { value: 'name', label: '“Hey AURA” and “AURA”' },
+                                { value: 'hey', label: 'Also a plain “Hey”' },
+                              ]}
+                            />
+                            <p className="mt-1.5 text-xs leading-relaxed text-dim">
+                              A plain “hey” only counts when said on its own, after a moment of quiet, with a pause after it. Choose “Hey AURA” and “AURA” if it opens by mistake in a noisy room.
+                            </p>
+                          </>
+                        )}
+                        <p className="mt-2 text-xs leading-relaxed text-dim" role="status" data-wake-status={st}>
+                          {st === 'tour'
+                            ? 'The guided tour never opens the microphone, so the wake word is off here.'
+                            : st === 'unsupported' || !v.recOk
+                              ? WAKE_ISSUE_TEXT.unsupported
+                              : st === 'off'
+                                ? 'Off. Tap the microphone or Alt+V to talk.'
+                                : st === 'unarmed'
+                                  ? 'On, waiting for one tap: browsers only open the microphone after you tap the microphone (or press Alt+V or Space) once in this tab.'
+                                  : st === 'blocked'
+                                    ? WAKE_ISSUE_TEXT[v.wake.issue ?? 'other']
+                                    : v.wake.issue === 'network'
+                                      ? WAKE_ISSUE_TEXT.network
+                                      : 'Listening for “hey AURA” on every page. The “Hey AURA” button next to the microphone turns it off.'}
+                        </p>
+                        {v.settings.wake && st !== 'tour' && v.recOk && (
+                          <p className="mt-2 text-xs leading-relaxed text-dim" data-wake-test="">
+                            <span className="font-medium text-soft">Test the wake word.</span>{' '}
+                            {heard && heard.text ? (
+                              <>
+                                Last heard: “{heard.text.length > 80 ? `…${heard.text.slice(-80)}` : heard.text}”,{' '}
+                                <span className={heard.woke ? 'text-accent' : undefined}>{heard.woke === 'name' ? 'woke AURA.' : heard.woke === 'bare' ? 'woke AURA (plain “hey”).' : 'not a wake phrase.'}</span>
+                              </>
+                            ) : st === 'listening' || st === 'paused' ? (
+                              'Say “hey AURA”: what the wake listener hears shows up here.'
+                            ) : (
+                              'Once it is listening, what it hears shows up here.'
+                            )}
+                          </p>
+                        )}
+                      </div>
                       <Checkbox
                         label="Interface sounds"
                         checked={sound}
@@ -174,7 +275,7 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                       </div>
                       <div className="space-y-1.5 border-t border-line pt-3 text-xs leading-relaxed text-dim">
                         <p>
-                          <span className="font-medium text-soft">Privacy.</span> Spoken replies are generated on this device. Speech recognition is provided by your browser: in Chrome and Edge the audio is sent to the browser vendor’s service while you speak, so it needs internet. Without it, or in Firefox (no recognition), voice input is unavailable and typing still works. The microphone is open only while AURA is listening; with the wake word on, it stays open until you turn that off. AURA never records or stores audio.
+                          <span className="font-medium text-soft">Privacy.</span> Spoken replies are generated on this device. Speech recognition is provided by your browser: in Chrome and Edge the audio is sent to the browser vendor’s service while you speak, so it needs internet. Without it, or in Firefox (no recognition), voice input is unavailable and typing still works. The microphone is open only while AURA is listening. With the wake word on, it stays open on every page once you have tapped the microphone in this tab, until you turn it off or close the tab, and in Chrome and Edge what it hears goes to the browser vendor’s speech service the whole time. It pauses while the tab is hidden. AURA never records or stores audio.
                         </p>
                         <p>
                           <span className="font-medium text-soft">Voice control.</span> Say “press” (or click, tap, open) and the name written on a button, tab, link or section, for example “press Details” or “Details’e bas”. When several share a name, AURA numbers them: say the number. “Show numbers” labels everything on screen. Also: “scroll down”, “scroll to Sources”, “go back”, “close”, “expand all”, “next tab”, “check” or “uncheck” a box, “focus Notes”, then “type …”, “clear”, “submit”, and “what can I press?”. Anything that deletes, signs out or confirms a dialog waits for your “yes”. Passwords are never typed or read. Describing a symptom always starts a consultation instead.
@@ -198,7 +299,7 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                       <div ref={logRef} className="vx-log space-y-2" role="log" aria-label="Conversation with AURA" aria-live="polite">
                         {v.captions.length === 0 && !v.interim && (
                           <p className="text-sm leading-relaxed text-dim">
-                            Ask for a status report, a reading, a body system, or describe a symptom. To use the page, say “press” and a button’s name, or “show numbers”. You can type below.
+                            Ask for a status report, a reading, a body system, or describe a symptom. To use the page, say “press” and a button’s name, or “show numbers”. You can type below.{v.wake.status === 'listening' || v.wake.status === 'paused' ? ' Next time, just say “hey AURA”.' : ''}
                           </p>
                         )}
                         {v.captions.slice(emergency ? -1 : compact ? -2 : -4).map((c) =>

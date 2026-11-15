@@ -18,8 +18,12 @@ import { emitUi, onUi } from '../../lib/uiBus'
 import { addressFor, alertsBriefing, readingBriefing, scoreBriefing, statusBriefing } from '../../lib/voice/briefing'
 import { consultStep, crisisText, newConsult, type ConsultState } from '../../lib/voice/consult'
 import { HOLD_THRESHOLD_MS, TIMING, type Alt } from '../../lib/voice/endpoint'
-import { afterWake, BIAS_PHRASES } from '../../lib/voice/fuzzy'
-import { describeEntry, hasWake, NAV_LABEL, pathFor, validateValues, type Intent, type NavTarget, type Values } from '../../lib/voice/intents'
+import { afterWake, BIAS_PHRASES, isBareHey, wakeRest } from '../../lib/voice/fuzzy'
+import { fold } from '../../lib/doctor/parse'
+import { isDemoActive } from '../../lib/demo/sandbox'
+import { WakeController, type WakeHooks, type WakeIssue, type WakeStatus } from '../../lib/voice/wake'
+import { DevRec, devMicSay } from '../../lib/voice/devRec'
+import { describeEntry, NAV_LABEL, pathFor, validateValues, type Intent, type NavTarget, type Values } from '../../lib/voice/intents'
 import { startMicLevel } from '../../lib/voice/level'
 import { announceDataChanged, setPendingSystem } from '../../lib/voice/pending'
 import { setVoicePresence } from '../../lib/voice/presence'
@@ -29,12 +33,21 @@ import { parseFindings } from '../../lib/doctor/parse'
 import { domEffects } from '../../lib/voicecontrol/dom'
 import { BARE_MIN } from '../../lib/assistant/route'
 import { conversational } from '../../lib/voice/prosody'
-import { createListener, forceRecognitionUnsupported, recognitionSupported, type Listener, type ListenWindow, type RecError } from '../../lib/voice/recognition'
+import { createListener, forceRecognitionUnsupported, recognitionSupported, type Listener, type ListenerDeps, type ListenWindow, type RecCtor, type RecError } from '../../lib/voice/recognition'
 import { loadSettings, saveSettings, type VoiceSettings } from '../../lib/voice/settings'
 import { availableVoices, cancelSpeech, onSpeaking, onVoicesChanged, setRate, setVoicePreference, speak, ttsSupported, type VoiceOption } from '../../lib/voice/speech'
 
 export type Caption = { id: number; who: 'you' | 'aura'; text: string; urgent?: boolean }
 export type Phase = 'idle' | 'listening' | 'thinking' | 'speaking'
+/** What the wake-word listener last heard, and whether it woke AURA ("Test the wake word" in the voice settings). */
+export type WakeHeard = { text: string; woke: 'name' | 'bare' | null; at: number }
+export type WakeState = { status: WakeStatus; issue: WakeIssue | null; heard: WakeHeard | null }
+
+/** A command after the wake phrase; the label AURA itself stays ("AURA butonuna bas", "AURA button"). */
+function commandAfterWake(t: string): string {
+  const rest = wakeRest(t)
+  return /^(?:button|link|tab|core|butonuna|butonu|dugmesine|sekmesine|linkine)\b/.test(fold(rest)) ? t.trim() : rest
+}
 
 type PendingLog = { key: VitalKey; values: Values; heard: string }
 let seq = 0
@@ -58,12 +71,23 @@ export function useVoiceAgent(crewId: number | null) {
   const [recOk, setRecOk] = useState(() => recognitionSupported())
   const [win, setWin] = useState<ListenWindow | null>(null)
   const [voices, setVoices] = useState<VoiceOption[]>(() => availableVoices())
+  const [wake, setWakeState] = useState<WakeState>({ status: 'off', issue: null, heard: null })
+  /** development: a stand-in recogniser (window.__auraVoice.simMic) */
+  const devCtor = useRef<RecCtor | null>(null)
+  const [simKey, setSimKey] = useState(0)
+  const recDeps = (): ListenerDeps => (devCtor.current ? { Ctor: devCtor.current, monitor: null } : {})
+  const recAvailable = () => !!devCtor.current || recognitionSupported()
+  // the wake listener's moment: how it woke, whether it opened the panel itself
+  const wakeAwake = useRef(false)
+  const wokeHow = useRef<'name' | 'bare'>('name')
+  const wakeOpened = useRef(false)
+  const wakeCtl = useRef<WakeController | null>(null)
 
   const live = useRef({ user, mission, crew, backend, crewId, path: loc.pathname, settings, open })
   live.current = { user, mission, crew, backend, crewId, path: loc.pathname, settings, open }
   const fns = useRef({} as Record<string, (...a: never[]) => unknown>)
   const rec = useRef<Listener | null>(null)
-  const recMode = useRef<'cmd' | 'wake' | null>(null)
+  const recMode = useRef<'cmd' | null>(null)
   const recSeq = useRef(0)
   const pressAt = useRef(0)
   const speakingRef = useRef(false)
@@ -524,7 +548,26 @@ export function useVoiceAgent(crewId: number | null) {
 
   /* ---------- listening ---------- */
 
-  const stopRec = () => {
+  /** The wake-word controller (lib/voice/wake.ts): decides when the always-on listener runs. */
+  const ctl = (): WakeController => {
+    if (!wakeCtl.current) {
+      wakeCtl.current = new WakeController({
+        make: (hooks) => (fns.current.makeWake as (h: WakeHooks) => Listener | null)(hooks),
+        storage: (() => {
+          try {
+            return typeof sessionStorage !== 'undefined' ? sessionStorage : null
+          } catch {
+            return null
+          }
+        })(),
+        onStatus: (status, issue) => setWakeState((w) => ({ ...w, status, issue })),
+      })
+    }
+    return wakeCtl.current
+  }
+
+  /** Stop the command listener (if any) without telling the wake controller. */
+  const stopCmd = () => {
     recSeq.current++
     rec.current?.abort()
     rec.current = null
@@ -533,53 +576,69 @@ export function useVoiceAgent(crewId: number | null) {
     setInterim('')
     setWin(null)
   }
+  /** Stop the command listener; the wake word (if on) takes the microphone back. */
+  const stopRec = () => {
+    stopCmd()
+    ctl().set({ cmdActive: false })
+  }
 
   /** Listen for one command. auto = ends after the silence window; hold = push-to-talk, ends on release. */
-  const startListen = (mode: 'auto' | 'hold' = 'auto', source: 'hand' | 'key' | 'page' = 'key') => {
+  const startListen = (mode: 'auto' | 'hold' = 'auto', source: 'hand' | 'key' | 'page' | 'wake' = 'key') => {
     const s = live.current.settings
     cancelSpeech()
-    stopRec()
+    // browsers run one recognition session at a time: the wake listener steps aside until this command is heard
+    ctl().set({ cmdActive: true })
+    stopCmd()
     setError(null)
     setNotice(null)
     gestureListen.current = source === 'hand'
     const my = recSeq.current
     const cur = () => my === recSeq.current
-    const l = createListener({
-      lang: s.lang,
-      mode,
-      timing: TIMING[s.listen],
-      phrases: pagePhrases(),
-      onStart: () => cur() && sfx('listen'),
-      onInterim: (t) => cur() && setInterim(t),
-      onWindow: (w) => cur() && setWin(w.deadline || w.mode === 'hold' || w.voice ? w : null),
-      onFinal: (alts) => {
-        if (!cur()) return
-        setInterim('')
-        sfx('done')
-        void handle(alts)
+    const l = createListener(
+      {
+        lang: s.lang,
+        mode,
+        timing: TIMING[s.listen],
+        phrases: pagePhrases(),
+        onStart: () => {
+          if (!cur()) return
+          sfx('listen')
+          // the microphone works and the person asked for it: the wake word may listen from now on (this tab)
+          ctl().arm()
+        },
+        onInterim: (t) => cur() && setInterim(t),
+        onWindow: (w) => cur() && setWin(w.deadline || w.mode === 'hold' || w.voice ? w : null),
+        onFinal: (alts) => {
+          if (!cur()) return
+          setInterim('')
+          sfx('done')
+          void handle(alts)
+        },
+        onError: (e) => {
+          if (!cur()) return
+          if (e === 'denied' && gestureListen.current) {
+            // started by a hand gesture: the browser wants a tap (user activation) before it opens the microphone
+            setNotice(live.current.settings.wake ? 'To listen, the browser needs a tap first. Tap the microphone below, press Space, or say “hey AURA”. You can also type.' : 'To listen, the browser needs a tap first. Tap the microphone below or press Space. You can also type.')
+            return
+          }
+          setError(e)
+        },
+        onEnd: () => {
+          if (!cur()) return
+          rec.current = null
+          recMode.current = null
+          setListening(false)
+          setInterim('')
+          setWin(null)
+          ctl().set({ cmdActive: false })
+        },
       },
-      onError: (e) => {
-        if (!cur()) return
-        if (e === 'denied' && gestureListen.current) {
-          // started by a hand gesture: the browser wants a tap (user activation) before it opens the microphone
-          setNotice(live.current.settings.wake ? 'To listen, the browser needs a tap first. Tap the microphone below, press Space, or say “hey AURA”. You can also type.' : 'To listen, the browser needs a tap first. Tap the microphone below or press Space. You can also type.')
-          return
-        }
-        setError(e)
-      },
-      onEnd: () => {
-        if (!cur()) return
-        rec.current = null
-        recMode.current = null
-        setListening(false)
-        setInterim('')
-        setWin(null)
-        ;(fns.current.startWake as () => void)()
-      },
-    })
+      recDeps(),
+    )
     if (!l) {
       setError('unsupported')
       setOpen(true)
+      ctl().set({ cmdActive: false })
       return
     }
     rec.current = l
@@ -615,65 +674,95 @@ export function useVoiceAgent(crewId: number | null) {
     if (recMode.current === 'cmd') rec.current?.finish('tap')
   }
 
-  const startWake = () => {
+  /** Woken, but nothing followed: a plain "hey" that opened the panel closes it again quietly. */
+  const wakeFizzled = () => {
+    if (wokeHow.current === 'bare' && wakeOpened.current) {
+      setTimeout(() => {
+        if (!wakeAwake.current && recMode.current !== 'cmd' && !speakingRef.current) setOpen(false)
+      }, 600)
+    }
+    wakeOpened.current = false
+  }
+
+  /** The always-on wake-word listener (started and stopped by the controller). */
+  const makeWake = (hooks: WakeHooks): Listener | null => {
     const s = live.current.settings
-    if (!s.wake || !live.current.user || recMode.current || !recognitionSupported()) return
-    const my = ++recSeq.current
-    const cur = () => my === recSeq.current
-    const l = createListener({
-      lang: s.lang,
-      mode: 'wake',
-      timing: TIMING[s.listen],
-      phrases: pagePhrases(),
-      wakeTest: (t) => afterWake(t) !== null,
-      onInterim: (t) => {
-        if (!cur()) return
-        const rest = afterWake(t)
-        if (rest === null) return
-        // barge-in: the person said the wake word while AURA was talking (unless AURA itself is saying its name)
-        if (speakingRef.current && hasWake(t) && !/aura/i.test(lastReply.current)) cancelSpeech()
-        if (!speakingRef.current) {
+    return createListener(
+      {
+        lang: s.lang,
+        mode: 'wake',
+        timing: TIMING[s.listen],
+        phrases: pagePhrases(),
+        wakeTest: (t) => afterWake(t) !== null,
+        bareWake: s.wakeHey ? isBareHey : undefined,
+        wakeOnly: (t) => !wakeRest(t),
+        onWake: (how) => {
+          wakeAwake.current = true
+          wokeHow.current = how
+          wakeOpened.current = !live.current.open
+          setWakeState((w) => ({ ...w, heard: { text: '', woke: how, at: Date.now() } }))
+          setError(null)
+          setNotice(null)
           setOpenState(true)
-          setInterim(rest)
-        }
-      },
-      onWindow: (w) => cur() && setWin(w.deadline ? w : null),
-      onFinal: (alts) => {
-        if (!cur()) return
-        setInterim('')
-        if (speakingRef.current || Date.now() - spokeUntil.current < 500) return // AURA's own voice
-        const rests = alts.map((a) => ({ transcript: afterWake(a.transcript) ?? '', confidence: a.confidence })).filter((a) => a.transcript)
-        setOpenState(true)
-        if (rests.length) {
-          sfx('done')
-          void handle(rests)
-        } else {
           sfx('listen')
-          setCaptions((c) => [...c.slice(-5), { id: ++seq, who: 'you', text: alts[0].transcript }])
-          say(vary(['Yes?', 'I’m listening.', 'Go ahead.'], mem.current.turn++, 'wake'), { expectReply: true })
-        }
+          setListening(true)
+          setInterim('')
+        },
+        onInterim: (t) => {
+          if (wakeAwake.current) {
+            setInterim(commandAfterWake(t))
+            setWakeState((w) => ({ ...w, heard: { text: t, woke: wokeHow.current, at: Date.now() } }))
+          }
+          else setWakeState((w) => (w.heard?.text === t && !w.heard.woke ? w : { ...w, heard: { text: t, woke: null, at: Date.now() } }))
+        },
+        onWindow: (w) => wakeAwake.current && setWin(w.deadline || w.voice ? w : null),
+        onFinal: (alts) => {
+          wakeAwake.current = false
+          setListening(false)
+          setInterim('')
+          setWin(null)
+          if (speakingRef.current || Date.now() - spokeUntil.current < 500) return // AURA's own voice
+          setWakeState((w) => ({ ...w, heard: { text: alts[0].transcript, woke: wokeHow.current, at: Date.now() } }))
+          const rests = alts.map((a) => ({ transcript: commandAfterWake(a.transcript), confidence: a.confidence })).filter((a) => a.transcript)
+          if (rests.length) {
+            // "hey AURA, how is my blood pressure": the command runs straight away
+            wakeOpened.current = false
+            setOpenState(true)
+            sfx('done')
+            void handle(rests)
+          } else if (wokeHow.current === 'bare') wakeFizzled()
+          else {
+            wakeOpened.current = false
+            setCaptions((c) => [...c.slice(-5), { id: ++seq, who: 'you', text: alts[0].transcript }])
+            if (live.current.settings.speak) say(vary(['Yes?', 'I’m listening.', 'Go ahead.'], mem.current.turn++, 'wake'), { expectReply: true })
+            else startListen('auto', 'wake')
+          }
+        },
+        onWakeLost: () => {
+          wakeAwake.current = false
+          setListening(false)
+          setInterim('')
+          setWin(null)
+          wakeFizzled()
+        },
+        onError: (e) => hooks.error(e),
+        onEnd: () => {
+          if (wakeAwake.current) {
+            wakeAwake.current = false
+            setListening(false)
+            setInterim('')
+            setWin(null)
+          }
+          hooks.end()
+        },
       },
-      onError: (e) => {
-        if (!cur()) return
-        setError(e)
-        if (e === 'denied' || e === 'no-mic' || e === 'unsupported') update({ wake: false })
-      },
-      onEnd: () => {
-        if (cur() && recMode.current === 'wake') {
-          rec.current = null
-          recMode.current = null
-        }
-      },
-    })
-    if (!l) return
-    rec.current = l
-    recMode.current = 'wake'
-    l.start()
+      recDeps(),
+    )
   }
 
   /** AURA asked something: listen for the answer (the wake listener steps aside and comes back afterwards). */
   const afterQuestion = () => {
-    if (!live.current.open || !recognitionSupported() || !live.current.settings.speak) return
+    if (!live.current.open || !recAvailable() || !live.current.settings.speak) return
     if (recMode.current === 'cmd') return
     startListen('auto')
   }
@@ -684,10 +773,7 @@ export function useVoiceAgent(crewId: number | null) {
       setNotice(null)
       cancelSpeech()
       autoClose.current = false
-      if (recMode.current === 'cmd') {
-        stopRec()
-        ;(fns.current.startWake as () => void)()
-      }
+      if (recMode.current === 'cmd') stopRec()
       pendingLog.current = null
       clarifyQ.current = null
       mem.current.offer = null
@@ -702,19 +788,36 @@ export function useVoiceAgent(crewId: number | null) {
     })
   }
 
-  fns.current = { startWake, afterQuestion }
+  /** The wake-word switch (settings and the header indicator). Switching it on is a deliberate act: it arms at once. */
+  const setWake = (on: boolean) => {
+    update({ wake: on, wakeSet: true })
+    if (on) ctl().arm()
+  }
+
+  fns.current = { makeWake, afterQuestion }
 
   /* ---------- effects ---------- */
 
-  // wake-word listening follows the setting (and restarts when the language or listening time changes)
+  // wake-word listening follows the setting, the person, the tour and the browser (a new language, listening time
+  // or phrase choice restarts it). It does not depend on the page or the panel: it survives both.
   useEffect(() => {
-    if (recMode.current === 'wake') stopRec()
-    if (settings.wake && user) startWake()
-    return () => {
-      if (recMode.current === 'wake') stopRec()
-    }
+    ctl().set({
+      enabled: settings.wake,
+      signedIn: !!user,
+      tour: isDemoActive(),
+      supported: recOk,
+      visible: typeof document === 'undefined' || !document.hidden,
+      key: `${settings.lang}|${settings.listen}|${settings.wakeHey}|${simKey}`,
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings.wake, settings.lang, settings.listen, user?.id])
+  }, [settings.wake, settings.wakeHey, settings.lang, settings.listen, user?.id, recOk, simKey])
+  useEffect(
+    () => () => {
+      wakeCtl.current?.dispose()
+      wakeCtl.current = null
+    },
+    [],
+  )
 
   useEffect(() => {
     emitUi('hud', { on: open, source: 'voice' })
@@ -732,7 +835,7 @@ export function useVoiceAgent(crewId: number | null) {
           if (isOpen) setOpen(false)
           return
         }
-        if (d.listen && recognitionSupported()) {
+        if (d.listen && recAvailable()) {
           // already listening for a command: nothing to do
           if (isOpen && recMode.current === 'cmd') return
           startListen('auto', d.source)
@@ -775,21 +878,23 @@ export function useVoiceAgent(crewId: number | null) {
   }, [user])
 
   // leaving the page (closing the tab, navigating away, bfcache): stop listening and release the microphone, the
-  // wake word included; speech itself is cancelled by the guard in lib/voice/speech.ts. Back from the bfcache, the
-  // wake word resumes if it is switched on.
+  // wake word included; speech itself is cancelled by the guard in lib/voice/speech.ts. A hidden tab does not
+  // listen for the wake word either; it resumes when the tab is visible again (or is back from the bfcache).
   useEffect(() => {
     const hide = () => {
       cancelSpeech()
+      ctl().set({ visible: false })
       stopRec()
     }
-    const show = (e: PageTransitionEvent) => {
-      if (e.persisted && live.current.settings.wake && live.current.user) (fns.current.startWake as () => void)()
-    }
+    const show = () => ctl().set({ visible: !document.hidden })
+    const vis = () => ctl().set({ visible: !document.hidden })
     window.addEventListener('pagehide', hide)
     window.addEventListener('pageshow', show)
+    document.addEventListener('visibilitychange', vis)
     return () => {
       window.removeEventListener('pagehide', hide)
       window.removeEventListener('pageshow', show)
+      document.removeEventListener('visibilitychange', vis)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -873,9 +978,19 @@ export function useVoiceAgent(crewId: number | null) {
       },
       noRecognition: (off: boolean) => {
         forceRecognitionUnsupported(off)
-        setRecOk(recognitionSupported())
+        setRecOk(recAvailable())
         if (off) setError('unsupported')
       },
+      /** use a stand-in recogniser (no microphone needed): the real listener, wake and agent code run on it */
+      simMic: (on = true) => {
+        devCtor.current = on ? (DevRec as unknown as RecCtor) : null
+        setRecOk(recAvailable())
+        setSimKey((k) => k + 1)
+      },
+      /** with simMic: the running recogniser session (wake listener or command) hears `text` */
+      micSay: (text: string, final = true) => devMicSay(text, final),
+      /** the wake word's state, as the indicator shows it */
+      wake: () => ({ status: wakeCtl.current?.status() ?? 'off', issue: wakeCtl.current?.currentIssue() ?? null, armed: wakeCtl.current?.isArmed() ?? false, running: wakeCtl.current?.running() ?? false }),
       reply: () => lastReply.current,
       /** the control names voice control sees on this page */
       controls: () => pageNames(),
@@ -934,10 +1049,16 @@ export function useVoiceAgent(crewId: number | null) {
     error,
     notice,
     urgent,
-    recOk: recOk && recognitionSupported(),
+    recOk: recOk && recAvailable(),
     ttsOk: ttsSupported(),
     clearError: () => setError(null),
     /** "Things you can say here": example commands built from the controls on the current page. */
     pageHints,
+    /** The wake word: status (indicator), the browser's refusal if any, and what the wake listener last heard. */
+    wake,
+    /** Switch the wake word on or off (remembered); on also arms it, since the switch is a deliberate tap. */
+    setWake,
+    /** Start wake listening now (a tap on the indicator: the deliberate first use of the microphone). */
+    armWake: () => ctl().arm(),
   }
 }

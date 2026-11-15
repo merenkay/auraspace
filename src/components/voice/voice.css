@@ -306,3 +306,34 @@
   pointer-events: none;
   transform: translateY(24px) !important;
 }
+
+/* the wake word's header indicator: "listening for hey AURA" at a glance, one tap to stop (or start) */
+.vx-wake {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  min-width: 2rem;
+  justify-content: center;
+  padding: 0 0.55rem;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: var(--color-dim);
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s;
+}
+.vx-wake:hover { color: var(--color-ink); border-color: var(--color-soft); }
+.vx-wake:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+.vx-wake-dot { display: none; width: 6px; height: 6px; border-radius: 999px; background: currentColor; }
+.vx-wake[data-state='listening'],
+.vx-wake[data-state='paused'] { color: var(--color-accent); border-color: color-mix(in srgb, var(--color-accent) 55%, var(--color-line)); }
+.vx-wake[data-state='listening'] .vx-wake-dot,
+.vx-wake[data-state='paused'] .vx-wake-dot { display: inline-block; }
+.vx-wake[data-state='listening'] .vx-wake-dot { animation: vx-wake-breathe 2.4s ease-in-out infinite; }
+.vx-wake[data-state='off'] { opacity: 0.75; }
+.vx-wake[data-state='blocked'] { color: var(--color-warn); border-color: color-mix(in srgb, var(--color-warn) 55%, var(--color-line)); }
+@keyframes vx-wake-breathe { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .vx-wake-dot { animation: none !important; } }
