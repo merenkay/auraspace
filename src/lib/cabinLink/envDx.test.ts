@@ -221,7 +221,7 @@ describe('hard safety rules', () => {
             }
         }
     expect(n).toBeGreaterThan(5000)
-  })
+  }, 120_000) // thousands of combinations over the whole catalogue: needs more than the default 5 s
 })
 
 describe('data integrity', () => {
