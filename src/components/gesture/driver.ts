@@ -3,6 +3,7 @@
 // in src/lib/gesture (pure, unit-tested); this file is the DOM side.
 import { SYSTEM_BY_ID } from '../../data/systems'
 import { GesturePipeline, type GestureEvent, type GestureOptions, type GestureState, type RawFrame, type XY } from '../../lib/gesture/machine'
+import { slapTab, type SlapDirection } from '../../lib/gesture/slap'
 import { Dwell, magnetRadius, pickTarget, snapPoint, type Cand } from '../../lib/gesture/target'
 import { DEV_HOOKS } from '../../lib/devHooks'
 import { sfx } from '../../lib/sfx'
@@ -30,9 +31,13 @@ const ZOOM_DEADBAND = 0.004
 
 export type ClickMode = 'pinch' | 'dwell' | 'both'
 export type Speed = 'slow' | 'normal' | 'fast'
-/** twoHand: the two-hand spread opens the voice panel (and bringing the hands together closes it) */
-export type HandSettings = { click: ClickMode; speed: Speed; hand: 'right' | 'left'; mirror: boolean; twoHand: boolean }
-export const DEFAULT_SETTINGS: HandSettings = { click: 'both', speed: 'normal', hand: 'right', mirror: true, twoHand: true }
+/**
+ * twoHand: the two-hand spread opens the voice panel (and bringing the hands together closes it).
+ * slapDir: 'natural' = a slap to the right (the way the cursor moves right) goes to the next tab; 'reversed' swaps it
+ * (for a camera whose driver mirrors differently).
+ */
+export type HandSettings = { click: ClickMode; speed: Speed; hand: 'right' | 'left'; mirror: boolean; twoHand: boolean; slapDir: SlapDirection }
+export const DEFAULT_SETTINGS: HandSettings = { click: 'both', speed: 'normal', hand: 'right', mirror: true, twoHand: true, slapDir: 'natural' }
 
 /** Sensitivity: how much of the camera picture maps onto the screen (smaller = less hand travel) and the dwell time. */
 export const SPEEDS: Record<Speed, { region: GestureOptions['region']; dwellMs: number }> = {
@@ -60,7 +65,7 @@ export type DriverView = {
 
 export type DriverHooks = {
   notify: (text: string) => void
-  /** a slap was recognised; `moved` = a tab was switched */
+  /** a slap was recognised; `dir` = the side of the tab it goes to ('right' = next), `moved` = a tab was switched */
   slap: (dir: 'left' | 'right', moved: boolean) => void
   /** the two-hand gesture opened ('open') or closed ('close') the voice panel; `at` = between the hands, viewport px */
   expand?: (kind: 'open' | 'close', at: XY) => void
@@ -254,27 +259,31 @@ export class HandDriver {
     el.click()
   }
 
-  /** Slap towards the right of the screen = next tab, towards the left = previous tab. */
-  private switchTab(dir: 'left' | 'right') {
+  /**
+   * Slap towards the right of the screen (the cursor's right) = next tab, towards the left = previous tab; the
+   * "reversed" setting swaps them. The feedback (edge flash, sweep, "already on the last tab") follows the tab.
+   */
+  private switchTab(hand: 'left' | 'right') {
     if (dialogOpen()) {
-      this.hooks.slap(dir, false)
+      this.hooks.slap(slapTab(hand, this.settings.slapDir, 0, 0).side, false)
       return
     }
     const links = tabStrip()
     const cur = links ? links.findIndex((a) => a.getAttribute('aria-current') === 'page') : -1
+    const r = slapTab(hand, this.settings.slapDir, cur, links?.length ?? 0)
     if (!links || cur < 0) {
-      this.hooks.slap(dir, false)
+      this.hooks.slap(r.side, false)
       this.hooks.notify('No tabs to switch on this page')
       return
     }
-    const next = links[cur + (dir === 'right' ? 1 : -1)]
+    const next = r.index === null ? null : links[r.index]
     if (!next) {
-      this.hooks.slap(dir, false)
-      this.hooks.notify(dir === 'right' ? 'Already on the last tab' : 'Already on the first tab')
+      this.hooks.slap(r.side, false)
+      this.hooks.notify(r.side === 'right' ? 'Already on the last tab' : 'Already on the first tab')
       return
     }
     next.click()
-    this.hooks.slap(dir, true)
+    this.hooks.slap(r.side, true)
     this.hooks.notify(textOf(next))
   }
 

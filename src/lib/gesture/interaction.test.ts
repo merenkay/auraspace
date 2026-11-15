@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { CALIB, features, PinchCalibrator } from './classify'
 import { GesturePipeline, type GestureEvent, type GestureState, type RawFrame } from './machine'
-import { SlapDetector } from './slap'
+import { SlapDetector, slapStep, slapTab } from './slap'
 import { seeded, synthHand, type SynthOptions } from './synth'
 import { Dwell, magnetRadius, pickTarget, snapPoint, type Cand, type Rect } from './target'
 
@@ -87,6 +87,7 @@ describe('slap (page left / right)', () => {
     expect(slaps(r)).toEqual(['right'])
     rest(r, 0.66, 900)
     stroke(r, 0.66, 0.34)
+    rest(r, 0.34, 300)
     expect(slaps(r)).toEqual(['right', 'right'])
   })
 
@@ -138,6 +139,11 @@ describe('slap (page left / right)', () => {
         if (s) got.push(s.dir)
         if (k * dt > 240) break
       }
+      // the stroke is reported once the hand settles (it might still turn out to be a wind-up)
+      for (let k = 0; k < 6; k++) {
+        const s = d.push((t += dt), 0.6, 0.5, true, false)
+        if (s) got.push(s.dir)
+      }
       expect(got, `${fps} fps`).toEqual(['right'])
     }
   })
@@ -146,7 +152,123 @@ describe('slap (page left / right)', () => {
     const r = run(30, new GesturePipeline({ mirror: false }))
     rest(r, 0.66, 500)
     stroke(r, 0.66, 0.34)
+    rest(r, 0.34, 300)
     expect(slaps(r)).toEqual(['left'])
+  })
+})
+
+// How "physical" directions are encoded. A webcam frame (getUserMedia) is NOT mirrored: the camera faces the
+// person, so the person's right side appears on the LEFT of the picture. Moving the hand physically to the right
+// therefore makes raw landmark x go DOWN. With Mirror on (default) the cursor uses 1 - x, so it moves right too.
+// A camera whose driver already mirrors the picture is the opposite: physical right = raw x goes UP; that is
+// what Mirror off is for (the cursor then follows raw x, and again moves right).
+const PHYS_RIGHT = -1
+const PHYS_LEFT = 1
+/** a stroke of the hand physically to the person's right (dir -1 in raw x) or left, from raw x `x0` */
+const physStroke = (r: Run, x0: number, dir: number, travel = 0.3, ms = 220, pose: SynthOptions = OPEN) => stroke(r, x0, x0 + dir * travel, ms, pose)
+
+describe('slap direction: physical movement -> tab (natural by default)', () => {
+  for (const fps of [12, 20, 30]) {
+    it(`moving the hand to your right goes to the next tab, to your left the previous one, and the cursor agrees (${fps}/s)`, () => {
+      const r = run(fps)
+      rest(r, 0.65, 600)
+      const before = r.states[r.states.length - 1].cursor!.x
+      physStroke(r, 0.65, PHYS_RIGHT)
+      rest(r, 0.35, 900)
+      const after = r.states[r.states.length - 1].cursor!.x
+      expect(after).toBeGreaterThan(before) // the cursor went right on screen
+      expect(slaps(r)).toEqual(['right'])
+      expect(slapTab('right', 'natural', 2, 5)).toEqual({ side: 'right', index: 3 })
+      physStroke(r, 0.35, PHYS_LEFT)
+      rest(r, 0.65, 600)
+      expect(slaps(r)).toEqual(['right', 'left'])
+      expect(slapTab('left', 'natural', 2, 5)).toEqual({ side: 'left', index: 1 })
+    })
+
+    for (const wind of [0.16, 0.2, 0.24]) {
+      it(`a wind-up the other way first does not reverse it (wind-up ${wind}, ${fps}/s)`, () => {
+        for (const dir of [PHYS_RIGHT, PHYS_LEFT]) {
+          const r = run(fps)
+          const x0 = dir === PHYS_RIGHT ? 0.55 : 0.45
+          rest(r, x0, 600)
+          // draw the hand back (fast enough to be a slap on its own), then strike the other way, much further
+          stroke(r, x0, x0 - dir * wind, 170)
+          stroke(r, x0 - dir * wind, x0 + dir * 0.25, 300)
+          rest(r, x0 + dir * 0.25, 800)
+          expect(slaps(r), `dir ${dir}`).toEqual([dir === PHYS_RIGHT ? 'right' : 'left'])
+        }
+      })
+    }
+  }
+
+  it('reports the slap shortly after the hand stops (at most ~settle time + two frames)', () => {
+    const r = run(30)
+    rest(r, 0.65, 600)
+    physStroke(r, 0.65, PHYS_RIGHT)
+    const end = r.t
+    rest(r, 0.35, 600)
+    const e = of(r, 'slap')
+    expect(e).toHaveLength(1)
+    expect(e[0].t - end).toBeLessThanOrEqual(100 + 2 * (1000 / 30) + 1)
+  })
+
+  it('Mirror off with a camera that already mirrors: physical right is raw x going up, and it still goes to the next tab', () => {
+    const r = run(30, new GesturePipeline({ mirror: false }))
+    rest(r, 0.35, 600)
+    const before = r.states[r.states.length - 1].cursor!.x
+    stroke(r, 0.35, 0.65) // pre-mirrored picture: the hand moving to the person's right moves right in the picture
+    rest(r, 0.65, 600)
+    expect(r.states[r.states.length - 1].cursor!.x).toBeGreaterThan(before)
+    expect(slaps(r)).toEqual(['right'])
+  })
+
+  it('Mirror off with a normal camera: slap and cursor still agree (both follow the unmirrored picture)', () => {
+    const r = run(30, new GesturePipeline({ mirror: false }))
+    rest(r, 0.65, 600)
+    const before = r.states[r.states.length - 1].cursor!.x
+    physStroke(r, 0.65, PHYS_RIGHT)
+    rest(r, 0.35, 600)
+    expect(r.states[r.states.length - 1].cursor!.x).toBeLessThan(before)
+    expect(slaps(r)).toEqual(['left'])
+  })
+
+  it('left-hand preference: the left hand slapping to your right also goes to the next tab', () => {
+    const p = new GesturePipeline({ primaryHand: 'left' })
+    let t = 1000
+    const got: string[] = []
+    const feed = (x: number) => {
+      t += 1000 / 30
+      // a raw (unmirrored) frame: MediaPipe labels the person's left hand "Right" (see sideOf)
+      const out = p.push({ t, aspect: 4 / 3, hands: [{ landmarks: synthHand({ pose: 'open', x, y: 0.45, side: 'left' }), handedness: 'Right', score: 0.95 }] })
+      for (const e of out.events) if (e.type === 'slap') got.push(e.dir)
+      return out.state
+    }
+    for (let k = 0; k < 20; k++) feed(0.6)
+    expect(feed(0.6).hands[0].side).toBe('left')
+    for (let k = 1; k <= 7; k++) feed(0.6 - 0.3 * ease(k / 7)) // physically to the right
+    for (let k = 0; k < 30; k++) feed(0.3)
+    for (let k = 1; k <= 7; k++) feed(0.3 + 0.3 * ease(k / 7)) // physically to the left
+    for (let k = 0; k < 20; k++) feed(0.6)
+    expect(got).toEqual(['right', 'left'])
+  })
+
+  it('the setting: natural / reversed, and the side the feedback (edge flash, sweep, end of strip) uses', () => {
+    expect(slapStep('right')).toBe(1)
+    expect(slapStep('left')).toBe(-1)
+    expect(slapStep('right', 'natural')).toBe(1)
+    expect(slapStep('right', 'reversed')).toBe(-1)
+    expect(slapStep('left', 'reversed')).toBe(1)
+    // natural: the animation goes the way the hand went
+    expect(slapTab('right', 'natural', 0, 3)).toEqual({ side: 'right', index: 1 })
+    expect(slapTab('left', undefined, 1, 3)).toEqual({ side: 'left', index: 0 })
+    // reversed: tab and animation both swap
+    expect(slapTab('right', 'reversed', 1, 3)).toEqual({ side: 'left', index: 0 })
+    expect(slapTab('left', 'reversed', 1, 3)).toEqual({ side: 'right', index: 2 })
+    // the ends of the strip: no tab, the side says which end ("already on the last / first tab")
+    expect(slapTab('right', 'natural', 2, 3)).toEqual({ side: 'right', index: null })
+    expect(slapTab('left', 'natural', 0, 3)).toEqual({ side: 'left', index: null })
+    expect(slapTab('left', 'reversed', 2, 3)).toEqual({ side: 'right', index: null })
+    expect(slapTab('right', 'natural', -1, 3)).toEqual({ side: 'right', index: null })
   })
 })
 

@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom'
 import { HAND_BONES } from '../../lib/gesture/classify'
 import { HandsProbe } from '../../lib/gesture/spread'
 import type { GestureState, RawFrame, RawHand } from '../../lib/gesture/machine'
+import type { SlapDirection } from '../../lib/gesture/slap'
 import type { SynthPose } from '../../lib/gesture/synth'
 import { DEV_HOOKS } from '../../lib/devHooks'
 import { sfx } from '../../lib/sfx'
@@ -46,10 +47,16 @@ export const GESTURES: { picto: Picto; does: string; how: string; dwellOnly?: bo
   { picto: 'pinch', does: 'Click', how: 'Tap thumb and index finger together' },
   { picto: 'dwell', does: 'Click without pinching', how: 'Rest the cursor on a button until the ring fills', dwellOnly: true },
   { picto: 'drag', does: 'Scroll, or turn the 3D body', how: 'Pinch, then move your hand' },
-  { picto: 'slap', does: 'Next or previous tab', how: 'Slap the air with your open hand, to the right or left' },
+  { picto: 'slap', does: 'Next or previous tab', how: slapHow('natural') },
   { picto: 'fist', does: 'Close a dialog, reset the 3D view', how: 'Make a fist for a moment' },
   { picto: 'spread', does: 'Talk to AURA (voice)', how: 'Put both open hands together, then pull them apart. Together again closes it', twoHand: true },
 ]
+
+/** The slap line of the legend, in the direction the setting gives ("right" = the way the cursor moves right). */
+export function slapHow(dir: SlapDirection | undefined): string {
+  const [next, prev] = dir === 'reversed' ? ['left', 'right'] : ['right', 'left']
+  return `Swipe your open hand quickly: to the ${next} = next tab, to the ${prev} = previous tab`
+}
 
 const HIDDEN_OFF_MS = 60_000
 const NO_HAND_OFF_MS = 5 * 60_000
@@ -621,7 +628,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
         }
       >
         <p className="mb-3 text-sm text-soft">Hold one hand up in front of the camera, about an arm's length away.</p>
-        <GestureList dwell={settings.click !== 'pinch'} />
+        <GestureList dwell={settings.click !== 'pinch'} slapDir={settings.slapDir} />
         <Notice className="mt-4" title="What happens to the camera picture">
           Hand tracking runs an on-device machine-learning model (MediaPipe Hand Landmarker). Camera frames are processed in this browser and are never sent or stored. It is an input method only and takes no part in any health assessment.
         </Notice>
@@ -688,6 +695,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
             <Segmented label="Speed" value={settings.speed} onChange={(speed) => change({ speed })} options={[['slow', 'Slow'], ['normal', 'Normal'], ['fast', 'Fast']]} />
             <Segmented label="Hand" value={settings.hand} onChange={(hand) => change({ hand })} options={[['right', 'Right'], ['left', 'Left']]} />
             <Segmented label="Mirror" value={settings.mirror ? 'on' : 'off'} onChange={(m) => change({ mirror: m === 'on' })} options={[['on', 'On'], ['off', 'Off']]} />
+            <Segmented label="Slap direction" value={settings.slapDir === 'reversed' ? 'reversed' : 'natural'} onChange={(slapDir) => change({ slapDir })} options={[['natural', 'Natural'], ['reversed', 'Reversed']]} />
             <Segmented label="Two-hand voice" value={settings.twoHand !== false ? 'on' : 'off'} onChange={(m) => change({ twoHand: m === 'on' })} options={[['on', 'On'], ['off', 'Off']]} />
           </div>
         )}
@@ -703,7 +711,7 @@ export default function HandSession({ synthetic, onStatus }: { synthetic: boolea
             <h2 className="text-[15px] font-semibold text-ink">Hand gestures</h2>
             <IconButton size="sm" icon={X} label="Hide hand gestures" className="-mr-2 -mt-1" onClick={() => toggleLegend(false)} />
           </div>
-          <GestureList compact dwell={settings.click !== 'pinch'} twoHand={settings.twoHand !== false} />
+          <GestureList compact dwell={settings.click !== 'pinch'} twoHand={settings.twoHand !== false} slapDir={settings.slapDir} />
           <p className="mt-2 text-xs text-dim">On-device model; camera frames never leave this browser.</p>
         </aside>
       )}
@@ -734,7 +742,7 @@ function Segmented<T extends string>({ label, value, options, onChange }: { labe
   )
 }
 
-function GestureList({ compact = false, dwell, twoHand = true }: { compact?: boolean; dwell: boolean; twoHand?: boolean }) {
+function GestureList({ compact = false, dwell, twoHand = true, slapDir }: { compact?: boolean; dwell: boolean; twoHand?: boolean; slapDir?: SlapDirection }) {
   return (
     <ul className="divide-y divide-line border-y border-line">
       {GESTURES.filter((g) => (dwell || !g.dwellOnly) && (twoHand || !g.twoHand)).map((g) => (
@@ -742,7 +750,7 @@ function GestureList({ compact = false, dwell, twoHand = true }: { compact?: boo
           <Pictogram kind={g.picto} />
           <div className="min-w-0">
             <div className="text-sm font-medium text-ink">{g.does}</div>
-            <div className={compact ? 'text-xs text-dim' : 'text-sm text-soft'}>{g.how}</div>
+            <div className={compact ? 'text-xs text-dim' : 'text-sm text-soft'}>{g.picto === 'slap' ? slapHow(slapDir) : g.how}</div>
           </div>
         </li>
       ))}
