@@ -30,7 +30,7 @@ The rule engines run in the browser without a connection, and the app caches its
 ## Data and sources
 
 - **Live:** NASA CCMC DONKI (solar flares, solar energetic particle events, coronal mass ejections, geomagnetic storms, notifications) and NOAA SWPC (space-weather scales, GOES proton flux), fetched and cached by our server (`public/api/routes/spaceweather.php`). DONKI describes its content as experimental research information; NOAA SWPC is the official U.S. forecast source. AURA does not compute a radiation dose from these events.
-- **Evidence base:** NASA Human Research Program pages, NASA OCHMO technical briefs, NASA-STD-3001, NASA NTRS reports, CSA and ESA pages, and public-health sources (NHS, CDC, WHO, NICE, the Royal College of Physicians' NEWS2). Each rule shown to a person links its source, with the quoted sentence, inside the app. Rules that are our own modelling are labelled "AURA rule".
+- **Evidence base:** NASA Human Research Program pages, NASA OCHMO technical briefs, NASA-STD-3001, NASA NTRS reports, CSA and ESA pages, and public-health sources (NHS, CDC, WHO, NICE, the Royal College of Physicians' NEWS2). The consultation, medicine, coach, early-warning and environment guidance links its source, with the quoted sentence, inside the app. Rules that are our own modelling are labelled "AURA rule".
 - **Simulated people:** the crew, the polar member and the home-care member in the demo are simulated. Values tagged Simulated, Sample or Synthetic are not real measurements. The radiation dose figure is a simple mission-profile model, not a measurement.
 
 ## Licences

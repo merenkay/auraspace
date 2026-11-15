@@ -331,13 +331,13 @@ export const SCRIPT: Script = {
         before: [{ type: 'set', target: { css: 'button[aria-expanded]', text: 'How this plan was built' }, on: true }],
         target: or('[data-demo="source-quote"]', { css: '[data-open="true"] li', text: '“' }),
         callout: { title: 'Source and quote', text: 'The sentence the rule is based on, in the source’s own words.' },
-        caption: 'Every rule is shown with its source and the sentence it rests on. AURA’s own modelling choices are labelled as such.',
+        caption: 'Guidance is shown with its source and the sentence it rests on. AURA’s own modelling choices are labelled as such.',
         duration: 6500,
       },
       {
         id: 'trust.principles',
         card: { kind: 'principles' },
-        caption: 'No AI model decides anything medical: fixed rules, published sources, offline first, and data that stays with the person.',
+        caption: 'No AI model decides anything medical: fixed rules, published sources, checks that run offline, and data that stays with the person.',
         duration: 7000,
       },
       {
