@@ -23,7 +23,9 @@ import { describeEntry, hasWake, NAV_LABEL, pathFor, validateValues, type Intent
 import { startMicLevel } from '../../lib/voice/level'
 import { announceDataChanged, setPendingSystem } from '../../lib/voice/pending'
 import { setVoicePresence } from '../../lib/voice/presence'
-import { VoiceControl, type UiCommand, type UiReply } from '../../lib/voicecontrol'
+import { splitChain, VoiceControl, type UiCommand, type UiReply } from '../../lib/voicecontrol'
+import { isCrisis } from '../../lib/assistant'
+import { parseFindings } from '../../lib/doctor/parse'
 import { domEffects } from '../../lib/voicecontrol/dom'
 import { BARE_MIN } from '../../lib/assistant/route'
 import { conversational } from '../../lib/voice/prosody'
@@ -141,7 +143,22 @@ export function useVoiceAgent(crewId: number | null) {
     setThinking(true)
     setCaptions((c) => [...c.slice(-5), { id: ++seq, who: 'you', text: alts[0].transcript }])
     try {
-      await respond(alts, !!o.typed)
+      // "open history and show sleep": separate commands, run in order, each with its own safety checks
+      const chain = alts.length && !isCrisis(alts[0].transcript) && !parseFindings(alts[0].transcript).hits.some((h) => !h.negated) ? splitChain(alts[0].transcript) : null
+      if (chain) {
+        let before = { path: '', names: '' }
+        for (let i = 0; i < chain.length; i++) {
+          if (i > 0) await pageSettled(before)
+          before = { path: window.location.pathname, names: pageNames().join('|') }
+          await respond([{ transcript: chain[i], confidence: alts[0].confidence }], !!o.typed)
+          // a question is waiting (yes / no, which one, a value read-back): the rest must not run past it
+          if (vc().hasPending() || pendingLog.current || clarifyQ.current) {
+            if (i < chain.length - 1) say(`I stopped there. After that, say: ${chain.slice(i + 1).join(', then ')}.`)
+            break
+          }
+        }
+      } else await respond(alts, !!o.typed)
+      refreshHints()
     } catch {
       say('Something went wrong while I was working on that. Please try again.')
     } finally {
@@ -231,11 +248,49 @@ export function useVoiceAgent(crewId: number | null) {
   const runUi = async (cmd: UiCommand): Promise<void> => {
     let reply: UiReply
     try {
-      reply = vc().run(cmd)
+      reply = await vc().runAsync(cmd)
     } catch {
       reply = { say: 'I could not do that on this page.', sfx: 'warn' }
     }
     sayUi(reply)
+    // "stop listening" / "pause voice": the panel closes after saying so
+    if (cmd.kind === 'sleep') setTimeout(() => setOpen(false), 1200)
+  }
+
+  /** Wait until a press or route change has rendered (lazy pages): the control names stop changing, up to 3 s. */
+  const pageSettled = async (before: { path: string; names: string }) => {
+    const moved = () => window.location.pathname !== before.path
+    const old = new Set(before.names.split('|'))
+    let prev = ''
+    let same = 0
+    for (let i = 0; i < 26; i++) {
+      await new Promise((r) => setTimeout(r, i === 0 ? 300 : 150))
+      const now = pageNames().join('|')
+      // after a navigation, wait for the new page's own controls (lazy routes show only the header while loading)
+      if (moved() && !now.split('|').some((n) => !old.has(n))) continue
+      same = now && now === prev ? same + 1 : 0
+      // a new page loads its data in stages: it must hold still a little longer than a pressed control
+      if (same >= (moved() ? 3 : 1)) return
+      prev = now
+    }
+  }
+
+  /** "Things you can say here", from the controls actually on the page. */
+  const [pageHints, setPageHints] = useState<string[]>([])
+  const refreshHints = () => {
+    try {
+      setPageHints(vc().examples(5))
+    } catch {
+      setPageHints([])
+    }
+  }
+  /** On-screen labels for recognition biasing (the recogniser hears "Details" better when it expects it). */
+  const pagePhrases = (): string[] => {
+    try {
+      return [...BIAS_PHRASES, ...vc().labels(30)]
+    } catch {
+      return BIAS_PHRASES
+    }
   }
 
   const runIntent = async (intent: Intent, heard = ''): Promise<void> => {
@@ -317,6 +372,11 @@ export function useVoiceAgent(crewId: number | null) {
       case 'close':
         // a dialog, sheet or menu is open: “close” means that, not the voice panel
         if (vc().overlayOpen()) return runUi({ kind: 'closeOverlay' })
+        {
+          // a menu or section just opened by voice ("Log a measurement"): close that
+          const closed = vc().closeOpened()
+          if (closed) return sayUi(closed)
+        }
         say(vary(['Standing by.', 'I’ll be here.', 'Standing by. Say “hey AURA” or press Alt V when you need me.'], M.turn, 'close'))
         return void setTimeout(() => setOpen(false), 900)
       case 'greet':
@@ -488,10 +548,10 @@ export function useVoiceAgent(crewId: number | null) {
       lang: s.lang,
       mode,
       timing: TIMING[s.listen],
-      phrases: BIAS_PHRASES,
+      phrases: pagePhrases(),
       onStart: () => cur() && sfx('listen'),
       onInterim: (t) => cur() && setInterim(t),
-      onWindow: (w) => cur() && setWin(w.deadline || w.mode === 'hold' ? w : null),
+      onWindow: (w) => cur() && setWin(w.deadline || w.mode === 'hold' || w.voice ? w : null),
       onFinal: (alts) => {
         if (!cur()) return
         setInterim('')
@@ -564,7 +624,7 @@ export function useVoiceAgent(crewId: number | null) {
       lang: s.lang,
       mode: 'wake',
       timing: TIMING[s.listen],
-      phrases: BIAS_PHRASES,
+      phrases: pagePhrases(),
       wakeTest: (t) => afterWake(t) !== null,
       onInterim: (t) => {
         if (!cur()) return
@@ -839,6 +899,14 @@ export function useVoiceAgent(crewId: number | null) {
   useEffect(() => {
     vcRef.current?.reset()
   }, [loc.pathname])
+  useEffect(() => {
+    // the "things you can say here" list follows the page (lazy pages render a moment later)
+    if (!open) return
+    refreshHints()
+    const t = setTimeout(refreshHints, 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loc.pathname, open])
 
   return {
     phase,
@@ -869,5 +937,7 @@ export function useVoiceAgent(crewId: number | null) {
     recOk: recOk && recognitionSupported(),
     ttsOk: ttsSupported(),
     clearError: () => setError(null),
+    /** "Things you can say here": example commands built from the controls on the current page. */
+    pageHints,
   }
 }

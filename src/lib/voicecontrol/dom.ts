@@ -79,15 +79,28 @@ function getLayer(): HTMLDivElement {
 }
 
 let ringTimer: ReturnType<typeof setTimeout> | undefined
+let ringRaf = 0
 function ring(target: HTMLElement, warn = false) {
   const L = getLayer()
   L.querySelectorAll('.vc-ring').forEach((x) => x.remove())
-  const r = target.getBoundingClientRect()
   const d = document.createElement('div')
   d.className = 'vc-ring'
   if (warn) d.setAttribute('data-warn', '')
-  Object.assign(d.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` })
+  const place = () => {
+    const r = target.getBoundingClientRect()
+    Object.assign(d.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px`, display: target.isConnected && r.width ? '' : 'none' })
+  }
+  place()
   L.appendChild(d)
+  // the ring stays on the element's current position (smooth scrolling, sheets sliding in, layout shifts)
+  cancelAnimationFrame(ringRaf)
+  const until = performance.now() + (warn ? 20000 : 1500)
+  const follow = () => {
+    if (!d.isConnected || performance.now() > until) return
+    place()
+    ringRaf = requestAnimationFrame(follow)
+  }
+  ringRaf = requestAnimationFrame(follow)
   clearTimeout(ringTimer)
   ringTimer = setTimeout(() => d.remove(), warn ? 20000 : 1500)
 }
@@ -100,9 +113,19 @@ function placeBadges() {
     const r = b.target.getBoundingClientRect()
     const off = !b.target.isConnected || r.width === 0
     b.node.style.display = off ? 'none' : ''
-    b.node.style.left = `${Math.max(2, r.left - 8)}px`
-    b.node.style.top = `${Math.max(2, r.top - 8)}px`
+    b.node.style.left = `${Math.min(innerWidth - 26, Math.max(2, r.left - 8))}px`
+    b.node.style.top = `${Math.min(innerHeight - 24, Math.max(2, r.top - 8))}px`
   }
+}
+/** Follow a dialog or sheet that is still animating in, for a moment. */
+function followBadges(ms: number) {
+  const until = performance.now() + ms
+  const tick = () => {
+    if (!badgeItems.length || performance.now() > until) return
+    placeBadges()
+    requestAnimationFrame(tick)
+  }
+  requestAnimationFrame(tick)
 }
 const schedule = () => {
   if (!badgeRaf) badgeRaf = requestAnimationFrame(placeBadges)
@@ -128,6 +151,8 @@ function covered(t: HTMLElement): boolean {
   const hit = hitAt(x, y)
   if (!hit) return false
   if (t.contains(hit) || hit.contains(t)) return false
+  // our own voice panel may sit over it; the press goes to the element itself, so that is not "covered"
+  if (inPanel(hit)) return false
   // a styled checkbox or radio: the visible box sits in the same <label>
   const lab = t.closest('label')
   if (lab && lab.contains(hit)) return false
@@ -158,6 +183,28 @@ function scrollerFor(): Element | null {
 }
 
 const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+/** Scroll without the page's smooth scrolling (index.css), so the position can be checked right after. */
+const INSTANT = 'instant' as ScrollBehavior
+
+/** Bring an element into view inside every scroll container (sheets, dialogs, main), clear of sticky bars. */
+function reveal(t: HTMLElement) {
+  t.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: INSTANT })
+  if (!covered(t)) return
+  t.scrollIntoView({ block: 'center', inline: 'nearest', behavior: INSTANT })
+  if (!covered(t)) return
+  // a sticky header or the bottom tab bar still on top: nudge the element towards the upper middle
+  const r = t.getBoundingClientRect()
+  const s = scrollParent(t)
+  if (s) s.scrollBy({ top: r.top - innerHeight * 0.38, behavior: INSTANT })
+}
+
+function scrollParent(t: Element): Element | null {
+  for (let x = t.parentElement; x; x = x.parentElement) {
+    const o = getComputedStyle(x).overflowY
+    if (/(auto|scroll)/.test(o) && x.scrollHeight > x.clientHeight + 4) return x
+  }
+  return document.scrollingElement
+}
 
 /* ---------- effects ---------- */
 
@@ -167,11 +214,8 @@ export const domEffects: Effects = {
   press(c) {
     const t = el(c)
     if (!t.isConnected) return 'gone'
-    t.scrollIntoView({ block: 'nearest', inline: 'nearest' })
-    if (covered(t)) {
-      t.scrollIntoView({ block: 'center', inline: 'nearest' })
-      if (covered(t)) return 'covered'
-    }
+    reveal(t)
+    if (covered(t)) return 'covered'
     ring(t)
     const r = t.getBoundingClientRect()
     const x = r.left + r.width / 2
@@ -187,7 +231,7 @@ export const domEffects: Effects = {
   focus(c) {
     const t = el(c)
     if (!t.isConnected) return false
-    t.scrollIntoView({ block: 'nearest' })
+    reveal(t)
     t.focus({ preventScroll: true })
     ring(t)
     return true
@@ -223,17 +267,41 @@ export const domEffects: Effects = {
     const f = (n.ref as Element).closest('form')
     return f ? new DomNode(f) : null
   },
-  scroll(dir) {
+  scroll(dir, amount) {
     const s = scrollerFor()
     if (!s) return false
     const before = s.scrollTop
-    const behavior: ScrollBehavior = reduced() ? 'auto' : 'smooth'
-    const page = Math.round(s.clientHeight * 0.7)
+    const behavior: ScrollBehavior = reduced() ? INSTANT : 'smooth'
+    const k = amount === 'little' ? 0.25 : amount === 'lot' ? 1.6 : amount === 'page' ? 0.9 : 0.7
+    const page = Math.round(s.clientHeight * k)
     if (dir === 'top') s.scrollTo({ top: 0, behavior })
     else if (dir === 'bottom') s.scrollTo({ top: s.scrollHeight, behavior })
-    else s.scrollBy({ top: dir === 'down' ? page : -page, behavior })
+    else if (dir === 'middle') {
+      if (s.scrollHeight <= s.clientHeight + 4) return false
+      s.scrollTo({ top: (s.scrollHeight - s.clientHeight) / 2, behavior })
+      return true
+    } else s.scrollBy({ top: dir === 'down' ? page : -page, behavior })
     const atEnd = dir === 'down' || dir === 'bottom' ? before + s.clientHeight >= s.scrollHeight - 2 : before <= 0
     return !atEnd
+  },
+  forward() {
+    history.forward()
+  },
+  settle(ms = 200) {
+    return new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, ms))))
+  },
+  options(c) {
+    const t = el(c)
+    return t instanceof HTMLSelectElement ? [...t.options].map((o) => o.text.trim()).filter(Boolean) : []
+  },
+  sectionText(n) {
+    const h = n.ref as HTMLElement
+    const own = (h.innerText ?? '').trim()
+    // the smallest ancestor that holds more than the heading itself
+    let box: HTMLElement | null = h.parentElement
+    for (let i = 0; box && i < 3 && (box.innerText ?? '').trim().length <= own.length + 20; i++) box = box.parentElement
+    if (!box) return ''
+    return (box.innerText ?? '').replace(own, '').replace(/\s+/g, ' ').trim().slice(0, 600)
   },
   scrollTo(n) {
     const t = n.ref as HTMLElement
@@ -269,6 +337,7 @@ export const domEffects: Effects = {
       return { target: el(c), node }
     })
     placeBadges()
+    followBadges(900)
     window.addEventListener('scroll', schedule, true)
     window.addEventListener('resize', schedule)
   },

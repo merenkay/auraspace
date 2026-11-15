@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { clearCoreEvaluation, publishCoreEvaluation } from '../components/aura/core/control'
 import AssessmentList from '../components/aura/PastAssessments'
 import Consultation, { type SaveHandler } from '../components/aura/Consultation'
 import ExplainReading from '../components/aura/ExplainReading'
@@ -46,6 +47,13 @@ export default function Aura({ crewId }: { crewId: number }) {
   useEffect(() => void refresh(), [refresh])
 
   const readings = useMemo(() => readingsFromEvaluation(ev), [ev])
+  // the AURA core draws its layers from this evaluation (no second fetch); "Ask AURA about it" opens the explainer
+  useEffect(() => {
+    publishCoreEvaluation(crewId, ev)
+  }, [crewId, ev])
+  useEffect(() => () => clearCoreEvaluation(crewId), [crewId])
+  const onExplain = useCallback(() => setView('explain'), [])
+  const coreProps = useMemo(() => ({ crewId, onExplain }), [crewId, onExplain])
   const delaySec = ctx === 'space' ? (MISSIONS.find((m) => m.id === mission?.profileId)?.delaySec ?? 0) : 0
   const person = crew.find((c) => c.id === crewId)
   const firstName = self ? (user?.name.split(' ')[0] ?? '') : ''
@@ -103,7 +111,7 @@ export default function Aura({ crewId }: { crewId: number }) {
                     </Notice>
                   )}
                   {/* The AURA core is the person's own voice presence: it is left out of the surgeon's read-only walk-through. */}
-                  <Consultation ctx={ctx} readings={readings} profile={profile} delaySec={delaySec} firstName={firstName} onSave={self ? onSave : undefined} presence={self} />
+                  <Consultation ctx={ctx} readings={readings} profile={profile} delaySec={delaySec} firstName={firstName} onSave={self ? onSave : undefined} presence={self} core={coreProps} />
                 </div>
               ))}
             {view === 'explain' &&

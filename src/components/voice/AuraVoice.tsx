@@ -2,7 +2,7 @@
 // Understanding is deterministic (src/lib/voice); speech in/out is the browser's Web Speech API.
 import { AudioLines, LoaderCircle, Mic, Send, SlidersHorizontal, X } from 'lucide-react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { sfxEnabled, setSfxEnabled } from '../../lib/sfx'
 import { EXAMPLES, EXAMPLES_TR } from '../../lib/voice/intents'
@@ -10,9 +10,13 @@ import { getVoicePresence, subscribeVoicePresence } from '../../lib/voice/presen
 import { ERROR_TEXT } from '../../lib/voice/recognition'
 import { Checkbox, IconButton, Input, SPRING, Select, Tabs, cx } from '../ui'
 import ListenRing from './ListenRing'
+import InputLevel from './InputLevel'
 import { useVoiceAgent, type Phase } from './useVoiceAgent'
 import VoiceOrb from './VoiceOrb'
 import './voice.css'
+
+// microphone sensitivity and the microphone check: loaded when the voice settings are opened
+const MicSettings = lazy(() => import('./MicCheck'))
 
 const PHASE_LABEL: Record<Phase, string> = { idle: 'Standing by', listening: 'Listening', thinking: 'Working', speaking: 'Speaking' }
 
@@ -45,6 +49,8 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
   // (an emergency reply is always shown in full)
   const hosted = useSyncExternalStore(subscribeVoicePresence, () => getVoicePresence().hosted, () => false)
   const compact = hosted && !emergency
+  // the AURA core in full screen shows its own captions: the floating panel steps aside (never for an emergency)
+  const fullscreen = useSyncExternalStore(subscribeVoicePresence, () => getVoicePresence().fullscreen, () => false)
 
   // settings never hide an emergency reply, and start closed every time the HUD opens
   useEffect(() => {
@@ -74,6 +80,7 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                   className="vx-hud"
                   data-voice-panel=""
                   data-docked={hosted}
+                  data-fullscreen={fullscreen && !emergency}
                   data-urgent={emergency}
                   initial={{ opacity: 0, y: 18, scale: 0.98 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -126,7 +133,10 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                         />
                         <p className="mt-1.5 text-xs text-dim">How long a pause ends what you say. Choose Long if AURA stops while you are still talking.</p>
                       </div>
-                      <div>
+                      <Suspense fallback={null}>
+                        <MicSettings sensitivity={v.settings.sensitivity} onSensitivity={(sensitivity) => v.update({ sensitivity })} />
+                      </Suspense>
+                      <div className="border-t border-line pt-3">
                         <label htmlFor="vx-voice" className="mb-1.5 block text-sm text-dim">
                           Voice
                         </label>
@@ -217,8 +227,9 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
 
                   {v.phase === 'listening' && (
                     <div className="flex items-center justify-between gap-2 px-4 pt-3">
-                      <p className="vx-mono text-xs text-dim" aria-live="off">
-                        {v.window?.mode === 'hold' ? 'Release to send' : v.window?.heard ? 'Pause to finish' : 'Listening…'}
+                      <p className="vx-mono flex items-center gap-2 text-xs text-dim" aria-live="off">
+                        <InputLevel />
+                        {v.window?.mode === 'hold' ? 'Release to send' : v.window?.voice ? 'Still hearing you…' : v.window?.heard ? 'Pause to finish' : 'Listening…'}
                       </p>
                       {v.window?.mode !== 'hold' && (
                         <button type="button" onClick={v.finishListening} className="min-h-8 rounded-full border border-accent/60 px-3 text-sm text-accent transition-colors hover:bg-accent/10">
@@ -279,6 +290,18 @@ export default function AuraVoice({ crewId }: { crewId: number | null }) {
                       </button>
                     ))}
                   </div>
+                  {v.pageHints.length > 0 && (
+                    <div className="px-4 pt-2.5" role="group" aria-label="Things you can say here">
+                      <p className="vx-mono text-xs text-dim">Things you can say here</p>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {v.pageHints.slice(0, 4).map((x) => (
+                          <button key={x} type="button" onClick={() => v.submit(x)} className="min-h-8 rounded-full border border-dashed border-line px-3 text-sm text-soft transition-colors hover:border-accent hover:text-ink">
+                            {x}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   <p className="px-4 pb-3 pt-3 text-xs leading-snug text-dim">
                     Replies are spoken on your device. Your browser’s speech service hears you while listening.{' '}

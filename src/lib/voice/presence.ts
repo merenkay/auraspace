@@ -24,9 +24,15 @@ export type VoicePresence = {
   caption: string
   /** A visual host (the AURA core) is on screen and wants to be the face of the voice: the panel may go compact. */
   hosted: boolean
+  /**
+   * The AURA core fills the display (Fullscreen API, or the full-viewport fallback) and shows AURA's captions,
+   * questions and the emergency sheet as pop-ups over the scene. A floating voice panel should hide itself:
+   * with the real Fullscreen API it is not painted at all, and in the fallback it would cover the pop-ups.
+   */
+  fullscreen: boolean
 }
 
-let state: VoicePresence = { available: false, open: false, phase: 'idle', urgent: false, interim: '', caption: '', hosted: false }
+let state: VoicePresence = { available: false, open: false, phase: 'idle', urgent: false, interim: '', caption: '', hosted: false, fullscreen: false }
 let level = 0
 const listeners = new Set<() => void>()
 
@@ -93,4 +99,9 @@ export function setVoiceLevel(v: number) {
 /** A visual host mounts/unmounts (call with false in the effect cleanup). */
 export function setVoiceHosted(on: boolean) {
   setVoicePresence({ hosted: on })
+}
+
+/** The AURA core entered / left full screen (call with false in the effect cleanup). */
+export function setVoiceFullscreen(on: boolean) {
+  setVoicePresence({ fullscreen: on })
 }

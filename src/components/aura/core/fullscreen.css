@@ -1,0 +1,174 @@
+/* Full screen for the AURA core, and the pop-ups laid over the scene (CorePopups.tsx).
+   `.aura-fs` is the element that goes full screen: the Fullscreen API where it exists, otherwise the same box
+   fixed over the viewport ([data-fs='css']). Cards are opaque with a hairline and the overlay shadow: no blur. */
+
+.aura-fs[data-fs] {
+  background: var(--color-space);
+  overflow: hidden;
+  outline: none;
+}
+/* The fallback sits above the page, dialogs (50) and below the hand-control cursor (55), so hand control keeps
+   working. The floating voice panel (60) is hidden instead of covered: the pop-ups carry its captions. */
+.aura-fs[data-fs='css'] {
+  position: fixed;
+  inset: 0;
+  z-index: 52;
+  width: 100vw;
+  height: 100dvh;
+  max-width: none;
+}
+.aura-fs:fullscreen {
+  width: 100%;
+  height: 100%;
+}
+.aura-fs:fullscreen::backdrop {
+  background: var(--color-space);
+}
+html[data-aura-fs] .vx-hud {
+  display: none;
+}
+/* the core itself fills the element; its own chrome keeps the left side */
+.aura-fs[data-fs] > [data-aura-core] {
+  position: absolute;
+  inset: 0;
+}
+
+.aura-fs__pop {
+  --pad-t: max(16px, env(safe-area-inset-top));
+  --pad-r: max(16px, env(safe-area-inset-right));
+  --pad-b: max(16px, env(safe-area-inset-bottom));
+  --pad-l: max(16px, env(safe-area-inset-left));
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.aura-fs__pop button,
+.aura-fs__pop form,
+.aura-fs__pop [role='status'],
+.aura-fs__sheet,
+.aura-fs__side > *,
+.aura-fs__bottom > * {
+  pointer-events: auto;
+}
+
+.aura-fs__top {
+  position: absolute;
+  top: var(--pad-t);
+  right: var(--pad-r);
+  z-index: 3; /* above the emergency scrim: leaving full screen is always one tap away */
+  display: flex;
+  gap: 8px;
+}
+
+/* Phones: one stack at the bottom, at most 46 % of the height, so the centre of the core stays in view. */
+.aura-fs__stack {
+  position: absolute;
+  left: var(--pad-l);
+  right: var(--pad-r);
+  bottom: var(--pad-b);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: 46%;
+}
+.aura-fs__side,
+.aura-fs__bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+/* the message card scrolls inside the stack; captions and the input row below it never scroll away */
+.aura-fs__side {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.aura-fs__bottom {
+  flex: none;
+}
+.aura-fs__side:empty {
+  display: none;
+}
+.aura-fs__clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+@media (max-width: 639px) {
+  .aura-fs__clamp {
+    -webkit-line-clamp: 2;
+  }
+}
+
+/* From 640 px: the message / question card in a right column, captions and input at the bottom of that column;
+   from 1280 px there is room for captions and input at the bottom centre, under the core. */
+@media (min-width: 640px) {
+  .aura-fs__stack {
+    display: contents;
+  }
+  .aura-fs__side {
+    position: absolute;
+    top: calc(var(--pad-t) + 56px);
+    right: var(--pad-r);
+    width: min(380px, calc(100% - 32px));
+    max-height: calc(100% - var(--pad-t) - 56px - var(--pad-b) - 196px);
+  }
+  .aura-fs__bottom {
+    position: absolute;
+    right: var(--pad-r);
+    bottom: var(--pad-b);
+    width: min(380px, calc(100% - 32px));
+  }
+}
+@media (min-width: 1280px) {
+  .aura-fs__side {
+    max-height: calc(100% - var(--pad-t) - 56px - var(--pad-b));
+  }
+  .aura-fs__bottom {
+    right: auto;
+    left: 50%;
+    width: min(560px, calc(100% - 2 * 420px));
+    transform: translateX(-50%);
+  }
+}
+
+/* The emergency sheet: the one pop-up that takes the centre. A flat scrim in the well colour, no blur. */
+.aura-fs__sheet {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: calc(var(--pad-t) + 56px) var(--pad-r) var(--pad-b) var(--pad-l);
+  background: color-mix(in srgb, var(--color-deep) 78%, transparent);
+}
+.aura-fs__sheet-card {
+  width: min(680px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 20px;
+}
+@media (min-width: 640px) {
+  .aura-fs__sheet-card {
+    padding: 28px 32px;
+  }
+}
+.aura-fs__bar {
+  position: absolute;
+  top: var(--pad-t);
+  left: 50%;
+  z-index: 2;
+  max-width: calc(100% - 32px);
+  transform: translateX(-50%);
+}
+@media (max-width: 899px) {
+  .aura-fs__bar {
+    top: calc(var(--pad-t) + 56px);
+  }
+}

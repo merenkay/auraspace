@@ -9,16 +9,22 @@ import { FINDING_BY_ID, parseFindings, STARTER_FINDINGS, URGENCY_TEXT, type Answ
 import { sfx } from '../../lib/sfx'
 import { emergencyPlan } from '../../lib/voice/consult'
 import { parseIntent } from '../../lib/voice/intents'
-import { createRecognizer, recognitionSupported, type Recognizer } from '../../lib/voice/recognition'
+import { createRecognizer, ERROR_TEXT, recognitionSupported, type Recognizer } from '../../lib/voice/recognition'
 import { loadSettings, saveSettings } from '../../lib/voice/settings'
 import { cancelSpeech, speak, ttsSupported } from '../../lib/voice/speech'
 import { Button, DUR, EASE, IconButton, Logo, Meter, Notice, Textarea, cx, useMedia } from '../ui'
 import AssessmentView from './AssessmentView'
-import AuraCore from './core/AuraCore'
+import { useHandMode } from '../gesture/viewerBridge'
+import AuraCore, { type AuraCoreProps } from './core/AuraCore'
+import CorePopups from './core/CorePopups'
+import { useFullscreen } from './core/useFullscreen'
 import Disclosure from './Disclosure'
 import { assessWithEnvironment, CabinAirNotice, environmentLine, EnvironmentNotes, useCabinContext, useCabinPrefill } from '../cabinlink'
 
 type Turn = { id: number; who: 'aura' | 'me'; text: string; sub?: string }
+
+/** What the page passes through to the core's data layers. */
+export type CoreExtras = Pick<AuraCoreProps, 'crewId' | 'onExplain'>
 
 const MAX_QUESTIONS = 7
 const REPLY: Record<Answer, string> = { yes: 'Yes', no: 'No', unsure: 'Not sure' }
@@ -59,7 +65,7 @@ export type SaveHandler = (a: Assessment, answers: Answers) => Promise<void>
  * the core keeps a narrow column beside it on very wide screens and otherwise moves below it, so an emergency
  * banner and its steps are never pushed down or covered.
  */
-export default function Consultation({ ctx, readings, profile, delaySec, firstName, onSave, presence = false }: { ctx: Context; readings: Readings; profile: HealthProfile | null; delaySec: number; firstName: string; onSave?: SaveHandler; presence?: boolean }) {
+export default function Consultation({ ctx, readings, profile, delaySec, firstName, onSave, presence = false, core: coreExtras }: { ctx: Context; readings: Readings; profile: HealthProfile | null; delaySec: number; firstName: string; onSave?: SaveHandler; presence?: boolean; core?: CoreExtras }) {
   const wide = useMedia('(min-width: 1024px)')
   const xwide = useMedia('(min-width: 1280px)')
   const greeting = () => turn('aura', `Hello${firstName ? ` ${firstName}` : ''}. Tell me what is bothering you, in your own words — or pick from the list below.`, 'I work offline from a knowledge base of known conditions and official sources. I can say what your symptoms are consistent with, not diagnose.')
@@ -76,6 +82,10 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   // Voice (optional): dictate symptoms or answers, and read AURA's questions and the result aloud.
   const [readAloud, setReadAloud] = useState(() => loadSettings().readConsult && ttsSupported())
   const [dictating, setDictating] = useState(false)
+  const [dictError, setDictError] = useState<string | null>(null) // why dictation produced nothing, in words
+  // Full screen: the <aside> that holds the core fills the display; the conversation continues in pop-ups over it.
+  const fsRef = useRef<HTMLElement>(null)
+  const fs = useFullscreen(fsRef, { preferCss: useHandMode() })
   const recRef = useRef<Recognizer | null>(null)
   const spokenTurns = useRef(1)
 
@@ -152,6 +162,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
       return
     }
     cancelSpeech()
+    setDictError(null)
     const r = createRecognizer({
       lang: loadSettings().lang,
       onStart: () => {
@@ -167,7 +178,10 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
           live.current.reply(intent.answer)
         } else live.current.sendText(t)
       },
-      onError: () => setText(''),
+      onError: (e) => {
+        setText('')
+        setDictError(ERROR_TEXT[e])
+      },
       onEnd: () => {
         setDictating(false)
         recRef.current = null
@@ -228,6 +242,24 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
 
   const unpicked = STARTER_FINDINGS.filter((id) => !answers[id])
 
+  const showNow = () => {
+    setPending(null)
+    setDone(true)
+    setTurns((t) => [...t, turn('aura', 'Here is my assessment so far.')])
+  }
+
+  // Leaving full screen with a result: the result is the first thing on the page, as it is without full screen.
+  const wasFull = useRef(false)
+  useEffect(() => {
+    if (fs.on) {
+      wasFull.current = true
+      return
+    }
+    if (!wasFull.current) return
+    wasFull.current = false
+    if (done) requestAnimationFrame(() => resultRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' }))
+  }, [fs.on, done])
+
   const thread = (
     <div role="log" aria-label="Conversation with AURA" aria-live="polite" className="space-y-5">
       {turns.map((t, i) => (
@@ -279,14 +311,7 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
           )}
 
           {a.yesCount > 0 && (
-            <Button
-              variant="quiet"
-              onClick={() => {
-                setPending(null)
-                setDone(true)
-                setTurns((t) => [...t, turn('aura', 'Here is my assessment so far.')])
-              }}
-            >
+            <Button variant="quiet" onClick={showNow}>
               Show my assessment now
             </Button>
           )}
@@ -319,6 +344,11 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
                 Send
               </Button>
             </div>
+            {dictError && !dictating && (
+              <p role="status" className="mt-2 text-sm leading-snug text-soft">
+                {dictError}
+              </p>
+            )}
             <p className="mt-1.5 text-xs text-dim">English or Turkish, e.g. “my chest hurts and my left arm is numb”. Enter sends, Shift+Enter adds a line.</p>
             {ttsSupported() && (
               <button type="button" aria-pressed={readAloud} onClick={toggleRead} className="press mt-1 inline-flex min-h-11 items-center gap-1.5 rounded-lg pr-2 text-sm text-dim hover:text-ink md:min-h-8">
@@ -369,8 +399,38 @@ export default function Consultation({ ctx, readings, profile, delaySec, firstNa
   // One instance of the core for every layout (it owns a WebGL context): only its place and size change.
   const beside = done ? xwide : wide
   const core = (
-    <aside key="core" className={cx('min-w-0', beside && 'sticky top-24 self-start')}>
-      <AuraCore variant={!beside ? 'strip' : done ? 'side' : 'panel'} listening={dictating} urgent={done && a.urgency === 'emergency'} />
+    <aside key="core" ref={fsRef} tabIndex={-1} data-fs={fs.mode ?? undefined} aria-label={fs.on ? 'AURA, full screen' : undefined} className={cx('aura-fs min-w-0', beside && !fs.on && 'sticky top-24 self-start')}>
+      <AuraCore {...coreExtras} variant={fs.on ? 'full' : !beside ? 'strip' : done ? 'side' : 'panel'} listening={dictating} urgent={done && a.urgency === 'emergency'} fullscreen={fs.on} onToggleFullscreen={fs.toggle} />
+      {fs.on && (
+        <CorePopups
+          ctx={ctx}
+          profile={profile}
+          delaySec={delaySec}
+          turns={turns}
+          pending={pending}
+          done={done}
+          a={a}
+          asked={asked.length}
+          maxQuestions={MAX_QUESTIONS}
+          unpicked={unpicked}
+          text={text}
+          onText={setText}
+          onSend={sendText}
+          onReply={reply}
+          onPick={pick}
+          onShowNow={showNow}
+          onRestart={restart}
+          dictating={dictating}
+          canDictate={recognitionSupported()}
+          onDictate={dictate}
+          dictError={dictError}
+          readAloud={readAloud}
+          canRead={ttsSupported()}
+          onToggleRead={toggleRead}
+          onExit={fs.exit}
+          onSeeResult={fs.exit}
+        />
+      )}
     </aside>
   )
   return (

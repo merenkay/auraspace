@@ -1,4 +1,5 @@
 // Voice settings, remembered on this device only (localStorage key aura.voice.v1).
+import type { Sensitivity } from './vad'
 export type VoiceLang = 'en-US' | 'tr-TR'
 /** How long AURA waits for the person to finish: short / normal / long silence windows (see TIMING in endpoint.ts). */
 export type ListenLength = 'short' | 'normal' | 'long'
@@ -17,9 +18,11 @@ export type VoiceSettings = {
   listen: ListenLength
   /** Chosen speech-synthesis voice (voiceURI); null = the best-ranked English voice on this device. */
   voice: string | null
+  /** Microphone sensitivity: how far above the room's noise a sound must be to count as speech (see vad.ts). */
+  sensitivity: Sensitivity
 }
 
-export const DEFAULTS: VoiceSettings = { speak: true, wake: false, lang: 'en-US', rate: 1, readConsult: false, listen: 'normal', voice: null }
+export const DEFAULTS: VoiceSettings = { speak: true, wake: false, lang: 'en-US', rate: 1, readConsult: false, listen: 'normal', voice: null, sensitivity: 'auto' }
 const KEY = 'aura.voice.v1'
 
 export function loadSettings(): VoiceSettings {
@@ -33,6 +36,7 @@ export function loadSettings(): VoiceSettings {
       readConsult: typeof raw.readConsult === 'boolean' ? raw.readConsult : DEFAULTS.readConsult,
       listen: raw.listen === 'short' || raw.listen === 'long' ? raw.listen : 'normal',
       voice: typeof raw.voice === 'string' && raw.voice.length > 0 && raw.voice.length < 300 ? raw.voice : null,
+      sensitivity: raw.sensitivity === 'low' || raw.sensitivity === 'normal' || raw.sensitivity === 'high' ? raw.sensitivity : 'auto',
     }
   } catch {
     return { ...DEFAULTS }

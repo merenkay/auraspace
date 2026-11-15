@@ -68,7 +68,29 @@ export function geodesic(frequency: number): Lattice {
   return { vertices, edges }
 }
 
-export type FlatLattice = { front: string; back: string; dotsFront: string; dotsBack: string }
+/**
+ * `count` vertices spread as evenly as the lattice allows (farthest-point sampling from the vertex nearest the
+ * viewer's upper left). Deterministic: the named nodes of the body-systems layer always sit on the same points.
+ */
+export function spread(vertices: Vec3[], count: number): number[] {
+  const n = Math.min(count, vertices.length)
+  if (n <= 0) return []
+  const start: Vec3 = norm([-0.35, 0.5, 0.8])
+  const d2 = (a: Vec3, b: Vec3) => (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2
+  let first = 0
+  for (let i = 1; i < vertices.length; i++) if (d2(vertices[i], start) < d2(vertices[first], start)) first = i
+  const picked = [first]
+  const dist = vertices.map((v) => d2(v, vertices[first]))
+  while (picked.length < n) {
+    let best = 0
+    for (let i = 1; i < vertices.length; i++) if (dist[i] > dist[best]) best = i
+    picked.push(best)
+    for (let i = 0; i < vertices.length; i++) dist[i] = Math.min(dist[i], d2(vertices[i], vertices[best]))
+  }
+  return picked
+}
+
+export type FlatLattice ={ front: string; back: string; dotsFront: string; dotsBack: string }
 
 /**
  * Orthographic drawing of a lattice as SVG path data (y down), split into the half facing the viewer and the

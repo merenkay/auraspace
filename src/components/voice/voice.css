@@ -299,3 +299,10 @@
     opacity: 0.8;
   }
 }
+
+/* the AURA core in full screen shows its own captions: the floating panel steps aside (emergencies stay) */
+.vx-hud[data-fullscreen='true'] {
+  opacity: 0 !important;
+  pointer-events: none;
+  transform: translateY(24px) !important;
+}

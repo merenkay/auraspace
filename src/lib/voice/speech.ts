@@ -113,7 +113,38 @@ if (ttsSupported()) {
 // not, then the rhythm alone carries it) and near-silence in the breaths between chunks.
 let lastBoundary = 0
 let envRaf = 0
+
+/* ---------- self-voice guard: AURA must never hear itself as the person ---------- */
+
+/** After AURA stops speaking, the room (and the recogniser's buffer) still holds its voice for about this long. */
+export const SELF_VOICE_TAIL_MS = 700
+let speechOn = false
+let speechEndedAt = -Infinity
+const speechListeners = new Set<(speaking: boolean) => void>()
+
+/** AURA is speaking, or stopped less than `tailMs` ago: what the microphone picks up now may be AURA itself. */
+export function selfVoice(now: number = Date.now(), tailMs: number = SELF_VOICE_TAIL_MS): boolean {
+  return speechOn || now - speechEndedAt < tailMs
+}
+
+/**
+ * Told when speech starts (true) and when everything queued has been said or was cancelled (false). Unlike
+ * onSpeaking() any number of listeners may subscribe: the wake-word listener and the level meter use it to step
+ * aside while AURA talks. Returns the unsubscribe function.
+ */
+export function subscribeSpeech(fn: (speaking: boolean) => void): () => void {
+  speechListeners.add(fn)
+  return () => {
+    speechListeners.delete(fn)
+  }
+}
+
 function publishSpeaking(on: boolean) {
+  if (on !== speechOn) {
+    speechOn = on
+    if (!on) speechEndedAt = Date.now()
+    for (const fn of [...speechListeners]) fn(on)
+  }
   setSpeechActive(on)
   if (!on || envRaf || typeof requestAnimationFrame === 'undefined') {
     if (!on) setVoiceLevel(0)

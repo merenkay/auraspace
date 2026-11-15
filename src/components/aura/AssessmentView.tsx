@@ -21,8 +21,8 @@ function Lines({ items }: { items: PlanItem[] }) {
   )
 }
 
-/** The action steps as large numbered rows. The first one is the most important. */
-function Steps({ items, big }: { items: string[]; big: boolean }) {
+/** The action steps as large numbered rows. The first one is the most important. Also used by the full-screen emergency sheet. */
+export function Steps({ items, big }: { items: string[]; big: boolean }) {
   return (
     <ol className="divide-y divide-line border-y border-line">
       {items.map((t, i) => (

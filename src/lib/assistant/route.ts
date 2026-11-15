@@ -8,9 +8,12 @@ import { VITAL_BY_KEY } from '../../data/vitals'
 import { fold, parseFindings } from '../doctor/parse'
 import type { Alt } from '../voice/endpoint'
 import { correct, detectLang, type Fix } from '../voice/fuzzy'
-import { describeEntry, NAV_LABEL, parseIntent, type Intent } from '../voice/intents'
+import { describeEntry, NAV_LABEL, parseIntent, stripWake, type Intent } from '../voice/intents'
+
+const stripWakeRest = (t: string) => stripWake(t).rest
 import type { VoiceLang } from '../voice/settings'
 import { MATCH_MIN, nameScore, parseUiCommand, type UiCommand } from '../voicecontrol'
+import { prep } from '../voicecontrol/grammar'
 import { feelingOf, isCrisis, parseChat, type ChatIntent } from './chat'
 
 export type Choice = { label: string; route: Route }
@@ -41,26 +44,58 @@ function uiRoute(t: string, f: string, intent: Intent, names: string[] | undefin
   // (dictation is the exception: "type I have a headache" writes those words into the focused field, where the
   // consultation itself reads them; crisis words were already routed to the crisis path above)
   if (symptom && cmd.kind !== 'type' && (FIRST_PERSON.test(f) || cmd.kind !== 'press')) return null
-  // verbs that dedicated intents also use ("check my blood pressure", "show the heart", "open history")
-  const shared = (cmd.kind === 'press' && cmd.soft) || cmd.kind === 'check' || cmd.kind === 'focus' || cmd.kind === 'expand'
-  if (shared && DEDICATED.has(intent.type)) return null
-  if (cmd.kind === 'press' && cmd.soft) {
+  // the whole sentence is a control's name ("Dictate with your voice", "Show more", "Go to Overview"): press that
+  if (names?.length && !symptom && ['press', 'type', 'focus', 'check', 'expand', 'search', 'setValue', 'readSection', 'step'].includes(cmd.kind)) {
+    const whole = prep(t)
+    const w = bestScore(whole, names)
+    const tgt = 'target' in cmd && typeof cmd.target === 'string' ? cmd.target : ''
+    if (w >= 0.97 && (!tgt || w >= bestScore(tgt, names))) return { kind: 'ui', cmd: { kind: 'press', target: whole } }
+  }
+  // verbs that dedicated intents also use ("check my blood pressure", "show the heart", "open history", "read the alerts")
+  const shared = (cmd.kind === 'press' && cmd.soft) || cmd.kind === 'check' || cmd.kind === 'focus' || cmd.kind === 'expand' || (cmd.kind === 'readSection' && cmd.which === 'named')
+  const target = 'target' in cmd && typeof cmd.target === 'string' ? cmd.target : ''
+  const best = target && names?.length ? bestScore(target, names) : 0
+  // a control named exactly so on screen wins over the dedicated meaning ("open the Sleep tab", "open Training profile");
+  // logging stays a health entry unless the verb is plainly navigation ("take me to <a link that mentions exercise>")
+  const navVerb = /^(?:go to|take me|open|show|press|click|tap|hit|switch|view|visit)\b/.test(prep(t))
+  const exact = best >= 0.96 && (intent.type !== 'log' || navVerb) && (cmd.kind !== 'press' || !!cmd.soft) && cmd.kind !== 'readSection'
+  // "log blood pressure" with no value: a "Log a measurement" menu on screen holds it
+  const menu = cmd.kind === 'press' && cmd.verb === 'log' && intent.type !== 'log' && !!names?.some((n) => /^(?:log|add|record|new)\b/i.test(n))
+  if (shared && DEDICATED.has(intent.type) && !exact && !menu && !(cmd.kind === 'press' && cmd.want === 'tab' && best >= MATCH_MIN)) return null
+  if (cmd.kind === 'press' && cmd.soft && !menu) {
     // "show me a joke", "open the window": only a page command when a control of that name is on screen
-    if (parseChat(t)) return null
-    if (!names?.some((n) => nameScore(cmd.target, n) >= MATCH_MIN)) return null
+    if (parseChat(t) && best < 0.96) return null
+    if (best < MATCH_MIN) return null
   }
   // "number two" while nothing is numbered can still be a reading or a log ("two litres")
   if (cmd.kind === 'number' && intent.type === 'log') return null
   return { kind: 'ui', cmd }
 }
 
+/** How well a spoken target names some control among `names` (0..1). */
+export function bestScore(target: string, names: readonly string[]): number {
+  let memo = bestMemo.get(names)
+  if (!memo) bestMemo.set(names, (memo = new Map()))
+  const hit = memo.get(target)
+  if (hit !== undefined) return hit
+  let best = 0
+  for (const n of names) {
+    best = Math.max(best, nameScore(target, n))
+    if (best >= 1) break
+  }
+  memo.set(target, best)
+  return best
+}
+const bestMemo = new WeakMap<readonly string[], Map<string, number>>()
+
 function bareRoute(t: string, names: string[] | undefined): Route | null {
   if (!names?.length) return null
   const f = cleanF(t)
-  if (!f || words(f) > 5 || parseFindings(t).hits.some((h) => !h.negated)) return null
-  let best = 0
-  for (const n of names) best = Math.max(best, nameScore(t, n))
-  return best >= BARE_MIN ? { kind: 'ui', cmd: { kind: 'press', target: t, bare: true } } : null
+  if (!f || words(f) > 6 || parseFindings(t).hits.some((h) => !h.negated)) return null
+  // a recogniser's filler and politeness around a bare name ("um details please")
+  const target = prep(t)
+  if (!target) return null
+  return bestScore(target, names) >= BARE_MIN ? { kind: 'ui', cmd: { kind: 'press', target, bare: true } } : null
 }
 
 /** Findings that a plain "I'm tired / I feel low / I can't sleep" statement may match; these get a kind reply with an offer. */
@@ -86,6 +121,7 @@ export function labelOf(r: Route): string {
     if (i.type === 'score') return 'your health score'
     if (i.type === 'consult') return 'a consultation'
   }
+  if (r.kind === 'ui' && r.cmd.kind === 'press') return `pressing “${r.cmd.target.split('|')[0]}”`
   if (r.kind === 'chat') {
     if (r.chat.type === 'cabin' || r.chat.type === 'weather') return 'the cabin temperature'
     if (r.chat.type === 'time') return 'the time'
@@ -127,6 +163,12 @@ export function route(text: string, o: RouteOptions = {}): Route {
   // 2b. an explicit page command ("press Details", "scroll down", "Save'e bas"); a symptom statement never is one
   const ui = uiRoute(t, f, intent, o.names)
   if (ui) return ui
+  // 2c. a control's exact name said on its own ("Training profile", "Stored history", "How the score is calculated")
+  // beats a page or summary meaning of the same words; never for symptoms (they go to the consultation) or logging
+  if (o.names?.length && ['unknown', 'nav', 'status', 'alerts', 'score', 'greet', 'help', 'consult'].includes(intent.type) && !parseFindings(t).hits.some((h) => !h.negated) && !(intent.type === 'greet' && !stripWakeRest(t))) {
+    const target = prep(t)
+    if (target && words(cleanF(target)) <= 8 && bestScore(target, o.names) >= 0.97) return { kind: 'ui', cmd: { kind: 'press', target, bare: true } }
+  }
   // 3. symptoms go to the consultation engine; only a plain feeling statement gets a kind reply instead
   if (intent.type === 'consult') {
     const feel = feelingOf(t)
@@ -216,13 +258,21 @@ export function understand(alts: Alt[], o: { lang?: VoiceLang; typed?: boolean; 
     const conf = confOf(a.confidence, i)
     const variants: { text: string; fixes: Fix[] }[] = [{ text: a.transcript, fixes: [] }]
     const c = correct(a.transcript)
-    if (c.fixes.length) variants.push(c)
+    // a sentence that already names a control exactly is not "corrected" into a health word
+    const exactName = !!o.names?.length && bestScore(prep(a.transcript), o.names) >= 0.97
+    if (c.fixes.length && !exactName) variants.push(c)
     for (const v of variants) {
       const lang = detectLang(v.text, fallback)
       const r = route(v.text, { lang: lang === 'tr' ? 'tr-TR' : 'en-US', names: o.names })
       const table = v.fixes.filter((x) => x.kind === 'table').length
       const fuzzy = v.fixes.filter((x) => x.kind === 'fuzzy').reduce((s, x) => s + 0.05 + 0.05 * x.dist, 0)
-      const score = weight(r) * (0.55 + 0.45 * conf) - 0.03 * table - fuzzy - 0.02 * i
+      // a press is only as good as its match on screen: the alternative that names a real control wins
+      let w = weight(r)
+      if (r.kind === 'ui' && r.cmd.kind === 'press' && o.names?.length && !r.cmd.verb) {
+        const s = bestScore(r.cmd.target, o.names)
+        w *= s >= MATCH_MIN ? 1 + 0.15 * (s - MATCH_MIN) : 0.8
+      }
+      const score = w * (0.55 + 0.45 * conf) - 0.03 * table - fuzzy - 0.02 * i
       cands.push({ text: v.text, heard: a.transcript, route: r, score, confidence: a.confidence, fixes: v.fixes, lang })
     }
   })
@@ -237,6 +287,8 @@ export function understand(alts: Alt[], o: { lang?: VoiceLang; typed?: boolean; 
   // low recogniser confidence, or a bold fuzzy correction, behind a medical meaning: check first
   const bold = best.fixes.some((x) => x.kind === 'fuzzy' && x.dist >= 2)
   if (!o.typed && isMedical(best.route) && ((best.confidence > 0 && best.confidence < 0.45) || bold)) return pick(clarify([best.route]))
+  // a single word heard with low confidence that would press something: ask first ("Did you mean pressing “Pause”?")
+  if (!o.typed && best.route.kind === 'ui' && best.route.cmd.kind === 'press' && best.route.cmd.bare && words(cleanF(best.route.cmd.target)) === 1 && best.confidence > 0 && best.confidence < 0.5) return pick(clarify([best.route]))
   return pick(best.route)
 }
 

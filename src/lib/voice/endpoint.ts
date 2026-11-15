@@ -4,6 +4,7 @@
 // and a hard cap. When the browser ends a session early, the transcript heard so far is kept and stitched
 // to what follows after a transparent restart. Pure: no browser objects in here.
 import type { ListenLength } from './settings'
+import type { Sensitivity } from './vad'
 
 export type Alt = { transcript: string; confidence: number }
 /** auto = finish after silence; hold = push-to-talk, finish on release; wake = always on, an utterance starts with the wake word. */
@@ -100,3 +101,62 @@ export class Transcript {
 
 /** Silence window to use now: shorter once the person has said something. */
 export const silenceFor = (t: Timing, heard: boolean) => (heard ? t.silenceMs : t.initialMs)
+
+/* ---------- the measured level joins in (vad.ts): do not cut off someone who is still audibly speaking ---------- */
+
+/**
+ * The recogniser only tells us about words, and it is slow or silent with quiet speech. When the silence window
+ * runs out while the microphone level says someone is still speaking, the listener waits on, within limits, so
+ * background noise cannot hold the microphone open: the noise floor adapts (a steady sound stops counting as voice
+ * after about three seconds) and the wait is capped at MAX_MS without any new recognised word.
+ */
+export const VOICE_HOLD = {
+  /** voice measured within this long counts as "still speaking" (bridges the gaps between words), ms */
+  RECENT_MS: 450,
+  /** the longest the level alone may keep the microphone open past the silence window, per sensitivity, ms */
+  MAX_MS: { low: 2500, normal: 4000, high: 6500, auto: 4000 } as Record<Sensitivity, number>,
+  /** how often to look again while waiting, ms */
+  CHECK_MS: 200,
+  /** the first wait (nothing recognised yet) is multiplied by this: High gives slow or quiet starters more time */
+  INITIAL_X: { low: 1, normal: 1, high: 1.5, auto: 1 } as Record<Sensitivity, number>,
+} as const
+
+/** What the level meter says right now; null = nothing is being measured (phones, no permission). */
+export type VoiceNow = { calibrated: boolean; voiced: boolean; /** ms since voice was last measured */ quietMs: number }
+
+/**
+ * The silence window just ran out. Returns 0 to finish now, or the ms to wait before asking again.
+ * `sinceWordsMs`: time since the recogniser last produced words (or since listening began);
+ * `windowMs`: the silence window that just ended.
+ */
+export function holdForVoice(v: VoiceNow | null, sinceWordsMs: number, windowMs: number, sensitivity: Sensitivity): number {
+  if (!v || !v.calibrated) return 0
+  if (!v.voiced && v.quietMs >= VOICE_HOLD.RECENT_MS) return 0
+  if (sinceWordsMs >= windowMs + VOICE_HOLD.MAX_MS[sensitivity]) return 0
+  return VOICE_HOLD.CHECK_MS
+}
+
+/** Silence window with the sensitivity applied. */
+export const silenceWindow = (t: Timing, heard: boolean, sensitivity: Sensitivity) => (heard ? t.silenceMs : Math.round(t.initialMs * VOICE_HOLD.INITIAL_X[sensitivity]))
+
+/* ---------- restarts of an always-on (wake word) session ---------- */
+
+export const WAKE_RETRY = {
+  /** normal pause before the browser's ended session is started again, ms */
+  BASE_MS: 250,
+  /** a session that ended sooner than this did not really run: back off, doubling up to MAX_MS */
+  SHORT_SESSION_MS: 1000,
+  MAX_MS: 8000,
+  /** after a network error: first retry, doubling up to NET_MAX_MS */
+  NET_BASE_MS: 1000,
+  NET_MAX_MS: 30_000,
+  /** start() answered with neither a start nor an error for this long: drop the session and try again */
+  START_WATCHDOG_MS: 4000,
+} as const
+
+/** Delay before restarting: `fails` = consecutive sessions that ended at once, or network errors in a row. */
+export function retryDelay(fails: number, network: boolean): number {
+  const base = network ? WAKE_RETRY.NET_BASE_MS : WAKE_RETRY.BASE_MS
+  const max = network ? WAKE_RETRY.NET_MAX_MS : WAKE_RETRY.MAX_MS
+  return Math.min(max, base * 2 ** Math.max(0, Math.min(10, network ? fails - 1 : fails)))
+}

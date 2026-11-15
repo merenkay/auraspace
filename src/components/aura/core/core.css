@@ -89,3 +89,229 @@
   overflow: hidden;
   -webkit-box-orient: vertical;
 }
+
+/* ---- layers: labels, breadcrumb, readout ---- */
+
+/* labels may reach past the square stage (the canvas itself fades at its edge) */
+.aura-core[data-variant='panel'] .aura-core__stage,
+.aura-core[data-variant='full'] .aura-core__stage {
+  contain: layout;
+}
+.aura-core__labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  text-align: left;
+}
+.aura-core__label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transition: opacity 160ms var(--ease-out);
+  will-change: transform;
+}
+.aura-core__leader {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 1px;
+  background: var(--color-edge);
+  transform-origin: 0 50%;
+}
+.aura-core__label[data-selected] .aura-core__leader {
+  background: var(--color-ink);
+}
+.aura-core__tag {
+  position: absolute;
+  top: 0;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  white-space: nowrap;
+  line-height: 1.25;
+  transform: translateY(-50%);
+  padding: 2px 6px;
+  background: color-mix(in srgb, var(--color-space) 82%, transparent);
+  border-radius: 6px;
+}
+.aura-core__label[data-side='l'] .aura-core__tag {
+  left: auto;
+  right: 6px;
+  align-items: flex-end;
+}
+.aura-core__label[data-selected] .aura-core__tag {
+  background: var(--color-panel2);
+  outline: 1px solid var(--color-edge);
+}
+
+/* status as a shape: diamond = attention, octagon = urgent, hollow ring = no data */
+.aura-core__mark {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  box-sizing: border-box;
+}
+.aura-core__mark[data-status='warn'] {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--color-warn);
+  transform: rotate(45deg);
+}
+.aura-core__mark[data-status='crit'] {
+  background: var(--color-crit);
+  clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%);
+}
+.aura-core__mark[data-status='none'] {
+  border: 1.5px solid var(--color-edge);
+  border-radius: 50%;
+}
+
+.aura-core__crumbs {
+  width: 100%;
+  max-width: 440px;
+  text-align: left;
+}
+.aura-core__crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--color-dim);
+  border-bottom: 2px solid transparent;
+}
+.aura-core__crumb:hover {
+  color: var(--color-ink);
+}
+.aura-core__crumb[aria-current] {
+  color: var(--color-ink);
+  font-weight: 600;
+  background: var(--color-panel2);
+}
+.aura-core__note {
+  margin-top: 2px;
+  padding: 0 8px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--color-dim);
+  min-height: 2.8em;
+}
+
+.aura-core__readout {
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+  background: var(--color-panel);
+  padding: 12px 14px;
+}
+
+/* ---- full screen: the stage fills its parent; only layer chrome is drawn here (pop-ups belong to the page) ---- */
+.aura-core--full {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.aura-core--full .aura-core__stage {
+  position: absolute;
+  inset: 0;
+  aspect-ratio: auto;
+  border-radius: 0;
+  touch-action: none;
+  outline-offset: -4px;
+}
+.aura-core--full .aura-core__crumbs {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  top: 16px;
+  width: auto;
+  max-width: min(440px, calc(100% - 96px));
+  padding: 4px 6px 8px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-space) 86%, transparent);
+}
+.aura-core--full .aura-core__note {
+  min-height: 0;
+}
+.aura-core__dock {
+  position: absolute;
+  z-index: 2;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(50% - 16px);
+}
+.aura-core__readout--full {
+  position: absolute;
+  z-index: 3;
+  left: 16px;
+  top: 50%;
+  width: min(320px, calc(100% - 32px));
+  transform: translateY(-50%);
+  box-shadow: var(--shadow-overlay, 0 12px 32px rgb(0 0 0 / 0.5));
+}
+@media (max-width: 639px) {
+  /* phones: one row of chrome at the top; the bottom half belongs to the conversation */
+  .aura-core--full .aura-core__crumbs {
+    left: 8px;
+    top: 8px;
+    max-width: calc(100% - 72px);
+  }
+  .aura-core--full .aura-core__note {
+    display: none;
+  }
+  .aura-core__dock {
+    display: none;
+  }
+  .aura-core__readout--full {
+    left: 8px;
+    top: 64px;
+    width: calc(100% - 16px);
+    transform: none;
+  }
+  .aura-core--full .aura-core__stage {
+    bottom: 38%;
+  }
+}
+
+/* the canvas is the hit target (hand control looks for it): the flat drawing above it lets pointers through */
+.aura-core__flat {
+  pointer-events: none;
+}
+
+/* full screen, refinements: the readout sits above the dock (the corner the instrument needs least); on wide
+   screens the instrument is centred in the space left of the page's message column */
+.aura-core__readout--full {
+  top: auto;
+  bottom: 76px;
+  transform: none;
+}
+@media (min-width: 1024px) {
+  .aura-core--full .aura-core__stage {
+    right: min(396px, 30%);
+  }
+}
+@media (max-width: 639px) {
+  .aura-core__readout--full {
+    top: 64px;
+    bottom: auto;
+  }
+  .aura-core--full .aura-core__crumbs {
+    max-width: calc(100% - 124px);
+    padding: 2px;
+  }
+  .aura-core--full .aura-core__crumb {
+    padding: 0 5px;
+    gap: 0;
+  }
+  .aura-core--full .aura-core__crumb > span {
+    display: none;
+  }
+}

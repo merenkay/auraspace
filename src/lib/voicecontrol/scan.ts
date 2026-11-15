@@ -1,7 +1,7 @@
 // Which controls the person can reach right now, and what they are called. Works on a small node interface so the
 // rules (hidden, inert, disabled, behind a modal dialog, accessible names, destructive actions) are unit-tested on
 // synthetic trees; dom.ts adapts real DOM elements to it.
-import { MATCH_MIN, nameScore, normName } from './names'
+import { MATCH_MIN, namesScore, normName } from './names'
 
 export type Box = { left: number; top: number; width: number; height: number }
 
@@ -28,7 +28,12 @@ export type Risk = 'none' | 'destructive' | 'dialog-confirm'
 
 export type Control = {
   node: UiNode
+  /** the accessible name, as computed for screen readers */
   name: string
+  /** what a person reads on it and would say: the first visible line, a data-voice-name, or a cleaned accessible name */
+  label: string
+  /** every name it can be called by, the label first (heading inside a card, aria-label, title, parts of a long name) */
+  names: string[]
   kind: ControlKind
   disabled: boolean
   risk: Risk
@@ -48,6 +53,8 @@ export type Control = {
 
 /** Labels that mean "this cannot be undone": the person has to confirm by voice. */
 export const DESTRUCTIVE = /\b(delete|remove|erase|reset|clear|discard|wipe|revoke|forget|sign out|log out|sign-out|log-out)\b/i
+/** Labels that contain a destructive word but only change what is shown ("Reset view", "Clear selection"). */
+export const HARMLESS = /^(?:reset|clear) (?:the )?(?:view|zoom|camera|selection|filters?|search|highlight)\b/i
 export const SAFE_IN_DIALOG = /^(cancel|close|back|no|not now|keep|done|ok)\b/i
 
 function hasClass(n: UiNode, c: string) {
@@ -61,7 +68,7 @@ function closest(n: UiNode | null, test: (x: UiNode) => boolean): UiNode | null 
 
 export function riskOf(n: UiNode, name: string): Risk {
   if (closest(n, (x) => x.attr('data-hand-confirm') !== null)) return 'destructive'
-  if (DESTRUCTIVE.test(name)) return 'destructive'
+  if (DESTRUCTIVE.test(name) && !HARMLESS.test(name.trim())) return 'destructive'
   if (hasClass(n, 'text-crit')) return 'destructive'
   if (closest(n, (x) => x.attr('data-overlay-part') === 'footer') && !SAFE_IN_DIALOG.test(name.trim())) return 'dialog-confirm'
   return 'none'
@@ -97,6 +104,73 @@ export function accessibleName(n: UiNode): string {
   if (own) return own
   const img = n.children().find((c) => c.tag === 'img' && c.attr('alt'))
   return squash(n.attr('title') ?? img?.attr('alt') ?? '')
+}
+
+/* ---------- the names a person would use ---------- */
+
+/** "Lungs & Oxygen98 %" -> "Lungs & Oxygen"; keyboard hints and "(opens in a new tab)" removed. */
+export function cleanLabel(s: string): string {
+  const t = squash(s.replace(/\s*\((?:alt|ctrl|shift|cmd|opens in)[^)]*\)/gi, ''))
+  const first = t.split(/\s+·\s+/)[0]
+  const cut = /^(.{2,}?[a-z)])\s*(?=\d)/i.exec(first)
+  // keep numbers that are the name itself ("Week 2", "24 h", "15 min", "T2 treadmill walk")
+  const label = cut && !/^(?:week|day|tab|step|number|no\.?)$/i.test(cut[1].trim()) && cut[1].split(' ').length > 1 ? cut[1] : first
+  return label.split(' ').slice(0, 10).join(' ')
+}
+
+function firstLine(n: UiNode): string {
+  const lines = n
+    .text()
+    .split('\n')
+    .map(squash)
+    .filter(Boolean)
+  return lines.find((l) => /[a-z]{2}/i.test(l)) ?? ''
+}
+
+function headingIn(n: UiNode, depth = 0): string {
+  if (depth > 4) return ''
+  for (const c of n.children()) {
+    if (/^h[1-6]$/.test(c.tag) || c.attr('role') === 'heading') return squash(c.text())
+    const h = headingIn(c, depth + 1)
+    if (h) return h
+  }
+  return ''
+}
+
+/**
+ * The label and alternative names of a control. A name assembled from several text nodes ("Brain & Behavior 6.4 h
+ * · 4 / 5", "Details for Blood pressure 138/86 mmHg") is split into what a person reads first and the rest; an
+ * explicit data-voice-name wins (several separated by "|").
+ */
+export function voiceNames(n: UiNode, acc: string, kind?: ControlKind | null): { label: string; names: string[] } {
+  const out: string[] = []
+  const add = (x: string | null | undefined) => {
+    const t = squash(x ?? '')
+    if (t && t.length <= 120 && !out.some((o) => o.toLowerCase() === t.toLowerCase())) out.push(t)
+  }
+  const voice = n.attr('data-voice-name')
+  if (voice) for (const v of voice.split('|')) add(v)
+  const field = kind === 'field' || kind === 'select'
+  const line = field ? '' : firstLine(n)
+  const accClean = cleanLabel(acc)
+  // a run-on duplicate ("ARED session11:00 ARED session11:00")
+  const mid = (acc.length - 1) / 2
+  const half = acc.length > 8 && acc.length % 2 === 1 && acc.slice(0, mid) === acc.slice(mid + 1) ? acc.slice(0, mid) : ''
+  if (half) add(cleanLabel(half))
+  if (line && (!n.attr('aria-label') || normName(acc).includes(normName(line)))) add(cleanLabel(line))
+  add(accClean)
+  add(headingIn(n))
+  // "Details for Blood pressure 138/86 mmHg" -> also "Blood pressure details"; "Monday: ARED + T2 walk" -> "Monday"
+  const forM = /^(.+?) for (.+)$/i.exec(accClean)
+  if (forM) add(forM[2] + " " + forM[1])
+  for (const sep of [/:\s/, /\.\s/, /\s[—–-]\s/]) {
+    const parts = accClean.split(sep)
+    if (parts.length > 1) for (const p of parts) if (p.trim().split(' ').length <= 6) add(cleanLabel(p))
+  }
+  if (line && n.attr('aria-label')) add(cleanLabel(line))
+  add(n.attr('title'))
+  if (acc !== accClean) add(acc)
+  return { label: out[0] ?? '', names: out }
 }
 
 /* ---------- which nodes are controls ---------- */
@@ -195,9 +269,12 @@ export function collectControls(root: UiNode): Control[] {
         const exp = n.attr('aria-expanded')
         const type = String(n.prop('type') ?? n.attr('type') ?? '').toLowerCase()
         const ac = (n.attr('autocomplete') ?? '').toLowerCase()
+        const vn = voiceNames(n, name, kind)
         out.push({
           node: n,
           name,
+          label: vn.label,
+          names: vn.names,
           kind,
           disabled: disabledAbove || n.prop('disabled') === true || n.attr('disabled') !== null || n.attr('aria-disabled') === 'true',
           risk: riskOf(n, name),
@@ -256,38 +333,54 @@ export type Resolution =
   | { kind: 'none'; closest: string[] }
 
 /**
- * The control a spoken name refers to. Same-named controls give 'many' (or the ordinal one when asked for "the
- * second"). Page controls are preferred over the voice panel's own; `prefer` narrows to some kinds when any fit.
+ * The control a spoken name refers to. Ranking: score tier (exact > prefix > same words > fuzzy), then the open
+ * dialog before the page and the page before the voice panel, the role hint ("tab", "link"), enabled before
+ * disabled, on screen before scrolled away. Same-named controls give 'many' (or the ordinal one when asked for
+ * "the second"); clearly different names that score almost alike also give 'many', so AURA asks.
  */
-export function resolve(spoken: string, controls: Control[], o: { ordinal?: number; prefer?: ControlKind[]; only?: ControlKind[] } = {}): Resolution {
-  let pool = controls.filter((c) => c.name)
+export function resolve(spoken: string, controls: Control[], o: { ordinal?: number; prefer?: ControlKind[]; only?: ControlKind[]; viewH?: number } = {}): Resolution {
+  let pool = controls.filter((c) => c.names?.length || c.name)
   if (o.only) pool = pool.filter((c) => o.only!.includes(c.kind))
-  const scored = pool.map((c) => ({ c, s: nameScore(spoken, c.name) })).filter((x) => x.s > 0)
+  const scored = pool.map((c) => ({ c, s: namesScore(spoken, c.names?.length ? c.names : [c.name]) })).filter((x) => x.s > 0)
   scored.sort((a, b) => b.s - a.s || a.c.index - b.c.index)
   const ok = scored.filter((x) => x.s >= MATCH_MIN)
   if (!ok.length) {
     const closest: string[] = []
     // only names that are at least a little alike; otherwise suggesting "Skip to content" helps nobody
     for (const x of scored.filter((y) => y.s >= 0.3)) {
-      if (!closest.includes(x.c.name) && x.c.scope !== 'voice') closest.push(x.c.name)
-      if (closest.length >= 2) break
+      const nm = x.c.label || x.c.name
+      if (!closest.includes(nm) && x.c.scope !== 'voice') closest.push(nm)
+      if (closest.length >= 3) break
     }
     return { kind: 'none', closest }
   }
   let top = ok.filter((x) => x.s >= ok[0].s - 0.04)
-  // the page before the voice panel, enabled before disabled, preferred kinds first
-  const narrow = (f: (x: { c: Control }) => boolean) => {
+  const narrow = (f: (x: { c: Control; s: number }) => boolean) => {
     const n = top.filter(f)
     if (n.length) top = n
   }
   narrow((x) => x.c.scope !== 'voice')
+  narrow((x) => x.c.scope === 'dialog')
   if (o.prefer) narrow((x) => o.prefer!.includes(x.c.kind))
   narrow((x) => !x.c.disabled)
+  // an exact name beats a partial one
+  if (top[0].s >= 0.96) narrow((x) => x.s >= 0.96)
+  // different names: the clearly better one wins; nearly tied different names are asked about
+  const labelOf = (c: Control) => normName(c.label || c.name)
+  if (new Set(top.map((x) => labelOf(x.c))).size > 1) {
+    const best = Math.max(...top.map((x) => x.s))
+    narrow((x) => x.s >= best - 0.015)
+  }
+  // same name several times: one on screen and the others scrolled away -> the visible one, unless an ordinal was said
+  if (o.ordinal === undefined && o.viewH && top.length > 1 && new Set(top.map((x) => labelOf(x.c))).size === 1) {
+    const vis = top.filter((x) => x.c.rect.top < o.viewH! && x.c.rect.top + x.c.rect.height > 0)
+    if (vis.length === 1) top = vis
+  }
   const list = top.map((x) => x.c).sort((a, b) => a.index - b.index)
   if (o.ordinal !== undefined && list.length) {
     const i = o.ordinal < 0 ? list.length + o.ordinal : o.ordinal - 1
     if (list[i]) return list[i].disabled ? { kind: 'disabled', control: list[i] } : { kind: 'one', control: list[i] }
   }
   if (list.length === 1) return list[0].disabled ? { kind: 'disabled', control: list[0] } : { kind: 'one', control: list[0] }
-  return { kind: 'many', controls: list, name: list[0].name }
+  return { kind: 'many', controls: list, name: list[0].label || list[0].name }
 }

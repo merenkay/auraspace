@@ -298,13 +298,13 @@ export function pathFor(target: NavTarget, role: string | undefined, crewId: num
     case 'aura':
       return crew && (own || role === 'surgeon') ? `${crew}/aura` : null
     case 'coach':
-      return crew && own ? `${crew}/coach` : null
+      return crew && (own || role === 'surgeon') ? `${crew}/coach` : null
     case 'history':
       return crew ? `${crew}/history` : null
     case 'environment':
       return '/environment'
     case 'reports':
-      return role === 'surgeon' ? '/reports' : null
+      return role === 'surgeon' ? '/reports' : own ? '/my-reports' : null
     case 'roster':
       return role === 'surgeon' || role === 'ground' ? '/crew' : null
   }
